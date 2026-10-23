@@ -7,6 +7,7 @@ test-results/
 playwright-report/
 allure-results/
 allure-report/
+pacts/
 .DS_Store
 .claude/
 .superpowers/

@@ -1,17 +1,24 @@
 {
-  "name": "shopqa",
+  "name": "testpulse",
   "private": true,
-  "description": "Quality platform end-to-end: aplikasi toko kecil + test pyramid lengkap (unit → contract → E2E → performance → security).",
+  "type": "module",
+  "description": "TestPulse: aplikasi manajemen hasil test / QA (monorepo TypeScript).",
   "packageManager": "pnpm@10.22.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "up": "docker compose up --build -d",
-    "down": "docker compose down -v",
-    "logs": "docker compose logs -f"
+    "dev": "pnpm -r --parallel --if-present dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "test:unit": "pnpm -r --if-present test:unit",
+    "test:int": "pnpm -r --if-present test:int"
+  },
+  "devDependencies": {
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.0"
   }
 }

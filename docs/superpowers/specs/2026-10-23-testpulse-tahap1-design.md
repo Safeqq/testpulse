@@ -8,7 +8,7 @@
 
 Pemilik proyek adalah fresh graduate yang menargetkan posisi QA/SDET. Proyek ini punya **dua tujuan sekaligus**:
 
-1. **Produk yang berguna:** TestPulse adalah aplikasi web untuk tim QA/dev, yaitu satu tempat untuk memantau kesehatan testing: hasil automated test dari CI, deteksi test flaky, bug report, dan test case manual. Kategori produk sejenis: TestRail, Qase, ReportPortal, Allure TestOps.
+1. **Produk yang berguna:** TestPulse adalah aplikasi web untuk tim QA/dev, yaitu satu tempat untuk memantau kesehatan testing: hasil automated test dari CI, deteksi test flaky, bug report, test case manual, dan (tahap 5) crowdtesting, yaitu tim membuka test cycle publik agar tester dari luar ikut mencoba aplikasi dan melaporkan bug. Kategori produk sejenis: TestRail, Qase, ReportPortal, Allure TestOps (test management/reporting) dan uTest, Testlio (crowdtesting).
 2. **Portfolio QA:** TestPulse sendiri diuji dengan test pyramid lengkap yang berjalan otomatis di CI. Mulai tahap 2, **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding). Project TestPulse disetel **publik**, sehingga recruiter bisa melihat dashboard kualitas yang nyata lewat link live **tanpa perlu mendaftar**.
 
 **Kriteria sukses keseluruhan:** aplikasi online dan bisa dicoba lewat link, setiap fitur dilindungi test otomatis yang relevan, dan pipeline CI/CD dengan quality gate dapat ditunjukkan di repo publik.
@@ -21,7 +21,8 @@ Pemilik proyek adalah fresh graduate yang menargetkan posisi QA/SDET. Proyek ini
 | 2 | Dashboard hasil test, deteksi flaky, reporter CLI, project token, k6 | terpisah |
 | 3 | Bug tracker (bug dari test yang gagal), visual regression | terpisah |
 | 4 | Test case management & test run manual, mutation testing | terpisah |
-| 5 (opsional) | Aplikasi desktop Electron (notifikasi build gagal, tray), diuji Playwright | terpisah |
+| 5 | Crowdtesting: test cycle publik, crowd tester bergabung & mengirim bug, triase oleh tim, reputasi & leaderboard. Aplikasi diberikan sebagai **link** (tanpa upload file), **tanpa pembayaran** | terpisah |
+| 6 (opsional) | Aplikasi desktop Electron (notifikasi build gagal, tray), diuji Playwright | terpisah |
 
 Setiap tahap melewati siklus spec → rencana implementasi → implementasi sendiri.
 
@@ -31,7 +32,7 @@ Setiap tahap melewati siklus spec → rencana implementasi → implementasi send
 
 ```
 apps/api           Fastify + TypeScript + PostgreSQL (Drizzle ORM + migrasi)
-  src/modules/       auth/, projects/  (tahap berikut: results/, bugs/, testcases/)
+  src/modules/       auth/, projects/  (tahap berikut: results/, bugs/, testcases/, cycles/)
   src/plugins/       db, session, error handler, security (helmet, rate limit)
 apps/web           React + Vite SPA (React Router)
   functions/api/     Cloudflare Pages Function: proxy /api/* → API di Render
@@ -55,7 +56,7 @@ Batas modul: modul hanya saling memanggil lewat fungsi service yang diekspor (`p
 
 Lokal: `docker compose up` menjalankan Postgres + API + web (nginx dengan proxy `/api` yang setara).
 
-**Persiapan desktop (tahap 5):** base URL API di web dapat dikonfigurasi (`VITE_API_BASE_URL`, default `/api`). Lookup sesi di API ditulis sebagai satu fungsi yang nanti juga menerima header `Authorization: Bearer` (token ditambahkan di tahap 2).
+**Persiapan desktop (tahap 6):** base URL API di web dapat dikonfigurasi (`VITE_API_BASE_URL`, default `/api`). Lookup sesi di API ditulis sebagai satu fungsi yang nanti juga menerima header `Authorization: Bearer` (token ditambahkan di tahap 2).
 
 ## 4. Lingkup tahap 1
 

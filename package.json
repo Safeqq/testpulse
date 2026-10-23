@@ -1,0 +1,17 @@
+{
+  "name": "shopqa",
+  "private": true,
+  "description": "Quality platform end-to-end: aplikasi toko kecil + test pyramid lengkap (unit → contract → E2E → performance → security).",
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "up": "docker compose up --build -d",
+    "down": "docker compose down -v",
+    "logs": "docker compose logs -f"
+  }
+}

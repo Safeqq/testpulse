@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+.env
+*.log
+test-results/
+playwright-report/
+allure-results/
+allure-report/
+.DS_Store
+.claude/

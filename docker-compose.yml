@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: shopqa
+      POSTGRES_PASSWORD: shopqa
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shopqa"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  catalog:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    environment:
+      CATALOG_DATABASE_URL: postgres://shopqa:shopqa@postgres:5432/catalog
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  order:
+    build:
+      context: .
+      dockerfile: services/order/Dockerfile
+    environment:
+      ORDER_DATABASE_URL: postgres://shopqa:shopqa@postgres:5432/orders
+      CATALOG_URL: http://catalog:3001
+      JWT_SECRET: dev-secret-ganti-di-production
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      catalog:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      catalog:
+        condition: service_healthy
+      order:
+        condition: service_healthy

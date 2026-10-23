@@ -9,7 +9,7 @@
 Pemilik proyek adalah fresh graduate yang menargetkan posisi QA/SDET. Proyek ini punya **dua tujuan sekaligus**:
 
 1. **Produk yang berguna:** TestPulse adalah aplikasi web untuk tim QA/dev, yaitu satu tempat untuk memantau kesehatan testing: hasil automated test dari CI, deteksi test flaky, bug report, dan test case manual. Kategori produk sejenis: TestRail, Qase, ReportPortal, Allure TestOps.
-2. **Portfolio QA:** TestPulse sendiri diuji dengan test pyramid lengkap yang berjalan otomatis di CI. Mulai tahap 2, **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding), sehingga recruiter bisa melihat dashboard kualitas yang nyata lewat link live.
+2. **Portfolio QA:** TestPulse sendiri diuji dengan test pyramid lengkap yang berjalan otomatis di CI. Mulai tahap 2, **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding). Project TestPulse disetel **publik**, sehingga recruiter bisa melihat dashboard kualitas yang nyata lewat link live **tanpa perlu mendaftar**.
 
 **Kriteria sukses keseluruhan:** aplikasi online dan bisa dicoba lewat link, setiap fitur dilindungi test otomatis yang relevan, dan pipeline CI/CD dengan quality gate dapat ditunjukkan di repo publik.
 
@@ -62,6 +62,7 @@ Lokal: `docker compose up` menjalankan Postgres + API + web (nginx dengan proxy 
 ### Termasuk
 - Daftar, masuk, keluar; melihat profil sendiri (`/me`).
 - Membuat project, daftar project saya, ganti nama, hapus (admin, dengan konfirmasi slug).
+- Visibilitas project: **privat** (default) atau **publik** (siapa saja bisa melihat hanya-baca tanpa login).
 - Anggota & role: lihat anggota, ubah role, keluarkan anggota, keluar dari project.
 - Undangan lewat link: buat, lihat yang aktif, cabut, pratinjau, terima.
 - Seluruh lapisan testing & CI/CD di §9 dan §10, termasuk deploy production + smoke test.
@@ -97,6 +98,13 @@ Urutan hak: `admin > tester > viewer`. Pembuat project otomatis menjadi `admin`.
    - Menerima saat sudah menjadi anggota menghasilkan `409 ALREADY_MEMBER`, dan undangan tidak terpakai.
 5. **Akun:** email unik tanpa peka huruf besar/kecil (disimpan lowercase, di-trim). Nama 1–80 karakter. Password 8–128 karakter.
 6. **Hapus project:** wajib mengirim `confirmSlug` yang sama dengan slug (`400 CONFIRMATION_MISMATCH`). Menghapus project juga menghapus membership dan undangan.
+7. **Visibilitas project:**
+   - Default `private`. Hanya admin yang bisa mengubahnya.
+   - **`private`:** isi project hanya untuk anggota. Bagi siapa pun yang bukan anggota (termasuk anonim), project privat tidak bisa dibedakan dari project yang tidak ada (`404`).
+   - **`public`:** siapa saja (anonim maupun user login yang bukan anggota) boleh **membaca** isi project. Mulai tahap 2 ini mencakup dashboard hasil test; di tahap 1 berupa ringkasan project.
+   - Yang **tidak pernah** publik: daftar anggota (melindungi email), undangan, dan pengaturan.
+   - Mengubah data apa pun tetap wajib login dan sesuai role, walaupun project publik.
+   - Project publik **tidak** muncul di daftar "project saya" milik bukan anggota. Tidak ada halaman direktori project publik.
 
 ## 6. Model data
 
@@ -104,7 +112,8 @@ Urutan hak: `admin > tester > viewer`. Pembuat project otomatis menjadi `admin`.
 users        id uuid PK, email text UNIQUE (lowercase), name text, password_hash text, created_at timestamptz
 sessions     id text PK (SHA-256 dari token), user_id uuid FK→users ON DELETE CASCADE,
              expires_at timestamptz, created_at timestamptz
-projects     id uuid PK, name text, slug text UNIQUE, created_by uuid FK→users, created_at timestamptz
+projects     id uuid PK, name text, slug text UNIQUE, visibility text CHECK IN ('private','public') DEFAULT 'private',
+             created_by uuid FK→users, created_at timestamptz
 memberships  project_id uuid FK→projects ON DELETE CASCADE, user_id uuid FK→users ON DELETE CASCADE,
              role text CHECK IN ('admin','tester','viewer'), created_at timestamptz,
              PK (project_id, user_id)
@@ -134,8 +143,8 @@ Semua request & response berformat JSON. Error berbentuk:
 | `GET /auth/me` | login | `200` user | `401 UNAUTHENTICATED` |
 | `GET /projects` | login | `200` daftar project + role saya | – |
 | `POST /projects` `{name, slug?}` | login | `201` project (saya admin) | `409 SLUG_TAKEN` |
-| `GET /projects/:slug` | viewer+ | `200` project + role saya | `404` |
-| `PATCH /projects/:slug` `{name}` | admin | `200` | – |
+| `GET /projects/:slug` | viewer+, atau siapa saja jika publik | `200` project + role saya (`null` jika bukan anggota) | `404` |
+| `PATCH /projects/:slug` `{name?, visibility?}` | admin | `200` | – |
 | `DELETE /projects/:slug` `{confirmSlug}` | admin | `204` | `400 CONFIRMATION_MISMATCH` |
 | `GET /projects/:slug/members` | viewer+ | `200` | – |
 | `PATCH /projects/:slug/members/:userId` `{role}` | admin | `200` | `409 LAST_ADMIN`, `404 MEMBER_NOT_FOUND` |
@@ -150,14 +159,21 @@ Semua request & response berformat JSON. Error berbentuk:
 
 ### Matriks otorisasi (dasar API test otomatis)
 
-| Endpoint (project) | anonim | bukan anggota | viewer | tester | admin |
-|---|---|---|---|---|---|
-| GET project / members | 401 | 404 | 200 | 200 | 200 |
-| PATCH / DELETE project | 401 | 404 | 403 | 403 | 2xx |
-| PATCH member role | 401 | 404 | 403 | 403 | 200 |
-| DELETE member (orang lain) | 401 | 404 | 403 | 403 | 204 |
-| DELETE member (diri sendiri) | 401 | 404 | 204 | 204 | 204 / 409 jika admin terakhir |
-| GET / POST / DELETE invitations | 401 | 404 | 403 | 403 | 2xx |
+Urutan pengecekan:
+1. Endpoint yang wajib login mengecek sesi **lebih dulu**, sehingga anonim selalu mendapat `401` di endpoint itu, apa pun project-nya. Ini tidak membocorkan apakah sebuah project ada.
+2. Untuk bukan anggota: project privat atau tidak ada → `404`. Project publik → boleh membaca, selain itu `403`.
+
+| Endpoint (project) | anonim | bukan anggota, project privat | bukan anggota, project publik | viewer | tester | admin |
+|---|---|---|---|---|---|---|
+| GET project | 200 jika publik, 404 jika privat | 404 | 200 | 200 | 200 | 200 |
+| GET members | 401 | 404 | 403 | 200 | 200 | 200 |
+| PATCH / DELETE project | 401 | 404 | 403 | 403 | 403 | 2xx |
+| PATCH member role | 401 | 404 | 403 | 403 | 403 | 200 |
+| DELETE member (orang lain) | 401 | 404 | 403 | 403 | 403 | 204 |
+| DELETE member (diri sendiri) | 401 | 404 | 404 `MEMBER_NOT_FOUND` | 204 | 204 | 204 / 409 jika admin terakhir |
+| GET / POST / DELETE invitations | 401 | 404 | 403 | 403 | 403 | 2xx |
+
+`GET /projects/:slug` satu-satunya endpoint project yang boleh diakses anonim.
 
 ## 8. Keamanan
 
@@ -182,14 +198,14 @@ Semua request & response berformat JSON. Error berbentuk:
 
 | Lapisan | Tool | Cakupan tahap 1 |
 |---|---|---|
-| Unit | Vitest | Aturan role/izin, aturan admin terakhir, validasi & pembuatan slug, kedaluwarsa undangan, hashing password & token. Coverage ≥ 80% untuk `src/modules/**/domain` |
+| Unit | Vitest | Aturan role/izin (termasuk akses baca project publik), aturan admin terakhir, validasi & pembuatan slug, kedaluwarsa undangan, hashing password & token. Coverage ≥ 80% untuk `src/modules/**/domain` |
 | Integration | Vitest + Testcontainers (Postgres asli) | Repository & migrasi; rute API lewat `fastify.inject` dengan DB asli, termasuk uji paralel aturan admin terakhir |
 | API | Playwright `request` + schema dari `packages/shared` | Alur auth, validasi negatif & boundary, **matriks otorisasi §7 dibangkitkan dari tabel data** |
 | Contract | Pact JS | Web (consumer) ↔ API (provider) untuk semua endpoint tahap 1 |
-| E2E | Playwright (POM, custom fixtures, Chromium/Firefox/WebKit) | Daftar → buat project → buat undangan → user kedua (context terpisah) menerima → viewer tidak melihat tombol admin → admin terakhir tidak bisa keluar. Data awal dibuat lewat API |
+| E2E | Playwright (POM, custom fixtures, Chromium/Firefox/WebKit) | Daftar → buat project → buat undangan → user kedua (context terpisah) menerima → viewer tidak melihat tombol admin → admin terakhir tidak bisa keluar. Admin menjadikan project publik → pengunjung anonim (context ketiga) bisa melihat ringkasan, tetapi tidak melihat anggota/pengaturan → dijadikan privat lagi → pengunjung mendapat "tidak ditemukan". Data awal dibuat lewat API |
 | Accessibility | `@axe-core/playwright` | Setiap halaman: 0 pelanggaran `serious`/`critical` |
 | Security | OWASP ZAP baseline, `pnpm audit`, Dependabot | 0 temuan high; ZAP dijalankan ke stack lokal di CI |
-| Smoke production | Playwright tag `@smoke` | Health, halaman masuk tampil, login akun smoke berhasil |
+| Smoke production | Playwright tag `@smoke` | Health, halaman masuk tampil, login akun smoke berhasil, project publik TestPulse terbuka tanpa login |
 
 Ditunda: k6 (tahap 2), visual regression (tahap 3), mutation testing (tahap 4).
 
@@ -220,8 +236,8 @@ Penanganan flaky: `retries: 2` di CI; test yang lulus setelah retry ditandai fla
 | `/register`, `/login` | Form dengan validasi schema bersama; error per field dan error umum (`role="alert"`) |
 | `/` | Daftar project saya + tombol buat project; tampilan kosong untuk user baru |
 | `/projects/new` | Form nama + slug (pratinjau slug otomatis) |
-| `/p/:slug` | Ringkasan project; sementara berisi tampilan kosong "Belum ada hasil test" + petunjuk tahap 2 |
-| `/p/:slug/settings` | Ganti nama, anggota (ubah role/keluarkan), undangan (buat/salin link/cabut), zona bahaya (hapus project) — bagian admin disembunyikan untuk non-admin |
+| `/p/:slug` | Ringkasan project; sementara berisi tampilan kosong "Belum ada hasil test" + petunjuk tahap 2. **Bisa dibuka tanpa login jika project publik**, dengan penanda "Project publik · hanya-baca" dan tombol Masuk. Jika project privat/tidak ada: "Project tidak ditemukan. Jika ini project privat, silakan masuk." |
+| `/p/:slug/settings` | Ganti nama, visibilitas (privat/publik, dengan penjelasan dampaknya), anggota (ubah role/keluarkan), undangan (buat/salin link/cabut), zona bahaya (hapus project) — bagian admin disembunyikan untuk non-admin |
 | `/invite/:token` | Pratinjau undangan → terima (arahkan ke login/daftar dulu jika belum masuk, lalu kembali) |
 
 Elemen yang dipakai test diberi `data-testid`. Semua form punya label yang terhubung dan bisa dioperasikan dengan keyboard.

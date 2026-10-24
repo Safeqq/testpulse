@@ -7,6 +7,7 @@ import { createDb, type Db } from "./db/client.js";
 import { registerErrorHandlers } from "./http/errors.js";
 import { registerSecurity } from "./http/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { invitationRoutes } from "./modules/invitations/routes.js";
 import { memberRoutes } from "./modules/projects/members.routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
 
@@ -64,6 +65,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await authRoutes(api, config);
       await projectRoutes(api);
       await memberRoutes(api);
+      await invitationRoutes(api, config);
     },
     { prefix: "/api/v1" },
   );

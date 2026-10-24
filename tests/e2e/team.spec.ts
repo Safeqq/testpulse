@@ -33,9 +33,7 @@ test.describe("Tim, undangan, dan visibilitas", () => {
     await expect(adminSettings.memberRow(admin.user.id)).toContainText(admin.user.name);
     const inviteUrl = await adminSettings.createInvitation("viewer");
     expect(inviteUrl).toContain("/invite/");
-    // Isi clipboard tidak diperiksa (izin berbeda per browser); cukup memastikan ada umpan balik, bukan galat.
-    await adminSettings.inviteCopy.click();
-    await expect(adminSettings.toast).toContainText(/disalin|Salin tautan secara manual/);
+    await expect(adminSettings.toast).toContainText("Undangan Viewer dibuat");
     await expectNoA11yViolations(adminPage);
 
     // 2. User kedua membuka URL: pratinjau menampilkan project & role, lalu menerima.
@@ -119,6 +117,82 @@ test.describe("Tim, undangan, dan visibilitas", () => {
     const projects = new ProjectsPage(adminPage);
     await expect(projects.empty).toBeVisible();
   });
+
+  test("membuat undangan diumumkan lewat toast", async ({ api, signedInPage }) => {
+    const admin = await api.register();
+    const project = await api.createProject(admin);
+    const { page } = await signedInPage(admin);
+    const settings = new SettingsPage(page);
+
+    await settings.goto(project.slug);
+    await settings.inviteRole.selectOption("tester");
+    await settings.inviteCreate.click();
+
+    await expect(settings.toast).toContainText("Undangan Tester dibuat");
+    await expect(settings.inviteUrl).toContainText("/invite/");
+  });
+
+  test("salin tautan menulis ke clipboard sungguhan dan memberi tahu berhasil (chromium)", async ({
+    api,
+    browser,
+    baseURL,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "izin clipboard-read/clipboard-write hanya dapat diberikan di Chromium");
+    const admin = await api.register();
+    const project = await api.createProject(admin);
+    const context = await browser.newContext({
+      baseURL,
+      storageState: await admin.request.storageState(),
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    try {
+      const page = await context.newPage();
+      const settings = new SettingsPage(page);
+
+      await settings.goto(project.slug);
+      const url = await settings.createInvitation("viewer");
+      await settings.inviteCopy.click();
+
+      await expect(settings.toast).toContainText("Tautan undangan disalin");
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+    } finally {
+      await context.close();
+    }
+  });
+
+  for (const outcome of ["berhasil", "ditolak"] as const) {
+    test(`salin tautan: toast sesuai hasil penulisan clipboard (${outcome}, semua browser)`, async ({
+      api,
+      signedInPage,
+    }) => {
+      const admin = await api.register();
+      const project = await api.createProject(admin);
+      const { page } = await signedInPage(admin);
+      const settings = new SettingsPage(page);
+      // Clipboard diganti agar hasilnya deterministik di semua browser (izin clipboard berbeda per browser).
+      await page.addInitScript((shouldSucceed) => {
+        const win = window as unknown as { __copied?: string };
+        Object.defineProperty(navigator, "clipboard", {
+          configurable: true,
+          value: {
+            writeText: (text: string) => {
+              win.__copied = text;
+              return shouldSucceed ? Promise.resolve() : Promise.reject(new Error("ditolak"));
+            },
+          },
+        });
+      }, outcome === "berhasil");
+
+      await settings.goto(project.slug);
+      const url = await settings.createInvitation("viewer");
+      await settings.inviteCopy.click();
+
+      if (outcome === "berhasil") await expect(settings.toast).toContainText("Tautan undangan disalin");
+      else await expect(settings.toast).toContainText("Salin tautan secara manual");
+      expect(await page.evaluate(() => (window as unknown as { __copied?: string }).__copied)).toBe(url);
+    });
+  }
 
   test("anonim melihat pratinjau undangan lalu masuk dan kembali untuk menerima", async ({
     api,

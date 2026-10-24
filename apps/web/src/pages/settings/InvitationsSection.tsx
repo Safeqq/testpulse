@@ -50,6 +50,7 @@ function InvitationPanel({ slug, meId, meName, initial, notify }: Props & { init
     try {
       const result = await api.invitations.create(slug, { role });
       setCreated(result);
+      notify(`Undangan ${ROLE_LABEL[result.role]} dibuat. Salin tautannya sebelum meninggalkan halaman ini.`);
       setInvitations((list) => [
         {
           id: result.id,

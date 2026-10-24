@@ -1,0 +1,31 @@
+name: Upload Allure results
+description: Collect allure-results directories from the workspace into one folder and upload them as a uniquely named artifact for the report job.
+
+inputs:
+  name:
+    description: Artifact name (must be unique per job; the report job downloads allure-results-*).
+    required: true
+  paths:
+    description: Space-separated allure-results directories to collect.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Collect results
+      shell: bash
+      env:
+        ALLURE_PATHS: ${{ inputs.paths }}
+      run: |
+        mkdir -p allure-collect
+        for dir in $ALLURE_PATHS; do
+          if [ -d "$dir" ]; then cp -r "$dir"/. allure-collect/; fi
+        done
+        echo "Collected $(find allure-collect -type f | wc -l) files"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: allure-results-${{ inputs.name }}
+        path: allure-collect
+        if-no-files-found: ignore
+        retention-days: 7

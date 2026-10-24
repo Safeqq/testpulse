@@ -8,7 +8,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   // Batas lokal: 3 browser × banyak worker membuat Firefox tidak stabil saat menutup context di mesin ramai.
   workers: process.env.CI ? undefined : 4,
-  reporter: [["list"], ["allure-playwright", { resultsDir: "allure-results" }]],
+  reporter: [
+    ["list"],
+    ["allure-playwright", { resultsDir: "allure-results" }],
+    // CI uploads this (with traces) as an artifact when a job fails.
+    ...(process.env.CI ? ([["html", { open: "never" }]] as const) : []),
+  ],
   use: {
     baseURL,
     trace: "retain-on-failure",

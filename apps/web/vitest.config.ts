@@ -2,6 +2,12 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // JUnit XML in the Allure results dir: allure-vitest does not support Vitest 5 (@vitest/runner was folded into vitest).
+    // CI sets ALLURE_JOB so each job writes a distinct file and merged results do not collide.
+    reporters: [
+      "default",
+      ["junit", { outputFile: `allure-results/junit-web-${process.env.ALLURE_JOB ?? "local"}.xml` }],
+    ],
     projects: [
       {
         test: {

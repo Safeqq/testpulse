@@ -2,3 +2,7 @@ packages:
   - "apps/*"
   - "packages/*"
   - "tests"
+
+# allure CLI (dev tool) pulls a dompurify with high/critical advisories; force the patched release.
+overrides:
+  dompurify: ">=3.4.17"

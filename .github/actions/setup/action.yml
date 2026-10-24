@@ -1,0 +1,28 @@
+name: Setup workspace
+description: Install pnpm and Node (versions from package.json / .nvmrc), restore the pnpm store cache, install dependencies, and optionally build the shared package.
+
+inputs:
+  build-shared:
+    description: Build @testpulse/shared (needed for typecheck, lint and any job that imports it).
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # pnpm version comes from the "packageManager" field in package.json.
+    - uses: pnpm/action-setup@v4
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Build shared package
+      if: ${{ inputs.build-shared == 'true' }}
+      shell: bash
+      run: pnpm --filter @testpulse/shared build

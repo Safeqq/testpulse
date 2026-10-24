@@ -3,9 +3,8 @@ import { useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { FormError } from "../components/FormError";
 import { FormField } from "../components/FormField";
-import { ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
-import { focusField, useDocumentTitle, validate } from "../lib/forms";
+import { focusField, serverErrorToForm, useDocumentTitle, validate } from "../lib/forms";
 import { safeNext } from "../lib/navigation";
 
 export function LoginPage() {
@@ -42,8 +41,8 @@ export function LoginPage() {
     try {
       await login(parsed.data);
     } catch (err) {
-      if (err instanceof ApiError && err.fields) fail(err.fields, null);
-      else fail({}, err instanceof ApiError ? err.message : "Terjadi kesalahan. Coba lagi.");
+      const mapped = serverErrorToForm(err, ["email", "password"]);
+      fail(mapped.fields, mapped.message);
     } finally {
       setSubmitting(false);
     }

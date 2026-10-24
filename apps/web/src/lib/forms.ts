@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { ApiError } from "./api";
 
 interface Issue {
   path: readonly PropertyKey[];
@@ -24,6 +25,25 @@ export function validate<T>(
     fields[key] ??= issue.message;
   }
   return { ok: false, fields };
+}
+
+/**
+ * Memetakan error dari server ke state form. Error per field hanya dipakai jika form punya inputnya (`knownFields`);
+ * sisanya (mis. kunci "form") jatuh ke error umum agar tidak hilang.
+ */
+export function serverErrorToForm(
+  err: unknown,
+  knownFields: readonly string[],
+): { fields: Record<string, string>; message: string | null } {
+  if (!(err instanceof ApiError)) return { fields: {}, message: "Terjadi kesalahan. Coba lagi." };
+  const fields: Record<string, string> = {};
+  const orphans: string[] = [];
+  for (const [key, message] of Object.entries(err.fields ?? {})) {
+    if (knownFields.includes(key)) fields[key] = message;
+    else orphans.push(message);
+  }
+  if (Object.keys(fields).length > 0) return { fields, message: null };
+  return { fields, message: orphans[0] ?? err.message };
 }
 
 /** Memindahkan fokus ke input pertama yang bermasalah agar pengguna keyboard/pembaca layar langsung sampai ke sana. */

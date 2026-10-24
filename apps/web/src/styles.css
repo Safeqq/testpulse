@@ -282,6 +282,137 @@ main:focus {
   color: var(--color-text-muted);
 }
 
+/* Halaman project */
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-6);
+}
+
+.page-header .lead {
+  margin-bottom: 0;
+}
+
+.page-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.project-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.project-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.project-item-main {
+  display: grid;
+  min-width: 0;
+}
+
+.project-item-name {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.project-item-slug {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.project-item-meta {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.125rem var(--space-3);
+  background: #eef2f7;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: #334155;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.chip-role {
+  background: #e8efff;
+  border-color: #b7c9f7;
+  color: #1e3a8a;
+}
+
+.chip-public {
+  background: #e7f6ec;
+  border-color: #9bd4ae;
+  color: #14532d;
+}
+
+.empty-state {
+  padding: var(--space-8) var(--space-6);
+  background: var(--color-surface);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  text-align: center;
+}
+
+.empty-state h1,
+.empty-state h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-lg);
+}
+
+.empty-state p {
+  margin: 0 auto var(--space-4);
+  max-width: 36rem;
+  color: var(--color-text-muted);
+}
+
+.empty-state p:last-child {
+  margin-bottom: 0;
+}
+
+.alert-text {
+  margin: 0 0 var(--space-3);
+}
+
+.slug-preview {
+  margin: 0 0 var(--space-4);
+  color: var(--color-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.slug-preview code {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
 @media (max-width: 30rem) {
   .auth-card {
     padding: var(--space-6) var(--space-4);

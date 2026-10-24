@@ -1,13 +1,12 @@
-import type { Role } from "@testpulse/shared";
 import { useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
+import { LoadError } from "../components/LoadError";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useDocumentTitle } from "../lib/forms";
 import { loginPathFor } from "../lib/navigation";
+import { ROLE_LABEL } from "../lib/roles";
 import { useLoad } from "../lib/useLoad";
-
-const ROLE_LABEL: Record<Role, string> = { admin: "Admin", tester: "Tester", viewer: "Viewer" };
 
 /** Ringkasan project. Terbuka tanpa login untuk project publik; project privat/tidak ada tampil sama (spec §5.7). */
 export function ProjectPage() {
@@ -46,15 +45,7 @@ export function ProjectPage() {
   }
 
   if (load.state === "error") {
-    const message = load.error instanceof ApiError ? load.error.message : "Gagal memuat project. Coba lagi.";
-    return (
-      <div role="alert" className="form-error">
-        <p className="alert-text">{message}</p>
-        <button type="button" className="button button-secondary" onClick={load.reload}>
-          Coba lagi
-        </button>
-      </div>
-    );
+    return <LoadError error={load.error} fallback="Gagal memuat project. Coba lagi." onRetry={load.reload} />;
   }
 
   const project = load.data;

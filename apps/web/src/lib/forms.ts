@@ -46,6 +46,11 @@ export function serverErrorToForm(
   return { fields, message: orphans[0] ?? err.message };
 }
 
+/** Pesan untuk pengguna: pesan dari server (sudah berbahasa Indonesia) atau pesan cadangan. */
+export function errorMessage(err: unknown, fallback = "Terjadi kesalahan. Coba lagi."): string {
+  return err instanceof ApiError ? err.message : fallback;
+}
+
 /** Memindahkan fokus ke input pertama yang bermasalah agar pengguna keyboard/pembaca layar langsung sampai ke sana. */
 export function focusField(form: HTMLFormElement | null, fields: Record<string, string>): void {
   const first = Object.keys(fields).find((name) => form?.elements.namedItem(name) instanceof HTMLElement);

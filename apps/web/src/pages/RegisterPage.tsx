@@ -5,7 +5,7 @@ import { FormError } from "../components/FormError";
 import { FormField } from "../components/FormField";
 import { useAuth } from "../lib/auth";
 import { focusField, serverErrorToForm, useDocumentTitle, validate } from "../lib/forms";
-import { safeNext } from "../lib/navigation";
+import { loginPathFor, safeNext } from "../lib/navigation";
 
 export function RegisterPage() {
   useDocumentTitle("Daftar");
@@ -97,7 +97,7 @@ export function RegisterPage() {
       </form>
 
       <p className="auth-alt">
-        Sudah punya akun? <Link to="/login">Masuk</Link>
+        Sudah punya akun? <Link to={loginPathFor(next)}>Masuk</Link>
       </p>
     </section>
   );

@@ -1,14 +1,9 @@
-import type { Role } from "@testpulse/shared";
 import { Link } from "react-router-dom";
-import { api, ApiError } from "../lib/api";
+import { LoadError } from "../components/LoadError";
+import { api } from "../lib/api";
 import { useDocumentTitle } from "../lib/forms";
+import { ROLE_LABEL } from "../lib/roles";
 import { useLoad } from "../lib/useLoad";
-
-function errorMessage(err: unknown): string {
-  return err instanceof ApiError ? err.message : "Gagal memuat project. Coba lagi.";
-}
-
-const ROLE_LABEL: Record<Role, string> = { admin: "Admin", tester: "Tester", viewer: "Viewer" };
 
 const listProjects = () => api.projects.list();
 
@@ -34,12 +29,7 @@ export function ProjectsPage() {
           Memuat project…
         </p>
       ) : load.state === "error" ? (
-        <div role="alert" className="form-error">
-          <p className="alert-text">{errorMessage(load.error)}</p>
-          <button type="button" className="button button-secondary" onClick={load.reload}>
-            Coba lagi
-          </button>
-        </div>
+        <LoadError error={load.error} fallback="Gagal memuat project. Coba lagi." onRetry={load.reload} />
       ) : load.data.length === 0 ? (
         <div className="empty-state" data-testid="empty-projects">
           <h2>Belum ada project</h2>

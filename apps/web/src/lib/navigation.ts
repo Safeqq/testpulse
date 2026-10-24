@@ -9,8 +9,17 @@ export function safeNext(raw: string | null | undefined): string {
   return raw;
 }
 
+function pathWithNext(base: "/login" | "/register", target: string): string {
+  const next = safeNext(target);
+  return next === "/" ? base : `${base}?next=${encodeURIComponent(next)}`;
+}
+
 /** Jalur login dengan `next` yang aman; untuk beranda ("/") `next` tidak diperlukan. */
 export function loginPathFor(target: string): string {
-  const next = safeNext(target);
-  return next === "/" ? "/login" : `/login?next=${encodeURIComponent(next)}`;
+  return pathWithNext("/login", target);
+}
+
+/** Jalur daftar dengan `next` yang aman, agar pengguna baru kembali ke tujuan semula. */
+export function registerPathFor(target: string): string {
+  return pathWithNext("/register", target);
 }

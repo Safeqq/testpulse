@@ -1,9 +1,10 @@
 import { faker } from "@faker-js/faker";
-import { userDto, type UserDto } from "@testpulse/shared";
+import { projectDto, userDto, type ProjectDto, type Role, type UserDto } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
 import { afterAll, inject } from "vitest";
 import { buildApp } from "../../src/app.js";
 import type { AppConfig } from "../../src/config.js";
+import { memberships } from "../../src/db/schema.js";
 
 const createdApps: FastifyInstance[] = [];
 
@@ -54,4 +55,28 @@ export async function registerUser(
   const session = res.cookies.find((c) => c.name === "tp_session");
   if (!session) throw new Error("registerUser: cookie tp_session tidak ada");
   return { user: userDto.parse(res.json()), cookie: `tp_session=${session.value}`, password: payload.password };
+}
+
+/** Membuat project lewat API sebagai pemilik cookie; nama unik (faker) kecuali di-override. */
+export async function createProject(
+  app: FastifyInstance,
+  cookie: string,
+  overrides: Partial<{ name: string; slug: string }> = {},
+): Promise<ProjectDto> {
+  const payload = { name: `Proyek ${faker.string.alphanumeric(10)}`, ...overrides };
+  const res = await app.inject({ method: "POST", url: "/api/v1/projects", headers: { cookie }, payload });
+  if (res.statusCode !== 201) {
+    throw new Error(`createProject gagal: ${res.statusCode} ${res.body}`);
+  }
+  return projectDto.parse(res.json());
+}
+
+/** Menyisipkan membership langsung ke DB (menyiapkan data tanpa melewati API). */
+export async function addMember(
+  app: FastifyInstance,
+  projectId: string,
+  userId: string,
+  role: Role,
+): Promise<void> {
+  await app.db.insert(memberships).values({ projectId, userId, role });
 }

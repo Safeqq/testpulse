@@ -7,6 +7,7 @@ import { createDb, type Db } from "./db/client.js";
 import { registerErrorHandlers } from "./http/errors.js";
 import { registerSecurity } from "./http/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { projectRoutes } from "./modules/projects/routes.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -60,6 +61,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
   await app.register(
     async (api) => {
       await authRoutes(api, config);
+      await projectRoutes(api);
     },
     { prefix: "/api/v1" },
   );

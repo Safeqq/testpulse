@@ -9,6 +9,15 @@ export default defineConfig({
           include: ["src/**/*.test.ts"],
         },
       },
+      {
+        test: {
+          name: "integration",
+          include: ["test/integration/**/*.int.test.ts"],
+          globalSetup: ["test/integration/setup/global-setup.ts"],
+          testTimeout: 30000,
+          hookTimeout: 120000,
+        },
+      },
     ],
     coverage: {
       provider: "v8",

@@ -4,15 +4,27 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run --project unit"
+    "test:unit": "vitest run --project unit",
+    "test:int": "vitest run --project integration",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@testpulse/shared": "workspace:*"
+    "@testpulse/shared": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "^12.2.1",
     "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
     "@vitest/coverage-v8": "^5.0.5",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.23.15",
     "vitest": "^5.0.5"
   }
 }

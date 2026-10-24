@@ -5,6 +5,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { AppConfig } from "./config.js";
 import { createDb, type Db } from "./db/client.js";
 import { registerErrorHandlers } from "./http/errors.js";
+import { serializeRequest } from "./http/logging.js";
 import { registerSecurity } from "./http/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
@@ -22,6 +23,8 @@ export interface BuildAppOptions {
   db?: Db;
   /** Level log pino; default "info". */
   logLevel?: string;
+  /** Tujuan log pino (untuk test yang menangkap log); default stdout. */
+  logStream?: { write(msg: string): void };
 }
 
 export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -29,6 +32,9 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
     logger: {
       level: opts.logLevel ?? "info",
       redact: ["req.headers.cookie", "req.headers.authorization", "*.password", "*.token"],
+      // Menyensor token undangan yang ada di URL (redact pino tidak menjangkau isi string).
+      serializers: { req: serializeRequest },
+      ...(opts.logStream ? { stream: opts.logStream } : {}),
     },
   });
 

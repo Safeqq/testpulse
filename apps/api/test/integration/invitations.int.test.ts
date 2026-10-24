@@ -141,6 +141,37 @@ describe("invitations", () => {
     });
   });
 
+  describe("project publik, bukan anggota", () => {
+    it("login non-anggota mendapat 403 FORBIDDEN di GET/POST/DELETE; anonim 401", async () => {
+      const { admin, project } = await setup();
+      const inv = await createInvitation(project.slug, admin.cookie);
+      const patch = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/projects/${project.slug}`,
+        headers: { cookie: admin.cookie },
+        payload: { visibility: "public" },
+      });
+      expect(patch.statusCode).toBe(200);
+      const outsider = await registerUser(app);
+
+      const responses = [
+        await listInvitations(project.slug, outsider.cookie),
+        await invite(project.slug, outsider.cookie, "tester"),
+        await revoke(project.slug, inv.id, outsider.cookie),
+      ];
+      for (const res of responses) {
+        expect(res.statusCode).toBe(403);
+        expect(res.json().error.code).toBe("FORBIDDEN");
+      }
+
+      expect((await listInvitations(project.slug)).statusCode).toBe(401);
+      expect((await invite(project.slug, undefined, "tester")).statusCode).toBe(401);
+      expect((await revoke(project.slug, inv.id)).statusCode).toBe(401);
+      // Undangan tidak terpengaruh.
+      expect((await preview(inv.token)).statusCode).toBe(200);
+    });
+  });
+
   describe("GET /projects/:slug/invitations", () => {
     it("hanya menampilkan undangan aktif; dicabut, terpakai, dan kedaluwarsa tidak ikut", async () => {
       const { admin, project } = await setup();

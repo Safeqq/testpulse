@@ -2,7 +2,7 @@ import { faker } from "@faker-js/faker";
 import { projectDto, userDto, type ProjectDto, type Role, type UserDto } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
 import { afterAll, inject } from "vitest";
-import { buildApp } from "../../src/app.js";
+import { buildApp, type BuildAppOptions } from "../../src/app.js";
 import type { AppConfig } from "../../src/config.js";
 import { memberships } from "../../src/db/schema.js";
 
@@ -16,7 +16,10 @@ afterAll(async () => {
  * Membangun app untuk test integrasi terhadap database Testcontainers.
  * App milik helper ini ditutup otomatis pada akhir file test.
  */
-export async function createTestApp(overrides: Partial<AppConfig> = {}): Promise<FastifyInstance> {
+export async function createTestApp(
+  overrides: Partial<AppConfig> = {},
+  appOpts: BuildAppOptions = {},
+): Promise<FastifyInstance> {
   const config: AppConfig = {
     databaseUrl: inject("databaseUrl"),
     appOrigin: "http://localhost:5173",
@@ -25,7 +28,7 @@ export async function createTestApp(overrides: Partial<AppConfig> = {}): Promise
     rateLimitMax: 1000,
     ...overrides,
   };
-  const app = await buildApp(config, { logLevel: "silent" });
+  const app = await buildApp(config, { logLevel: "silent", ...appOpts });
   createdApps.push(app);
   return app;
 }

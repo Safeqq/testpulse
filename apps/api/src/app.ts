@@ -1,8 +1,12 @@
+import cookie from "@fastify/cookie";
+import rateLimit from "@fastify/rate-limit";
 import { sql } from "drizzle-orm";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AppConfig } from "./config.js";
 import { createDb, type Db } from "./db/client.js";
 import { registerErrorHandlers } from "./http/errors.js";
+import { registerSecurity } from "./http/security.js";
+import { authRoutes } from "./modules/auth/routes.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -36,6 +40,11 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
   }
 
   registerErrorHandlers(app);
+  await registerSecurity(app, config);
+  await app.register(cookie);
+  // Batas laju dipasang per rute lewat `config.rateLimit` (kunci: req.ip, lihat Ruling R6).
+  await app.register(rateLimit, { global: false });
+  app.decorateRequest("user", null);
 
   app.get("/api/health", async (_request, reply) => {
     try {
@@ -50,7 +59,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
   // Rute modul (auth, projects, invitations) didaftarkan di sini di bawah prefix /api/v1.
   await app.register(
     async (api) => {
-      void api;
+      await authRoutes(api, config);
     },
     { prefix: "/api/v1" },
   );

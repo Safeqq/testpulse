@@ -1,7 +1,8 @@
 import type { Role, Visibility } from "@testpulse/shared";
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
-import { memberships, projects } from "../../db/schema.js";
+import { memberships, projects, users } from "../../db/schema.js";
+import { wouldLeaveNoAdmin } from "./domain/admins.js";
 
 export interface ProjectRecord {
   id: string;
@@ -91,4 +92,91 @@ export async function update(
 /** Menghapus project; membership dan undangan ikut terhapus (ON DELETE CASCADE). */
 export async function remove(db: Db, id: string): Promise<void> {
   await db.delete(projects).where(eq(projects.id, id));
+}
+
+export interface MemberRecord {
+  userId: string;
+  name: string;
+  email: string;
+  role: Role;
+  joinedAt: Date;
+}
+
+const memberColumns = {
+  userId: users.id,
+  name: users.name,
+  email: users.email,
+  role: memberships.role,
+  joinedAt: memberships.createdAt,
+};
+
+function toMemberRecord(row: Omit<MemberRecord, "role"> & { role: string }): MemberRecord {
+  return { ...row, role: row.role as Role };
+}
+
+/** Anggota project, urut waktu bergabung lalu nama. */
+export async function listMembers(db: Db, projectId: string): Promise<MemberRecord[]> {
+  const rows = await db
+    .select(memberColumns)
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(eq(memberships.projectId, projectId))
+    .orderBy(asc(memberships.createdAt), asc(users.name), asc(users.id));
+  return rows.map(toMemberRecord);
+}
+
+/** Satu anggota project; null jika bukan anggota. */
+export async function findMember(db: Db, projectId: string, userId: string): Promise<MemberRecord | null> {
+  const [row] = await db
+    .select(memberColumns)
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .where(and(eq(memberships.projectId, projectId), eq(memberships.userId, userId)))
+    .limit(1);
+  return row ? toMemberRecord(row) : null;
+}
+
+/**
+ * Mengubah role anggota (`newRole`) atau mengeluarkannya (`null`) sambil menjaga minimal satu admin.
+ *
+ * Seluruh baris admin project dikunci (`FOR UPDATE`) lebih dulu, baru dihitung. Transaksi paralel
+ * yang menyentuh admin project yang sama menunggu di kunci ini, lalu menghitung ulang dari data
+ * yang sudah di-commit, sehingga dua request tidak bisa sama-sama lolos dan menyisakan nol admin.
+ */
+export async function changeMemberRole(
+  db: Db,
+  projectId: string,
+  userId: string,
+  newRole: Role | null,
+): Promise<"ok" | "not_member" | "last_admin"> {
+  return db.transaction(async (tx) => {
+    // ORDER BY menjaga urutan pengambilan kunci tetap sama antar transaksi (menghindari deadlock).
+    const admins = await tx
+      .select({ userId: memberships.userId })
+      .from(memberships)
+      .where(and(eq(memberships.projectId, projectId), eq(memberships.role, "admin")))
+      .orderBy(asc(memberships.userId))
+      .for("update");
+
+    // Dibaca setelah kunci diperoleh agar role target mencerminkan data yang sudah di-commit.
+    const [target] = await tx
+      .select({ role: memberships.role })
+      .from(memberships)
+      .where(and(eq(memberships.projectId, projectId), eq(memberships.userId, userId)))
+      .limit(1);
+    if (!target) return "not_member";
+
+    const targetCurrentRole = target.role as Role;
+    if (wouldLeaveNoAdmin({ adminCount: admins.length, targetCurrentRole, targetNewRole: newRole })) {
+      return "last_admin";
+    }
+
+    const where = and(eq(memberships.projectId, projectId), eq(memberships.userId, userId));
+    if (newRole === null) {
+      await tx.delete(memberships).where(where);
+    } else {
+      await tx.update(memberships).set({ role: newRole }).where(where);
+    }
+    return "ok";
+  });
 }

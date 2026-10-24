@@ -1,0 +1,22 @@
+{
+  "name": "@testpulse/tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test --project \"e2e-*\"",
+    "test:api": "playwright test --project api"
+  },
+  "dependencies": {
+    "@testpulse/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@faker-js/faker": "^10.6.0",
+    "@playwright/test": "^1.55.0",
+    "@types/node": "^24.19.2",
+    "allure-playwright": "^3.4.0",
+    "typescript": "^6.0.3"
+  }
+}

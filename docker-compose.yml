@@ -1,0 +1,48 @@
+# Local/test stack: web (nginx) -> api -> postgres. Open http://localhost:8080
+#   docker compose up -d --build --wait
+# Postgres is intentionally NOT published to the host (a native Postgres may own 5432).
+# For host access, add a port mapping in a docker-compose.override.yml.
+name: testpulse
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: testpulse
+      POSTGRES_PASSWORD: testpulse
+      POSTGRES_DB: testpulse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testpulse -d testpulse"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgres://testpulse:testpulse@postgres:5432/testpulse
+      APP_ORIGIN: http://localhost:${WEB_PORT:-8080}
+      COOKIE_SECURE: "false"
+      PORT: "3000"
+      # Test stack only (ruling R3): production leaves this unset (default 10).
+      RATE_LIMIT_MAX: "1000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:

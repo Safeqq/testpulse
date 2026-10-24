@@ -2,8 +2,17 @@
 **/dist
 **/coverage
 .git
+.github
 .env
+.env.*
+!.env.example
+.superpowers
+.claude
+docs
+pacts
+zap
 test-results
 playwright-report
 allure-results
 allure-report
+**/*.log

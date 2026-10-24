@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test --project \"e2e-*\"",
-    "test:api": "playwright test --project api"
+    "test:api": "playwright test --project api",
+    "test:security": "node --test \"security/*.test.mjs\""
   },
   "dependencies": {
     "@testpulse/shared": "workspace:*"

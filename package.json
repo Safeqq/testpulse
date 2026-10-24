@@ -13,7 +13,8 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "lint": "eslint .",
     "test:unit": "pnpm -r --if-present test:unit",
-    "test:int": "pnpm -r --if-present test:int"
+    "test:int": "pnpm -r --if-present test:int",
+    "test:contract": "pnpm --filter @testpulse/web test:contract && pnpm --filter @testpulse/api test:contract"
   },
   "devDependencies": {
     "eslint": "^10.13.0",

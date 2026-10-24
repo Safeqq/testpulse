@@ -18,6 +18,15 @@ export default defineConfig({
           hookTimeout: 120000,
         },
       },
+      {
+        test: {
+          name: "contract",
+          include: ["test/contract/**/*.pact.test.ts"],
+          globalSetup: ["test/integration/setup/global-setup.ts"],
+          testTimeout: 120000,
+          hookTimeout: 120000,
+        },
+      },
     ],
     coverage: {
       provider: "v8",

@@ -45,11 +45,13 @@ jobs:
           --reporter=default --reporter=junit --outputFile.junit=allure-results/junit-shared-unit.xml
       - name: API unit tests (domain coverage gate is 80%)
         run: pnpm --filter @testpulse/api exec vitest run --project unit --coverage
+      - name: Web unit tests (Pages Function proxy, security header parity)
+        run: pnpm --filter @testpulse/web test:unit
       - uses: ./.github/actions/upload-allure
         if: ${{ !cancelled() }}
         with:
           name: unit
-          paths: apps/api/allure-results packages/shared/allure-results
+          paths: apps/api/allure-results packages/shared/allure-results apps/web/allure-results
 
   integration:
     name: Integration tests (Testcontainers)

@@ -1,0 +1,30 @@
+# Render Blueprint for the TestPulse API (Docker, free plan). Step-by-step setup: docs/deploy.md.
+# Migrations run automatically when the API starts (apps/api/src/server.ts).
+services:
+  - type: web
+    name: testpulse-api
+    runtime: docker
+    plan: free
+    # Region cannot be changed after creation. Pick the Neon region closest to it (docs/deploy.md).
+    region: singapore
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    # Deploys are triggered by the Render deploy hook from .github/workflows/deploy.yml after CI is green.
+    autoDeployTrigger: "off"
+    envVars:
+      # Neon connection string, set in the Render dashboard when the Blueprint is created.
+      - key: DATABASE_URL
+        sync: false
+      # Public origin of the web app (Cloudflare Pages), e.g. https://testpulse.pages.dev (no trailing slash).
+      - key: APP_ORIGIN
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      # Number of proxy hops between the client IP and the API, for per-IP rate limiting (docs/deploy.md).
+      # Chain: Pages Function sets X-Forwarded-For=<client IP> -> Cloudflare edge and Render proxy append 2 entries.
+      # Over-counting is harmless on this path (the leftmost entry is the client); under-counting would rate-limit
+      # everyone as one client. Verify after the first deploy as described in docs/deploy.md.
+      - key: TRUST_PROXY
+        value: "3"
+      # RATE_LIMIT_MAX is intentionally unset: production uses the default of 10 per minute per IP.

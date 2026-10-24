@@ -27,8 +27,20 @@ export interface BuildAppOptions {
   logStream?: { write(msg: string): void };
 }
 
+/**
+ * Fastify 5 mengabaikan `trustProxy` berupa angka (fail-closed), jadi hitungan hop dinyatakan sebagai fungsi:
+ * `i` = 0 untuk peer socket, 1 untuk entri X-Forwarded-For paling kanan, dst. `req.ip` menjadi entri ke-N dari kanan.
+ * Dengan N terlalu besar, entri paling kiri yang dipakai; Pages Function menimpa header itu dengan IP klien
+ * sebenarnya sehingga hasilnya tetap benar. Lihat docs/deploy.md.
+ */
+function hopCountTrust(hops: AppConfig["trustProxy"]): false | ((address: string, hop: number) => boolean) {
+  if (hops === false) return false;
+  return (_address, hop) => hop < hops;
+}
+
 export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
+    trustProxy: hopCountTrust(config.trustProxy),
     logger: {
       level: opts.logLevel ?? "info",
       redact: ["req.headers.cookie", "req.headers.authorization", "*.password", "*.token"],

@@ -11,6 +11,14 @@ export default defineConfig({
     projects: [
       {
         test: {
+          name: "functions",
+          environment: "node",
+          // Pages Function proxy dan paritas header keamanan (nginx vs _headers).
+          include: ["test/functions/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "contract",
           environment: "node",
           include: ["test/contract/**/*.pact.test.ts"],

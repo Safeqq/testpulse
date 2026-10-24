@@ -11,6 +11,7 @@ describe("loadConfig", () => {
       cookieSecure: false,
       port: 3000,
       rateLimitMax: 10,
+      trustProxy: false,
     });
   });
 
@@ -26,5 +27,22 @@ describe("loadConfig", () => {
 
   it("melempar jika PORT bukan bilangan bulat", () => {
     expect(() => loadConfig({ ...base, PORT: "abc" })).toThrow("PORT");
+  });
+
+  describe("TRUST_PROXY", () => {
+    it("tidak diisi atau kosong → false (proxy tidak dipercaya)", () => {
+      expect(loadConfig(base).trustProxy).toBe(false);
+      expect(loadConfig({ ...base, TRUST_PROXY: "" }).trustProxy).toBe(false);
+      expect(loadConfig({ ...base, TRUST_PROXY: "  " }).trustProxy).toBe(false);
+    });
+
+    it("bilangan bulat positif → jumlah hop", () => {
+      expect(loadConfig({ ...base, TRUST_PROXY: "1" }).trustProxy).toBe(1);
+      expect(loadConfig({ ...base, TRUST_PROXY: " 3 " }).trustProxy).toBe(3);
+    });
+
+    it.each(["0", "-1", "1.5", "abc", "true", "false", "1,2", "10.0.0.0/8"])("melempar untuk %j", (value) => {
+      expect(() => loadConfig({ ...base, TRUST_PROXY: value })).toThrow("TRUST_PROXY");
+    });
   });
 });

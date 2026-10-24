@@ -1,0 +1,8 @@
+# Cloudflare Pages security headers (ruling R4).
+# Values must stay identical to security-headers.conf (nginx); test/functions/headers.test.ts enforces it.
+# Note: Pages applies this file to static assets only; /api/* responses carry the API's own (helmet) headers.
+/*
+  Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()

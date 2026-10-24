@@ -39,6 +39,48 @@ describe("rate limit", () => {
   });
 });
 
+describe("rate limit per IP di belakang proxy (TRUST_PROXY)", () => {
+  const attemptFrom = (app: FastifyInstance, forwardedFor: string) =>
+    app.inject({
+      method: "POST",
+      url: LOGIN,
+      headers: { "x-forwarded-for": forwardedFor },
+      payload: { email: "tidak-ada@example.test", password: "salah-salah" },
+    });
+
+  it("dipercaya: IP klien diambil dari X-Forwarded-For, tiap IP punya hitungan sendiri", async () => {
+    const app = await createTestApp({ rateLimitMax: 2, trustProxy: 1 });
+    expect((await attemptFrom(app, "203.0.113.10")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "203.0.113.10")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "203.0.113.10")).statusCode).toBe(429);
+    // IP klien lain tidak terkena batas klien pertama.
+    expect((await attemptFrom(app, "203.0.113.11")).statusCode).toBe(401);
+  });
+
+  it("dipercaya N hop: entri palsu di kiri tidak dipakai sebagai kunci", async () => {
+    const app = await createTestApp({ rateLimitMax: 2, trustProxy: 1 });
+    // Klien nyata menyisipkan entri palsu; proxy tepercaya menambahkan IP klien sesungguhnya di kanan.
+    expect((await attemptFrom(app, "1.1.1.1, 203.0.113.20")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "2.2.2.2, 203.0.113.20")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "3.3.3.3, 203.0.113.20")).statusCode).toBe(429);
+    expect((await attemptFrom(app, "3.3.3.3, 203.0.113.21")).statusCode).toBe(401);
+  });
+
+  it("dipercaya 2 hop: IP klien adalah entri kedua dari kanan (proxy kedua tidak dihitung sebagai klien)", async () => {
+    const app = await createTestApp({ rateLimitMax: 1, trustProxy: 2 });
+    expect((await attemptFrom(app, "203.0.113.40, 198.51.100.1")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "203.0.113.40, 198.51.100.2")).statusCode).toBe(429);
+    expect((await attemptFrom(app, "203.0.113.41, 198.51.100.1")).statusCode).toBe(401);
+  });
+
+  it("tidak dipercaya (default): X-Forwarded-For diabaikan sehingga semua berbagi satu hitungan", async () => {
+    const app = await createTestApp({ rateLimitMax: 2 });
+    expect((await attemptFrom(app, "203.0.113.30")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "203.0.113.31")).statusCode).toBe(401);
+    expect((await attemptFrom(app, "203.0.113.32")).statusCode).toBe(429);
+  });
+});
+
 describe("proteksi CSRF dan header", () => {
   let app: FastifyInstance;
 

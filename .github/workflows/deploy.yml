@@ -1,0 +1,117 @@
+name: Deploy
+
+# Runs after the CI workflow finishes on main. The workflow file itself always comes from the default branch.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  # Manual re-run (for example after fixing a secret): deploys the selected ref without waiting for CI.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One production deploy at a time; a newer one queues behind the running one instead of cancelling it mid-flight.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy API and web, then smoke test
+    # workflow_run also fires for pull_request runs whose head branch is named "main" (forks); only push runs deploy.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
+    steps:
+      - name: Check required secrets
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SMOKE_PUBLIC_SLUG: ${{ secrets.SMOKE_PUBLIC_SLUG }}
+        run: |
+          missing=0
+          for name in RENDER_DEPLOY_HOOK_URL CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID PRODUCTION_URL SMOKE_EMAIL SMOKE_PASSWORD SMOKE_PUBLIC_SLUG; do
+            if [ -z "${!name}" ]; then
+              echo "::error::GitHub secret $name is not set (see docs/deploy.md)"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - uses: ./.github/actions/setup
+
+      # Render builds the exact commit that passed CI (autoDeploy is off in render.yaml).
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          separator='&'
+          case "$RENDER_DEPLOY_HOOK_URL" in *\?*) ;; *) separator='?' ;; esac
+          curl -fsS --max-time 60 -X POST -o /dev/null "${RENDER_DEPLOY_HOOK_URL}${separator}ref=${DEPLOY_SHA}"
+          echo "Render deploy triggered for ${DEPLOY_SHA}"
+
+      # The Pages Function (apps/web/functions) is bundled by wrangler from the working directory, hence apps/web.
+      # --branch main: the checkout is a detached HEAD, which would otherwise create a preview deployment.
+      - name: Build web
+        run: pnpm --filter @testpulse/web build
+
+      - name: Deploy web to Cloudflare Pages
+        working-directory: apps/web
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --yes wrangler@4 pages deploy dist --project-name testpulse --branch main --commit-hash "$DEPLOY_SHA" --commit-dirty=true
+
+      # Goes through the Pages Function, so this also proves the proxy, API_ORIGIN and the Neon connection.
+      # Render free instances cold start (and a new image takes minutes to build): poll every 15 s for up to 10 min.
+      - name: Wait for production health
+        run: |
+          url="${PRODUCTION_URL%/}/api/health"
+          deadline=$((SECONDS + 600))
+          until curl -fsS --max-time 20 -o /dev/null "$url"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$url did not return 200 within 10 minutes"
+              exit 1
+            fi
+            echo "Not healthy yet, retrying in 15 s"
+            sleep 15
+          done
+          echo "Production is healthy"
+
+      - name: Install Playwright (chromium only)
+        run: pnpm --filter @testpulse/tests exec playwright install --with-deps chromium
+
+      - name: Smoke test
+        working-directory: tests
+        env:
+          BASE_URL: ${{ secrets.PRODUCTION_URL }}
+          SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+          SMOKE_PUBLIC_SLUG: ${{ secrets.SMOKE_PUBLIC_SLUG }}
+        run: pnpm exec playwright test --project smoke
+
+      - name: Upload Playwright report and traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: |
+            tests/playwright-report
+            tests/test-results
+          if-no-files-found: ignore
+          retention-days: 7

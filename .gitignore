@@ -12,3 +12,4 @@ pacts/
 .claude/
 .superpowers/
 zap/
+.wrangler/

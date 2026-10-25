@@ -9,6 +9,11 @@
 interface Env {
   /** Origin API, mis. https://testpulse-api.onrender.com (variabel lingkungan proyek Pages). */
   API_ORIGIN: string;
+  /**
+   * Rahasia bersama dengan API (env PROXY_SECRET di Render). Jika diisi, dikirim sebagai `x-proxy-secret` agar API
+   * mempercayai X-Forwarded-For dari Function ini untuk rate limit per IP (Ruling R11). Simpan sebagai secret terenkripsi.
+   */
+  PROXY_SECRET?: string;
 }
 
 interface Context {
@@ -32,23 +37,27 @@ const DROPPED_HEADERS = new Set([
   "x-real-ip",
   "true-client-ip",
   "forwarded",
+  // Hanya Function ini yang boleh menetapkan header rahasia; nilai kiriman klien selalu dibuang.
+  "x-proxy-secret",
 ]);
 
 function errorResponse(message: string): Response {
   return Response.json({ error: { code: "INTERNAL_ERROR", message } }, { status: 502 });
 }
 
-function buildUpstreamHeaders(incoming: Headers): Headers {
+function buildUpstreamHeaders(incoming: Headers, proxySecret: string | undefined): Headers {
   const headers = new Headers();
   incoming.forEach((value, name) => {
     if (DROPPED_HEADERS.has(name) || name.startsWith("cf-")) return;
     headers.append(name, value);
   });
 
-  // Ruling R6: X-Forwarded-For ditimpa dengan IP klien dari Cloudflare agar rate limit per IP di API tidak bisa dipalsukan.
+  // Ruling R6/R11: X-Forwarded-For ditimpa dengan tepat satu entri, IP klien dari Cloudflare. API hanya mempercayainya
+  // jika request juga membawa x-proxy-secret yang benar.
   const clientIp = incoming.get("cf-connecting-ip");
   if (clientIp) headers.set("x-forwarded-for", clientIp);
   headers.set("x-forwarded-proto", "https");
+  if (proxySecret) headers.set("x-proxy-secret", proxySecret);
   return headers;
 }
 
@@ -75,7 +84,7 @@ export const onRequest = async ({ request, env }: Context): Promise<Response> =>
 
   const upstreamRequest = new Request(target, {
     method: request.method,
-    headers: buildUpstreamHeaders(request.headers),
+    headers: buildUpstreamHeaders(request.headers, env.PROXY_SECRET),
     body,
     // Redirect dari API diteruskan ke browser, tidak diikuti oleh proxy.
     redirect: "manual",

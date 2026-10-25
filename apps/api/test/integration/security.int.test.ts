@@ -39,45 +39,60 @@ describe("rate limit", () => {
   });
 });
 
-describe("rate limit per IP di belakang proxy (TRUST_PROXY)", () => {
-  const attemptFrom = (app: FastifyInstance, forwardedFor: string) =>
+describe("rate limit per IP di belakang Pages Function (PROXY_SECRET, Ruling R11)", () => {
+  const SECRET = "rahasia-bersama-untuk-test-0123456789";
+
+  const attempt = (app: FastifyInstance, headers: Record<string, string>) =>
     app.inject({
       method: "POST",
       url: LOGIN,
-      headers: { "x-forwarded-for": forwardedFor },
+      headers,
       payload: { email: "tidak-ada@example.test", password: "salah-salah" },
     });
 
-  it("dipercaya: IP klien diambil dari X-Forwarded-For, tiap IP punya hitungan sendiri", async () => {
-    const app = await createTestApp({ rateLimitMax: 2, trustProxy: 1 });
-    expect((await attemptFrom(app, "203.0.113.10")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "203.0.113.10")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "203.0.113.10")).statusCode).toBe(429);
-    // IP klien lain tidak terkena batas klien pertama.
-    expect((await attemptFrom(app, "203.0.113.11")).statusCode).toBe(401);
+  /** 10 percobaan pertama → 401; yang ke-11 → 429. `headersFor(i)` menentukan header tiap percobaan. */
+  async function exhaust(app: FastifyInstance, headersFor: (i: number) => Record<string, string>): Promise<number> {
+    for (let i = 0; i < 10; i++) {
+      expect((await attempt(app, headersFor(i))).statusCode).toBe(401);
+    }
+    return (await attempt(app, headersFor(10))).statusCode;
+  }
+
+  it("secret cocok: tiap IP klien di X-Forwarded-For punya hitungan sendiri", async () => {
+    const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
+    const viaProxy = (ip: string) => ({ "x-proxy-secret": SECRET, "x-forwarded-for": ip });
+
+    expect(await exhaust(app, () => viaProxy("203.0.113.10"))).toBe(429);
+    // IP klien lain (lewat Function yang sama) tidak terkena batas klien pertama.
+    expect((await attempt(app, viaProxy("203.0.113.11"))).statusCode).toBe(401);
   });
 
-  it("dipercaya N hop: entri palsu di kiri tidak dipakai sebagai kunci", async () => {
-    const app = await createTestApp({ rateLimitMax: 2, trustProxy: 1 });
-    // Klien nyata menyisipkan entri palsu; proxy tepercaya menambahkan IP klien sesungguhnya di kanan.
-    expect((await attemptFrom(app, "1.1.1.1, 203.0.113.20")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "2.2.2.2, 203.0.113.20")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "3.3.3.3, 203.0.113.20")).statusCode).toBe(429);
-    expect((await attemptFrom(app, "3.3.3.3, 203.0.113.21")).statusCode).toBe(401);
+  it.each([
+    ["secret salah", { "x-proxy-secret": "salah" }],
+    ["tanpa header secret", {}],
+  ])("%s + X-Forwarded-For berganti-ganti (pemalsuan): semua berbagi satu hitungan", async (_name, extra) => {
+    const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
+    const forged = (i: number) => ({ ...extra, "x-forwarded-for": `198.51.100.${i + 1}` });
+
+    // Regresi bypass: sebelumnya IP palsu yang berganti tiap request menghindari batas 10/menit.
+    expect(await exhaust(app, forged)).toBe(429);
+    expect((await attempt(app, forged(50))).statusCode).toBe(429);
   });
 
-  it("dipercaya 2 hop: IP klien adalah entri kedua dari kanan (proxy kedua tidak dihitung sebagai klien)", async () => {
-    const app = await createTestApp({ rateLimitMax: 1, trustProxy: 2 });
-    expect((await attemptFrom(app, "203.0.113.40, 198.51.100.1")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "203.0.113.40, 198.51.100.2")).statusCode).toBe(429);
-    expect((await attemptFrom(app, "203.0.113.41, 198.51.100.1")).statusCode).toBe(401);
+  it("secret benar tidak membuka bucket pemanggil langsung dan sebaliknya", async () => {
+    const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
+    // Pemanggil langsung (tanpa secret) menghabiskan bucket peer.
+    expect(await exhaust(app, (i) => ({ "x-forwarded-for": `198.51.100.${i + 1}` }))).toBe(429);
+    // Klien sah lewat Function tetap punya bucket sendiri.
+    const viaProxy = { "x-proxy-secret": SECRET, "x-forwarded-for": "203.0.113.20" };
+    expect((await attempt(app, viaProxy)).statusCode).toBe(401);
   });
 
-  it("tidak dipercaya (default): X-Forwarded-For diabaikan sehingga semua berbagi satu hitungan", async () => {
-    const app = await createTestApp({ rateLimitMax: 2 });
-    expect((await attemptFrom(app, "203.0.113.30")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "203.0.113.31")).statusCode).toBe(401);
-    expect((await attemptFrom(app, "203.0.113.32")).statusCode).toBe(429);
+  it("PROXY_SECRET tidak dikonfigurasi: X-Forwarded-For dan header secret diabaikan", async () => {
+    const app = await createTestApp({ rateLimitMax: 10 });
+    const rotating = (i: number) => ({ "x-proxy-secret": SECRET, "x-forwarded-for": `198.51.100.${i + 1}` });
+
+    expect(await exhaust(app, rotating)).toBe(429);
   });
 });
 

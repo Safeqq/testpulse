@@ -67,3 +67,35 @@ describe("log request", () => {
     expect(lines.join("")).toContain(`/invitations/${created.id}`);
   });
 });
+
+describe("log rahasia proxy", () => {
+  it("nilai x-proxy-secret tidak pernah masuk log, termasuk pada respons 401 dan 429", async () => {
+    const secret = "rahasia-proxy-yang-tidak-boleh-bocor-9f8e7d";
+    const lines: string[] = [];
+    const app = await createTestApp(
+      { proxySecret: secret, rateLimitMax: 1 },
+      {
+        logLevel: "info",
+        logStream: {
+          write(msg: string) {
+            lines.push(msg);
+          },
+        },
+      },
+    );
+    const login = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/v1/auth/login",
+        headers: { "x-proxy-secret": secret, "x-forwarded-for": "203.0.113.9" },
+        payload: { email: "tidak-ada@example.test", password: "salah-salah" },
+      });
+    expect((await login()).statusCode).toBe(401);
+    expect((await login()).statusCode).toBe(429);
+
+    const joined = lines.join("");
+    // Bukti request tercatat (bukan log kosong) dan kunci tetap bisa dilihat dari remoteAddress peer.
+    expect(joined).toContain('"url":"/api/v1/auth/login"');
+    expect(joined).not.toContain(secret);
+  });
+});

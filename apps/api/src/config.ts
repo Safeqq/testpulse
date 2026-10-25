@@ -5,10 +5,10 @@ export interface AppConfig {
   port: number;
   rateLimitMax: number;
   /**
-   * Jumlah proxy tepercaya di depan API (opsi `trustProxy` Fastify): `false` = jangan percaya
-   * X-Forwarded-For; angka N = ambil IP klien dari entri ke-N dari kanan. Lihat docs/deploy.md.
+   * Rahasia bersama dengan Pages Function (header `x-proxy-secret`). Jika diisi dan cocok, rate limit memakai
+   * IP klien dari `X-Forwarded-For` yang di-set Function; jika kosong, fitur mati. Lihat docs/deploy.md.
    */
-  trustProxy: false | number;
+  proxySecret?: string;
 }
 
 function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
@@ -29,23 +29,14 @@ function parseIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): nu
   return value;
 }
 
-function parseTrustProxy(env: NodeJS.ProcessEnv): false | number {
-  const raw = env.TRUST_PROXY?.trim();
-  if (!raw) return false;
-  const value = Number(raw);
-  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
-    throw new Error("Variabel lingkungan TRUST_PROXY harus berupa bilangan bulat positif (jumlah hop proxy) atau dikosongkan");
-  }
-  return value;
-}
-
 export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
+  const proxySecret = env.PROXY_SECRET?.trim();
   return {
     databaseUrl: requireEnv(env, "DATABASE_URL"),
     appOrigin: requireEnv(env, "APP_ORIGIN"),
     cookieSecure: env.COOKIE_SECURE?.trim() === "true",
     port: parseIntEnv(env, "PORT", 3000),
     rateLimitMax: parseIntEnv(env, "RATE_LIMIT_MAX", 10),
-    trustProxy: parseTrustProxy(env),
+    ...(proxySecret ? { proxySecret } : {}),
   };
 }

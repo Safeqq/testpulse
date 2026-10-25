@@ -76,14 +76,20 @@ Project harus ada sebelum workflow bisa men-deploy ke dalamnya.
 
 ## Langkah 3. Render: buat service API dari `render.yaml`
 
-1. Masuk ke Render, **New** -> **Blueprint**. Hubungkan akun GitHub dan beri akses ke repo `testpulse`.
-2. Pilih repo dan branch `main`. Render membaca `render.yaml` dan menampilkan service `testpulse-api` (plan **Free**, runtime Docker).
-3. Render meminta nilai variabel yang bertanda `sync: false`:
+1. Buat dulu `PROXY_SECRET`: string acak panjang yang akan sama persis di Render (langkah ini) dan di Cloudflare Pages (Langkah 4). Cara membuatnya:
+   ```
+   openssl rand -hex 32
+   ```
+   (atau buat 64 karakter acak dengan password manager). Simpan sementara di tempat aman; jangan dikirim lewat chat atau dimasukkan ke repo. Fungsinya dijelaskan di Langkah 10.
+2. Masuk ke Render, **New** -> **Blueprint**. Hubungkan akun GitHub dan beri akses ke repo `testpulse`.
+3. Pilih repo dan branch `main`. Render membaca `render.yaml` dan menampilkan service `testpulse-api` (plan **Free**, runtime Docker).
+4. Render meminta nilai variabel yang bertanda `sync: false`:
    - `DATABASE_URL`: connection string Neon dari Langkah 1.
    - `APP_ORIGIN`: URL web dari Langkah 2, tanpa garis miring di akhir, mis. `https://testpulse.pages.dev`. Nilai ini harus **persis** sama dengan origin yang dilihat browser, karena API menolak (403) request ubah-data dari origin lain.
-4. Klik **Apply** / **Deploy Blueprint**. Build pertama memakan beberapa menit.
+   - `PROXY_SECRET`: nilai acak dari langkah 1.
+5. Klik **Apply** / **Deploy Blueprint**. Build pertama memakan beberapa menit.
 
-Variabel lain sudah terisi dari `render.yaml`: `COOKIE_SECURE=true`, `TRUST_PROXY=3` (lihat Langkah 10), dan `RATE_LIMIT_MAX` sengaja tidak diisi (default 10 percobaan login/daftar per menit per IP).
+Variabel lain sudah terisi dari `render.yaml`: `COOKIE_SECURE=true`, dan `RATE_LIMIT_MAX` sengaja tidak diisi (default 10 percobaan login/daftar per menit per IP).
 
 **Cek:**
 - Tab **Logs** berakhir dengan baris seperti `Server listening at http://0.0.0.0:3000` dan status service **Live**.
@@ -95,10 +101,11 @@ Variabel lain sudah terisi dari `render.yaml`: `COOKIE_SECURE=true`, `TRUST_PROX
 
 ---
 
-## Langkah 4. Cloudflare Pages: isi `API_ORIGIN`
+## Langkah 4. Cloudflare Pages: isi `API_ORIGIN` dan `PROXY_SECRET`
 
 1. **Workers & Pages** -> project `testpulse` -> **Settings** -> **Variables and Secrets** -> **Add** (lingkungan **Production**).
 2. Tipe **Text**, **Variable name** `API_ORIGIN`, **Value** URL Render dari Langkah 3 (mis. `https://testpulse-api.onrender.com`, tanpa garis miring di akhir dan tanpa `/api`). Simpan.
+3. **Add** lagi: tipe **Secret** (terenkripsi), **Variable name** `PROXY_SECRET`, **Value** string yang **persis sama** dengan `PROXY_SECRET` di Render. Simpan.
 
 Variabel baru berlaku mulai deploy berikutnya (Langkah 8). Jika `API_ORIGIN` kosong, Pages Function membalas `502` dengan pesan "Layanan API belum dikonfigurasi".
 
@@ -177,31 +184,28 @@ Smoke test hanya membaca: ia tidak membuat atau menghapus data. Satu-satunya efe
 
 ---
 
-## Langkah 10. Verifikasi IP klien dan rate limit (TRUST_PROXY)
+## Langkah 10. Rate limit per IP dan `PROXY_SECRET`
 
-Batas 10 percobaan login/daftar per menit dihitung per IP. Di belakang proxy, API harus tahu proxy mana yang boleh dipercaya; kalau salah hitung, seluruh pengunjung terlihat berasal dari satu IP (semua kena 429 bersama) atau IP bisa dipalsukan.
+Batas 10 percobaan login/daftar per menit dihitung per IP klien. Di belakang proxy API tidak bisa langsung mempercayai `X-Forwarded-For`, karena siapa pun yang menembak URL Render (`*.onrender.com`) langsung bisa menulis header itu sesuka hati dan mengganti "IP"-nya setiap request. Karena itu:
 
-**Rantai request:**
+1. Pages Function menimpa `X-Forwarded-For` dengan tepat satu IP klien (dari `CF-Connecting-IP`; kiriman klien dibuang) dan menambahkan header `x-proxy-secret` berisi `PROXY_SECRET`. Header `x-proxy-secret` kiriman klien selalu dibuang.
+2. API (tanpa kepercayaan proxy) memakai IP dari `X-Forwarded-For` **hanya** jika `x-proxy-secret` cocok dengan `PROXY_SECRET` miliknya. Selain itu kunci rate limit adalah peer langsung (Render), sehingga pemanggil langsung dengan header palsu semuanya berbagi satu hitungan. API tidak menolak request tanpa secret (mis. `/api/health`), hanya tidak mempercayai header IP-nya.
 
-1. Browser menembak Cloudflare Pages. Pages Function **menimpa** `X-Forwarded-For` dengan IP klien dari `CF-Connecting-IP` (header `X-Forwarded-For` kiriman klien dibuang), dan menambah `X-Forwarded-Proto: https`.
-2. Function memanggil Render. Cloudflare di depan Render menambahkan IP penghubungnya (alamat keluar Cloudflare Workers) ke daftar, dan load balancer Render menambahkan lagi satu entri.
-3. API menerima `X-Forwarded-For: <IP klien>, <proxy 1>, <proxy 2>`, dengan koneksi socket dari load balancer Render.
+Verifikasi setelah deploy (Langkah 8 atau 11 selesai):
 
-`TRUST_PROXY=N` berarti: percayai N hop terdekat dari API; `req.ip` adalah entri ke-N dari kanan pada daftar `X-Forwarded-For`. Dengan perkiraan rantai di atas, IP klien berada pada posisi ke-3 dari kanan, jadi nilai di `render.yaml` adalah **3**.
+1. **Secret terpasang di kedua sisi.** Buka `https://testpulse.pages.dev/login` dan kirim 11 login salah berturut-turut dalam semenit dari browser Anda. Percobaan ke-11 harus menampilkan pesan terlalu banyak permintaan (HTTP 429). Tidak perlu akun asli.
+2. **Per IP, bukan global.** Segera setelah itu, dari jaringan lain (mis. hotspot HP) coba login salah sekali: harus 401 (pesan email/password salah), bukan 429. Jika jaringan lain juga kena 429, `PROXY_SECRET` di Pages tidak sama dengan di Render (atau belum terisi / belum di-deploy ulang) sehingga semua orang berbagi bucket peer.
+3. **Pemalsuan header tidak berguna.** Panggil Render langsung dengan IP palsu yang berganti-ganti (ganti URL dengan URL Render Anda):
+   ```
+   for i in $(seq 1 12); do curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+     -H "content-type: application/json" -H "x-forwarded-for: 198.51.100.$i" \
+     -d '{"email":"x@example.test","password":"salah-salah"}' \
+     https://testpulse-api.onrender.com/api/v1/auth/login; done
+   ```
+   Hasil yang benar: `401` sepuluh kali lalu `429` (semua berbagi satu bucket walau IP palsunya berbeda). Jika semua `401`, API masih mempercayai `X-Forwarded-For` tanpa secret dan ada yang salah (periksa versi yang ter-deploy).
+   Catatan: bucket ini milik peer langsung (proxy Render), jadi tunggu satu menit sebelum menguji lagi dan jangan jalankan saat pengguna lain sedang masuk.
 
-Mengapa nilai 3 aman walau jumlah hop sebenarnya ternyata lebih kecil: karena Function menimpa `X-Forwarded-For` hanya dengan satu IP klien, entri paling kiri selalu IP klien sungguhan. Jika N melebihi panjang daftar, API memakai entri paling kiri itu, yaitu tetap IP klien. Yang berbahaya adalah N yang **terlalu kecil**: `req.ip` menjadi alamat proxy sehingga semua pengunjung berbagi satu hitungan rate limit.
-
-Hop yang tepat tidak didokumentasikan oleh Render dan tidak bisa dipastikan dari repo, jadi **verifikasi setelah deploy**:
-
-1. Cari IP publik Anda: `curl https://ifconfig.me` (atau buka situs "what is my IP").
-2. Buka `https://testpulse.pages.dev/login` dan coba masuk dengan akun apa saja (boleh salah).
-3. Di Render -> service -> **Logs**, cari baris request `POST /api/v1/auth/login`. Bagian `req` memuat `"remoteAddress":"..."`; itulah `req.ip` menurut API.
-4. Bandingkan:
-   - `remoteAddress` **sama dengan IP publik Anda**: konfigurasi benar. Selesai.
-   - `remoteAddress` berupa IP lain (mis. `10.x`, `172.x`, atau rentang Cloudflare): N terlalu kecil. Di Render -> **Environment**, naikkan `TRUST_PROXY` (coba `4`), simpan, tunggu deploy ulang, dan ulangi sampai sama. Setelah itu perbarui juga nilai di `render.yaml` supaya sinkron.
-5. Uji rate limit (opsional, hanya 11 request): kirim 11 login salah berturut-turut dalam semenit; yang ke-11 harus `429`. Lalu dari jaringan lain (mis. hotspot HP) login masih harus bisa dicoba (bukan 429). Jika jaringan lain juga 429, N terlalu kecil.
-
-Batasan yang perlu diketahui: karena kepercayaan berdasarkan jumlah hop, siapa pun yang menembak URL Render (`*.onrender.com`) **langsung**, melewati Pages, bisa menyisipkan entri `X-Forwarded-For` palsu dan menghindari rate limit per IP. Menutup celah ini membutuhkan rahasia bersama antara Function dan API (header khusus); belum diterapkan di Tahap 1.
+Memutar rahasia: buat nilai baru, ubah di Render (**Environment**) dan di Cloudflare Pages (**Variables and Secrets**), lalu deploy ulang keduanya (Run workflow). Selama nilai berbeda, rate limit terkunci pada satu bucket bersama (gagal aman) tetapi aplikasi tetap berjalan.
 
 ---
 
@@ -225,7 +229,7 @@ Mulai sekarang, setiap push ke `main` yang membuat CI hijau men-deploy otomatis.
 | `/api/health` 502 "API tidak dapat dihubungi" | Render sedang tidur/bangun atau mati. Tunggu ±1 menit dan coba lagi. |
 | Daftar/masuk dari web menghasilkan 403 `FORBIDDEN` | `APP_ORIGIN` di Render tidak sama persis dengan URL web (perhatikan `https`, tanpa garis miring di akhir). |
 | Login berhasil tetapi langsung dianggap keluar | `COOKIE_SECURE=true` butuh HTTPS; pastikan memakai URL `https://` dan `API_ORIGIN` mengarah ke Render. |
-| Semua orang kena 429 bersamaan | `TRUST_PROXY` terlalu kecil (Langkah 10). |
+| Semua orang kena 429 bersamaan | `PROXY_SECRET` di Pages dan Render tidak sama, atau belum terisi / belum di-deploy ulang (Langkah 10). |
 | Request pertama setelah lama sepi lambat atau 503 sekali | Cold start Render (±30-60 detik) dan Neon yang tidur (beberapa detik). Normal pada paket gratis; ulangi. |
 | Deploy Cloudflare gagal `Authentication error` | Token salah/kedaluwarsa atau tanpa izin Pages:Edit, atau `CLOUDFLARE_ACCOUNT_ID` salah (Langkah 6). |
 | Smoke `akun smoke berhasil masuk` gagal | Email/password akun di production tidak sama dengan `SMOKE_EMAIL`/`SMOKE_PASSWORD` (Langkah 9). |
@@ -233,4 +237,4 @@ Mulai sekarang, setiap push ke `main` yang membuat CI hijau men-deploy otomatis.
 
 ## Daftar rahasia (ringkasan)
 
-Tersimpan di: Render (`DATABASE_URL`), GitHub Secrets (ketujuh nama di Langkah 7). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.
+Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (ketujuh nama di Langkah 7). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.

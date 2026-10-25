@@ -21,10 +21,9 @@ services:
         sync: false
       - key: COOKIE_SECURE
         value: "true"
-      # Number of proxy hops between the client IP and the API, for per-IP rate limiting (docs/deploy.md).
-      # Chain: Pages Function sets X-Forwarded-For=<client IP> -> Cloudflare edge and Render proxy append 2 entries.
-      # Over-counting is harmless on this path (the leftmost entry is the client); under-counting would rate-limit
-      # everyone as one client. Verify after the first deploy as described in docs/deploy.md.
-      - key: TRUST_PROXY
-        value: "3"
+      # Shared secret with the Cloudflare Pages Function (same value there, as an encrypted variable).
+      # Only requests carrying it are rate-limited by the client IP from X-Forwarded-For; everything else is keyed by
+      # the direct peer, so calling the Render URL directly with forged headers cannot evade the limit. docs/deploy.md.
+      - key: PROXY_SECRET
+        sync: false
       # RATE_LIMIT_MAX is intentionally unset: production uses the default of 10 per minute per IP.

@@ -12,7 +12,7 @@ function stubFetch(respond: (request: Request) => Response | Promise<Response> =
 }
 
 /** Request yang masuk ke Pages Function; `fetch` stub menerima Request ke API. */
-async function proxy(request: Request, e: { API_ORIGIN: string } = env): Promise<Response> {
+async function proxy(request: Request, e: { API_ORIGIN: string; PROXY_SECRET?: string } = env): Promise<Response> {
   return onRequest({ request, env: e });
 }
 
@@ -150,6 +150,30 @@ describe("Pages Function proxy /api/*", () => {
       expect(upstream.headers.get("x-real-ip")).toBeNull();
       expect(upstream.headers.get("true-client-ip")).toBeNull();
       expect(upstream.headers.get("forwarded")).toBeNull();
+    });
+
+    it("PROXY_SECRET dikonfigurasi: x-proxy-secret ditambahkan, nilai kiriman klien diganti", async () => {
+      const stub = stubFetch();
+      await proxy(
+        new Request("https://app.example/api/v1/auth/login", {
+          method: "POST",
+          headers: { "x-proxy-secret": "dipalsukan-klien", "cf-connecting-ip": "203.0.113.9" },
+          body: "{}",
+        }),
+        { ...env, PROXY_SECRET: "rahasia-asli" },
+      );
+      const upstream = upstreamRequest(stub);
+      expect(upstream.headers.get("x-proxy-secret")).toBe("rahasia-asli");
+      expect(upstream.headers.get("x-forwarded-for")).toBe("203.0.113.9");
+    });
+
+    it.each([undefined, ""])("PROXY_SECRET tidak dikonfigurasi (%j): x-proxy-secret kiriman klien dibuang", async (secret) => {
+      const stub = stubFetch();
+      await proxy(
+        new Request("https://app.example/api/health", { headers: { "x-proxy-secret": "dipalsukan-klien" } }),
+        { API_ORIGIN: env.API_ORIGIN, PROXY_SECRET: secret },
+      );
+      expect(upstreamRequest(stub).headers.get("x-proxy-secret")).toBeNull();
     });
 
     it("tanpa CF-Connecting-IP, X-Forwarded-For dari klien tetap tidak diteruskan", async () => {

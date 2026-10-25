@@ -11,7 +11,6 @@ describe("loadConfig", () => {
       cookieSecure: false,
       port: 3000,
       rateLimitMax: 10,
-      trustProxy: false,
     });
   });
 
@@ -29,20 +28,15 @@ describe("loadConfig", () => {
     expect(() => loadConfig({ ...base, PORT: "abc" })).toThrow("PORT");
   });
 
-  describe("TRUST_PROXY", () => {
-    it("tidak diisi atau kosong → false (proxy tidak dipercaya)", () => {
-      expect(loadConfig(base).trustProxy).toBe(false);
-      expect(loadConfig({ ...base, TRUST_PROXY: "" }).trustProxy).toBe(false);
-      expect(loadConfig({ ...base, TRUST_PROXY: "  " }).trustProxy).toBe(false);
+  describe("PROXY_SECRET", () => {
+    it("tidak diisi atau kosong → fitur mati (properti tidak ada)", () => {
+      expect(loadConfig(base)).not.toHaveProperty("proxySecret");
+      expect(loadConfig({ ...base, PROXY_SECRET: "" })).not.toHaveProperty("proxySecret");
+      expect(loadConfig({ ...base, PROXY_SECRET: "   " })).not.toHaveProperty("proxySecret");
     });
 
-    it("bilangan bulat positif → jumlah hop", () => {
-      expect(loadConfig({ ...base, TRUST_PROXY: "1" }).trustProxy).toBe(1);
-      expect(loadConfig({ ...base, TRUST_PROXY: " 3 " }).trustProxy).toBe(3);
-    });
-
-    it.each(["0", "-1", "1.5", "abc", "true", "false", "1,2", "10.0.0.0/8"])("melempar untuk %j", (value) => {
-      expect(() => loadConfig({ ...base, TRUST_PROXY: value })).toThrow("TRUST_PROXY");
+    it("diisi → dipakai (dipangkas)", () => {
+      expect(loadConfig({ ...base, PROXY_SECRET: "  abc123  " }).proxySecret).toBe("abc123");
     });
   });
 });

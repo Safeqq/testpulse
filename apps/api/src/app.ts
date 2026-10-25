@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { AppConfig } from "./config.js";
 import { createDb, type Db } from "./db/client.js";
+import { PROXY_SECRET_HEADER, rateLimitKey } from "./http/client-ip.js";
 import { registerErrorHandlers } from "./http/errors.js";
 import { serializeRequest } from "./http/logging.js";
 import { registerSecurity } from "./http/security.js";
@@ -27,23 +28,11 @@ export interface BuildAppOptions {
   logStream?: { write(msg: string): void };
 }
 
-/**
- * Fastify 5 mengabaikan `trustProxy` berupa angka (fail-closed), jadi hitungan hop dinyatakan sebagai fungsi:
- * `i` = 0 untuk peer socket, 1 untuk entri X-Forwarded-For paling kanan, dst. `req.ip` menjadi entri ke-N dari kanan.
- * Dengan N terlalu besar, entri paling kiri yang dipakai; Pages Function menimpa header itu dengan IP klien
- * sebenarnya sehingga hasilnya tetap benar. Lihat docs/deploy.md.
- */
-function hopCountTrust(hops: AppConfig["trustProxy"]): false | ((address: string, hop: number) => boolean) {
-  if (hops === false) return false;
-  return (_address, hop) => hop < hops;
-}
-
 export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({
-    trustProxy: hopCountTrust(config.trustProxy),
     logger: {
       level: opts.logLevel ?? "info",
-      redact: ["req.headers.cookie", "req.headers.authorization", "*.password", "*.token"],
+      redact: ["req.headers.cookie", "req.headers.authorization", `req.headers["${PROXY_SECRET_HEADER}"]`, "*.password", "*.token"],
       // Menyensor token undangan yang ada di URL (redact pino tidak menjangkau isi string).
       serializers: { req: serializeRequest },
       ...(opts.logStream ? { stream: opts.logStream } : {}),
@@ -63,8 +52,8 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
   registerErrorHandlers(app);
   await registerSecurity(app, config);
   await app.register(cookie);
-  // Batas laju dipasang per rute lewat `config.rateLimit` (kunci: req.ip, lihat Ruling R6).
-  await app.register(rateLimit, { global: false });
+  // Batas laju dipasang per rute lewat `config.rateLimit`; kunci: IP klien, lihat http/client-ip.ts (Ruling R11).
+  await app.register(rateLimit, { global: false, keyGenerator: rateLimitKey(config) });
   app.decorateRequest("user", null);
 
   app.get("/api/health", async (_request, reply) => {

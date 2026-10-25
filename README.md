@@ -32,7 +32,7 @@ Rencananya, mulai tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sen
 - **Keamanan sebagai gate**: OWASP ZAP baseline (gagal jika ada temuan High), `pnpm audit`, Dependabot, serta test untuk CSRF, rate limit, hash token sesi/undangan, dan penyensoran token di log.
 - **Rate limit tahan `X-Forwarded-For` palsu**: IP klien hanya dipercaya jika header rahasia bersama (`PROXY_SECRET`) dari Pages Function cocok.
 - **Paritas header keamanan** nginx (lokal) dan Cloudflare Pages (production) dijaga oleh test, agar yang dipindai ZAP sama dengan yang di-deploy.
-- **E2E di 3 browser** (Chromium, Firefox, WebKit) dengan Page Object Model, custom fixtures, pengguna di context terpisah, dan pemeriksaan aksesibilitas axe.
+- **E2E di 3 browser** (Chromium, Firefox, WebKit) dengan Page Object Model, custom fixtures, pengguna di context terpisah, dan pemeriksaan aksesibilitas axe pada halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan.
 - **CI penuh dengan Allure**: lint, typecheck, unit + coverage gate, integration, contract, API + E2E (sharding), ZAP, laporan gabungan di GitHub Pages; deploy otomatis diikuti smoke test production.
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
 
@@ -40,7 +40,7 @@ Rencananya, mulai tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sen
 
 | Tahap | Isi | Status |
 |---|---|---|
-| **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai, kecuali deploy live (menunggu setup layanan hosting) |
+| **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai (CI hijau pada run terakhir), kecuali deploy live (menunggu setup layanan hosting) |
 | 2 | Dashboard hasil test, deteksi flaky, reporter CLI, project token, test performa (k6) | Direncanakan |
 | 3 | Bug tracker (bug dari test yang gagal), visual regression | Direncanakan |
 | 4 | Test case management dan test run manual, mutation testing | Direncanakan |
@@ -104,15 +104,18 @@ docker compose up -d --build --wait
 docker compose down        # tambahkan -v untuk menghapus data
 ```
 
-**Opsi B: mode pengembangan** (hot reload). Butuh Postgres yang berjalan; salin `.env.example` menjadi `.env` lalu sesuaikan `DATABASE_URL` jika perlu.
+**Opsi B: mode pengembangan** (hot reload). Butuh Postgres di `localhost:5432` dengan kredensial yang sama seperti `.env.example` (Compose sengaja tidak membuka port Postgres ke host).
 
 ```bash
+docker run -d --name tp-pg -e POSTGRES_USER=testpulse -e POSTGRES_PASSWORD=testpulse -e POSTGRES_DB=testpulse -p 5432:5432 postgres:17-alpine
 cp .env.example .env
 pnpm dev
 # web: http://localhost:5173  ·  API: http://localhost:3000/api/health
 ```
 
-Variabel lingkungan API: `DATABASE_URL`, `APP_ORIGIN`, `COOKIE_SECURE`, `PORT`, `RATE_LIMIT_MAX` (lihat [.env.example](.env.example)). Tidak ada secret di repo.
+Jika port 5432 sudah terpakai (misalnya Postgres bawaan mesin), petakan port lain (`-p 5433:5432`) dan ubah `DATABASE_URL` di `.env` ke `localhost:5433`. Migrasi berjalan otomatis saat API menyala.
+
+Variabel lingkungan API: `DATABASE_URL`, `APP_ORIGIN`, `COOKIE_SECURE`, `PORT`, `RATE_LIMIT_MAX` (lihat [.env.example](.env.example)), serta `PROXY_SECRET` (opsional, hanya production). Cloudflare Pages Function memakai `API_ORIGIN` dan `PROXY_SECRET`. Penjelasan production ada di [docs/deploy.md](docs/deploy.md). Tidak ada secret di repo.
 
 ## Menjalankan test per lapisan
 
@@ -139,7 +142,7 @@ pnpm --filter @testpulse/tests exec playwright test --project e2e-chromium   # s
 pnpm --filter @testpulse/tests test:security     # unit test untuk gate ZAP
 ```
 
-Tanpa `BASE_URL`, Playwright menyalakan `pnpm dev` sendiri (butuh Postgres seperti Opsi B).
+Tanpa `BASE_URL`, Playwright menyalakan `pnpm dev` sendiri (butuh Postgres seperti Opsi B, termasuk perintah `docker run` di atas).
 
 **OWASP ZAP baseline** (terhadap stack Compose yang hidup; sama dengan job `zap` di [ci.yml](.github/workflows/ci.yml)):
 

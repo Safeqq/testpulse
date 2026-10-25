@@ -62,6 +62,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | PRJ-10 | UI project publik | Anonim melihat ringkasan dengan penanda "hanya-baca", tanpa tautan pengaturan; project privat dan yang tidak ada tampil sama | E | projects.spec.ts (E2E) |
 | PRJ-11 | Rute terlindungi | `/` dan `/projects/new` mengarahkan anonim ke login | E | projects.spec.ts (E2E) |
 | PRJ-12 | Halaman daftar, buat, dan ringkasan | 0 pelanggaran axe serious/critical | E | projects.spec.ts (E2E) |
+| PRJ-15 | Halaman pengaturan project (admin) dan pratinjau undangan | 0 pelanggaran axe serious/critical | E | team.spec.ts (E2E) |
 | PRJ-13 | Matriks otorisasi project (6 aktor x semua endpoint) | Status dan kode error sesuai tabel spec bagian 7; urutan pengecekan: anonim selalu 401 di endpoint wajib login | A | [authorization-matrix.ts](../../tests/api/authorization-matrix.ts), authorization.spec.ts |
 | PRJ-14 | Keputusan akses (aksi x role x visibilitas) | Sesuai urutan hak admin > tester > viewer; anggota di project publik memakai izin rolenya | U | permissions.test.ts |
 

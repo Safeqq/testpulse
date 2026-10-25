@@ -26,7 +26,7 @@ Memakai **token sesi acak di cookie `HttpOnly`** (opsi 3):
 - **Database hanya menyimpan hash SHA-256 dari token** (tabel `sessions`, kunci utamanya adalah hash). Kebocoran basis data tidak langsung memberikan sesi yang bisa dipakai.
 - **Logout menghapus baris sesi**, sehingga token lama langsung tidak berlaku (pencabutan). Logout hanya mengakhiri sesi yang dipakai; sesi lain milik user yang sama tetap berlaku. Sesi yang kedaluwarsa ditolak dan dibersihkan saat lookup.
 - **Browser hanya melihat satu origin.** Di production, Cloudflare Pages Function meneruskan `/api/*` ke API di Render; secara lokal nginx melakukan hal yang sama. Cookie menjadi first-party, tanpa CORS kredensial dan tanpa `SameSite=None`.
-- **Perlindungan CSRF berlapis:** `SameSite=Lax`, setiap request yang mengubah data wajib `Content-Type: application/json`, dan header `Origin` (jika ada) harus sama dengan `APP_ORIGIN`.
+- **Perlindungan CSRF berlapis:** `SameSite=Lax`, request yang mengubah data dan membawa body wajib ber-`Content-Type: application/json` (request tanpa body diizinkan), dan header `Origin` (jika ada) harus sama dengan `APP_ORIGIN`.
 - Lookup sesi ditulis sebagai satu fungsi (`authenticate`) sehingga header `Authorization: Bearer` bisa ditambahkan di tahap 2 tanpa mengubah modul lain.
 
 Opsi 1 ditolak karena token terbaca JavaScript sehingga XSS berarti pengambilalihan akun. Opsi 2 ditolak karena JWT yang stateless sulit dicabut sebelum kedaluwarsa, sementara kebutuhan pencabutan di sini nyata dan biayanya (satu lookup per request) kecil.

@@ -19,7 +19,7 @@ Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**,
 | API | Playwright `request` | `tests/api` | Kontrak HTTP dari luar proses: alur auth, validasi negatif dan boundary, dan **matriks otorisasi yang dibangkitkan dari tabel data** (`tests/api/authorization-matrix.ts`) |
 | Contract | Pact JS | `apps/web/test/contract` (consumer), `apps/api/test/contract` (provider) | Web dan API sepakat soal bentuk request/response di setiap endpoint tahap 1; perubahan sepihak membuat verifikasi provider gagal |
 | E2E | Playwright (POM, custom fixtures; Chromium, Firefox, WebKit) | `tests/e2e`, `tests/pages` | Alur pengguna lintas halaman: daftar, buat project, undang, terima, hak akses per role, admin terakhir, ubah visibilitas |
-| Accessibility | `@axe-core/playwright` | dipanggil dari `tests/e2e` lewat `tests/support/a11y.ts` | Halaman utama bebas pelanggaran `serious`/`critical` |
+| Accessibility | `@axe-core/playwright` | dipanggil dari `tests/e2e` lewat `tests/support/a11y.ts` | Halaman utama (masuk/daftar, daftar dan buat project, ringkasan project, pengaturan, pratinjau undangan) bebas pelanggaran `serious`/`critical` |
 | Proxy dan header | Vitest | `apps/web/test/functions` | Pages Function meneruskan request dengan benar; header keamanan nginx dan Cloudflare `_headers` identik |
 | Security | OWASP ZAP baseline, `pnpm audit`, Dependabot | job `zap` dan `lint-typecheck` di [`ci.yml`](../.github/workflows/ci.yml); gate di `tests/security/check-zap-report.mjs` | 0 temuan High dari ZAP, 0 dependensi high/critical |
 | Smoke production | Playwright, tag `@smoke` | `tests/smoke` | Setelah deploy: health, halaman masuk, login akun smoke, project publik terbuka tanpa login. Hanya membaca |
@@ -50,7 +50,7 @@ Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**,
 | **Enumerasi akun lewat login** | Mengetahui email terdaftar | Pesan `INVALID_CREDENTIALS` identik untuk email tak terdaftar dan password salah; scrypt tetap dijalankan terhadap hash dummy | `apps/api/test/integration/auth.int.test.ts`, `tests/api/auth.spec.ts` |
 | **Header keamanan berbeda antar-lingkungan (drift)** | Production kurang terlindungi dibanding yang diuji ZAP | Test membandingkan `security-headers.conf` (nginx) dengan `_headers` (Cloudflare Pages): empat header yang sama, nilai sama persis | `apps/web/test/functions/headers.test.ts` |
 | **Drift kontrak web dan API** | UI rusak diam-diam setelah perubahan API | Pact consumer menulis kontrak, provider memverifikasinya terhadap API asli dengan state yang disiapkan; keduanya berjalan di job CI yang sama | `apps/web/test/contract`, `apps/api/test/contract` |
-| **Aksesibilitas** | Halaman tidak bisa dipakai pengguna pembaca layar atau keyboard | axe pada halaman utama, label terhubung di semua input | `tests/e2e`, `tests/support/a11y.ts` |
+| **Aksesibilitas** | Halaman tidak bisa dipakai pengguna pembaca layar atau keyboard | axe pada halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan, label terhubung di semua input | `tests/e2e`, `tests/support/a11y.ts` |
 
 ## 4. Data dan lingkungan test
 

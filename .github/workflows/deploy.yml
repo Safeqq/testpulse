@@ -1,6 +1,7 @@
 name: Deploy
 
-# Runs after the CI workflow finishes on main. The workflow file itself always comes from the default branch.
+# Order (spec section 10): Render deploy hook -> wait until the NEW API revision serves traffic -> deploy web -> final
+# health check through the Pages Function -> smoke test. Runs after the CI workflow finishes on main. The workflow file itself always comes from the default branch.
 on:
   workflow_run:
     workflows: ["CI"]
@@ -33,6 +34,7 @@ jobs:
       - name: Check required secrets
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
@@ -40,7 +42,7 @@ jobs:
           SMOKE_PUBLIC_SLUG: ${{ secrets.SMOKE_PUBLIC_SLUG }}
         run: |
           missing=0
-          for name in RENDER_DEPLOY_HOOK_URL CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID PRODUCTION_URL SMOKE_EMAIL SMOKE_PASSWORD SMOKE_PUBLIC_SLUG; do
+          for name in RENDER_DEPLOY_HOOK_URL RENDER_API_URL CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID PRODUCTION_URL SMOKE_EMAIL SMOKE_PASSWORD SMOKE_PUBLIC_SLUG; do
             if [ -z "${!name}" ]; then
               echo "::error::GitHub secret $name is not set (see docs/deploy.md)"
               missing=1
@@ -64,10 +66,21 @@ jobs:
           curl -fsS --max-time 60 -X POST -o /dev/null "${RENDER_DEPLOY_HOOK_URL}${separator}ref=${DEPLOY_SHA}"
           echo "Render deploy triggered for ${DEPLOY_SHA}"
 
-      # The Pages Function (apps/web/functions) is bundled by wrangler from the working directory, hence apps/web.
-      # --branch main: the checkout is a detached HEAD, which would otherwise create a preview deployment.
+      # Built while Render is still building; nothing is deployed to Pages until the new API revision is live.
       - name: Build web
         run: pnpm --filter @testpulse/web build
+
+      # Render keeps serving the previous instance until the new one is healthy, so a plain 200 would also pass against
+      # the old revision. /api/health reports the running commit (RENDER_GIT_COMMIT); wait until it is this deploy's SHA.
+      # Polls the Render origin directly: the Pages Function in front of it may not exist yet on the very first deploy.
+      # Render free instances cold start and a new image takes minutes to build: every 15 s for up to 10 min.
+      - name: Wait for the new API revision
+        env:
+          RENDER_API_URL: ${{ secrets.RENDER_API_URL }}
+        run: bash .github/scripts/wait-for-health.sh "${RENDER_API_URL%/}/api/health" "$DEPLOY_SHA" 600 15
+
+      # The Pages Function (apps/web/functions) is bundled by wrangler from the working directory, hence apps/web.
+      # --branch main: the checkout is a detached HEAD, which would otherwise create a preview deployment.
 
       - name: Deploy web to Cloudflare Pages
         working-directory: apps/web
@@ -77,21 +90,10 @@ jobs:
           WRANGLER_SEND_METRICS: "false"
         run: npx --yes wrangler@4 pages deploy dist --project-name testpulse --branch main --commit-hash "$DEPLOY_SHA" --commit-dirty=true
 
-      # Goes through the Pages Function, so this also proves the proxy, API_ORIGIN and the Neon connection.
-      # Render free instances cold start (and a new image takes minutes to build): poll every 15 s for up to 10 min.
-      - name: Wait for production health
-        run: |
-          url="${PRODUCTION_URL%/}/api/health"
-          deadline=$((SECONDS + 600))
-          until curl -fsS --max-time 20 -o /dev/null "$url"; do
-            if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::$url did not return 200 within 10 minutes"
-              exit 1
-            fi
-            echo "Not healthy yet, retrying in 15 s"
-            sleep 15
-          done
-          echo "Production is healthy"
+      # Goes through the Pages Function, so this also proves the proxy, API_ORIGIN (it must point at the service that
+      # runs this commit) and the Neon connection. The new Pages deployment may need a few seconds to propagate.
+      - name: Verify production through the Pages Function
+        run: bash .github/scripts/wait-for-health.sh "${PRODUCTION_URL%/}/api/health" "$DEPLOY_SHA" 300 10
 
       - name: Install Playwright (chromium only)
         run: pnpm --filter @testpulse/tests exec playwright install --with-deps chromium

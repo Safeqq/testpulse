@@ -36,6 +36,11 @@ export function run(argv, out = console.log, err = console.error) {
     err(`${path} does not look like a ZAP report (missing "site" array)`);
     return 2;
   }
+  // A scan that reached nothing (target down, spider failed) yields "site": [] and would otherwise pass vacuously.
+  if (report.site.length === 0) {
+    err(`${path} contains no scanned sites ("site" is empty): the scan did not reach the target, refusing to pass`);
+    return 2;
+  }
   const { counts, high } = summarize(report);
   out("ZAP alerts by risk level:");
   for (const code of [3, 2, 1, 0]) {

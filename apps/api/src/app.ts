@@ -6,7 +6,7 @@ import type { AppConfig } from "./config.js";
 import { createDb, type Db } from "./db/client.js";
 import { PROXY_SECRET_HEADER, rateLimitKey } from "./http/client-ip.js";
 import { registerErrorHandlers } from "./http/errors.js";
-import { serializeRequest } from "./http/logging.js";
+import { serializeError, serializeRequest } from "./http/logging.js";
 import { registerSecurity } from "./http/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
@@ -33,8 +33,9 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
     logger: {
       level: opts.logLevel ?? "info",
       redact: ["req.headers.cookie", "req.headers.authorization", `req.headers["${PROXY_SECRET_HEADER}"]`, "*.password", "*.token"],
-      // Menyensor token undangan yang ada di URL (redact pino tidak menjangkau isi string).
-      serializers: { req: serializeRequest },
+      // req: menyensor token undangan yang ada di URL (redact pino tidak menjangkau isi string).
+      // err: membuang params query dari error database (berisi email, nama, hash password).
+      serializers: { req: serializeRequest, err: serializeError },
       ...(opts.logStream ? { stream: opts.logStream } : {}),
     },
   });
@@ -59,7 +60,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
   app.get("/api/health", async (_request, reply) => {
     try {
       await app.db.execute(sql`select 1`);
-      return { status: "ok" };
+      return { status: "ok", commit: config.gitCommit ?? null };
     } catch (err) {
       app.log.error({ err }, "health check: database tidak terjangkau");
       return reply.status(503).send({ status: "error" });

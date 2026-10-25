@@ -6,13 +6,21 @@ it("GET /api/health → 200 saat DB terjangkau", async () => {
   const app = await createTestApp();
   const res = await app.inject({ method: "GET", url: "/api/health" });
   expect(res.statusCode).toBe(200);
-  expect(res.json()).toEqual({ status: "ok" });
+  expect(res.json()).toEqual({ status: "ok", commit: null });
+});
+
+it("GET /api/health menyertakan commit yang sedang berjalan jika dikonfigurasi", async () => {
+  const app = await createTestApp({ gitCommit: "0123456789abcdef0123456789abcdef01234567" });
+  const res = await app.inject({ method: "GET", url: "/api/health" });
+  expect(res.statusCode).toBe(200);
+  expect(res.json()).toEqual({ status: "ok", commit: "0123456789abcdef0123456789abcdef01234567" });
 });
 
 it("GET /api/health → 503 saat DB tidak terjangkau", async () => {
   const app = await createTestApp({ databaseUrl: "postgres://x:x@127.0.0.1:1/none" });
   const res = await app.inject({ method: "GET", url: "/api/health" });
   expect(res.statusCode).toBe(503);
+  expect(res.json()).toEqual({ status: "error" });
 });
 
 it("rute tidak dikenal → 404 NOT_FOUND dengan bentuk error standar", async () => {

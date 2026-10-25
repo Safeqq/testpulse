@@ -87,7 +87,7 @@ describe("log rahasia proxy", () => {
       app.inject({
         method: "POST",
         url: "/api/v1/auth/login",
-        headers: { "x-proxy-secret": secret, "x-forwarded-for": "203.0.113.9" },
+        headers: { "x-proxy-secret": secret, "x-tp-client-ip": "203.0.113.9" },
         payload: { email: "tidak-ada@example.test", password: "salah-salah" },
       });
     expect((await login()).statusCode).toBe(401);
@@ -97,5 +97,48 @@ describe("log rahasia proxy", () => {
     // Bukti request tercatat (bukan log kosong) dan kunci tetap bisa dilihat dari remoteAddress peer.
     expect(joined).toContain('"url":"/api/v1/auth/login"');
     expect(joined).not.toContain(secret);
+  });
+});
+
+describe("log kegagalan database", () => {
+  it("register yang gagal di DB → 500 generik; log tidak memuat email, nama, atau hash password", async () => {
+    const lines: string[] = [];
+    // Pool tidak bisa terhubung (port 1): insert user gagal dengan DrizzleQueryError yang membawa params-nya.
+    const app = await createTestApp(
+      { databaseUrl: "postgres://x:x@127.0.0.1:1/none" },
+      {
+        logLevel: "info",
+        logStream: {
+          write(msg: string) {
+            lines.push(msg);
+          },
+        },
+      },
+    );
+    const payload = {
+      name: "Nama Rahasia Pengguna",
+      email: "rahasia-unik-123@example.test",
+      password: "password-rahasia-unik-456",
+    };
+
+    const res = await app.inject({ method: "POST", url: "/api/v1/auth/register", payload });
+
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: expect.any(String) } });
+
+    const joined = lines.join("");
+    // Bukti error memang tercatat dan berguna: nama error, query tanpa nilai, kode penyebab.
+    const entry = lines.map((l) => JSON.parse(l)).find((l) => l.msg === "unhandled error");
+    expect(entry).toBeDefined();
+    expect(entry.err.type).toBe("DrizzleQueryError");
+    expect(entry.err.message).toContain('insert into "users"');
+    expect(entry.err.cause).toMatchObject({ code: "ECONNREFUSED" });
+    expect(entry.err).not.toHaveProperty("params");
+    // Tidak ada data pengguna di log; hash scrypt berformat "salt:hash" (hex) juga tidak boleh ada.
+    expect(joined).not.toContain(payload.email);
+    expect(joined).not.toContain(payload.name);
+    expect(joined).not.toContain(payload.password);
+    expect(joined).not.toMatch(/[0-9a-f]{16,}:[0-9a-f]{32,}/i);
+    expect(joined).not.toContain("params:");
   });
 });

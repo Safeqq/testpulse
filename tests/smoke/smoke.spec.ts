@@ -39,7 +39,9 @@ test.describe("Smoke production", { tag: "@smoke" }, () => {
   test("health endpoint menjawab 200 dengan database terhubung", async ({ request }) => {
     const response = await request.get("/api/health");
     expect(response.status()).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok" });
+    const body = await response.json();
+    expect(body.status).toBe("ok");
+    expect(["string", "object"]).toContain(typeof body.commit);
   });
 
   test("halaman masuk tampil", async ({ page }) => {

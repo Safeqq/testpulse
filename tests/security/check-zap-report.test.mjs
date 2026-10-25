@@ -55,6 +55,14 @@ describe("check-zap-report", () => {
     assert.equal(runCapture([reportFile("empty.json", [])]).code, 0);
   });
 
+  it("returns 2 when the report has no scanned sites (empty scan must not pass)", () => {
+    const path = join(dir, "no-sites.json");
+    writeFileSync(path, JSON.stringify({ site: [] }));
+    const { code, err } = runCapture([path]);
+    assert.equal(code, 2);
+    assert.match(err, /no scanned sites/);
+  });
+
   it("returns 2 for missing arguments, unreadable files and non-ZAP JSON", () => {
     assert.equal(runCapture([]).code, 2);
     assert.equal(runCapture([join(dir, "missing.json")]).code, 2);

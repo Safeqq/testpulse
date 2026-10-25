@@ -47,6 +47,8 @@ jobs:
         run: pnpm --filter @testpulse/api exec vitest run --project unit --coverage
       - name: Web unit tests (Pages Function proxy, security header parity)
         run: pnpm --filter @testpulse/web test:unit
+      - name: ZAP report gate tests
+        run: pnpm --filter @testpulse/tests test:security
       - uses: ./.github/actions/upload-allure
         if: ${{ !cancelled() }}
         with:

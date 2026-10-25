@@ -10,10 +10,14 @@ const LOGOUT = "/api/v1/auth/logout";
 const ME = "/api/v1/auth/me";
 
 test.describe("GET /api/health", () => {
-  test("200 {status:ok} dengan header keamanan", async ({ api }) => {
+  test("200 {status:ok, commit} dengan header keamanan", async ({ api }) => {
     const res = await (await api.anonymous()).get("/api/health");
     expect(res.status()).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok" });
+    // commit: SHA yang berjalan di Render, null di stack lokal/CI (tidak ada RENDER_GIT_COMMIT).
+    const body = await res.json();
+    expect(body.status).toBe("ok");
+    expect(["string", "object"]).toContain(typeof body.commit);
+    expect(Object.keys(body).sort()).toEqual(["commit", "status"]);
     expectSecurityHeaders(res);
   });
 });

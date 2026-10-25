@@ -22,8 +22,9 @@ services:
       - key: COOKIE_SECURE
         value: "true"
       # Shared secret with the Cloudflare Pages Function (same value there, as an encrypted variable).
-      # Only requests carrying it are rate-limited by the client IP from X-Forwarded-For; everything else is keyed by
-      # the direct peer, so calling the Render URL directly with forged headers cannot evade the limit. docs/deploy.md.
+      # Only requests carrying it are rate-limited by the client IP from the x-tp-client-ip header; everything else is
+      # keyed by the direct peer, so calling the Render URL directly with forged headers cannot evade the limit.
+      # See docs/deploy.md. (RENDER_GIT_COMMIT is set by Render itself and is reported by /api/health.)
       - key: PROXY_SECRET
         sync: false
       # RATE_LIMIT_MAX is intentionally unset: production uses the default of 10 per minute per IP.

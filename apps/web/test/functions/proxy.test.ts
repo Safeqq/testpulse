@@ -127,7 +127,7 @@ describe("Pages Function proxy /api/*", () => {
     expect(await upstream.text()).toBe('{"name":"Budi"}');
   });
 
-  describe("IP klien (ruling R6)", () => {
+  describe("IP klien (ruling R11)", () => {
     it("menimpa X-Forwarded-For dari klien dengan CF-Connecting-IP dan menambah X-Forwarded-Proto: https", async () => {
       const stub = stubFetch();
       await proxy(
@@ -152,6 +152,24 @@ describe("Pages Function proxy /api/*", () => {
       expect(upstream.headers.get("forwarded")).toBeNull();
     });
 
+    it("x-tp-client-ip diisi dari CF-Connecting-IP; nilai kiriman klien selalu dibuang", async () => {
+      const stub = stubFetch();
+      await proxy(
+        new Request("https://app.example/api/v1/auth/login", {
+          method: "POST",
+          headers: { "x-tp-client-ip": "6.6.6.6", "cf-connecting-ip": "203.0.113.9" },
+          body: "{}",
+        }),
+      );
+      expect(upstreamRequest(stub).headers.get("x-tp-client-ip")).toBe("203.0.113.9");
+    });
+
+    it("tanpa CF-Connecting-IP, x-tp-client-ip kiriman klien tidak diteruskan", async () => {
+      const stub = stubFetch();
+      await proxy(new Request("https://app.example/api/health", { headers: { "x-tp-client-ip": "6.6.6.6" } }));
+      expect(upstreamRequest(stub).headers.get("x-tp-client-ip")).toBeNull();
+    });
+
     it("PROXY_SECRET dikonfigurasi: x-proxy-secret ditambahkan, nilai kiriman klien diganti", async () => {
       const stub = stubFetch();
       await proxy(
@@ -164,6 +182,7 @@ describe("Pages Function proxy /api/*", () => {
       );
       const upstream = upstreamRequest(stub);
       expect(upstream.headers.get("x-proxy-secret")).toBe("rahasia-asli");
+      expect(upstream.headers.get("x-tp-client-ip")).toBe("203.0.113.9");
       expect(upstream.headers.get("x-forwarded-for")).toBe("203.0.113.9");
     });
 

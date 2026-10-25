@@ -11,7 +11,7 @@ interface Env {
   API_ORIGIN: string;
   /**
    * Rahasia bersama dengan API (env PROXY_SECRET di Render). Jika diisi, dikirim sebagai `x-proxy-secret` agar API
-   * mempercayai X-Forwarded-For dari Function ini untuk rate limit per IP (Ruling R11). Simpan sebagai secret terenkripsi.
+   * mempercayai `x-tp-client-ip` dari Function ini untuk rate limit per IP (Ruling R11). Simpan sebagai secret terenkripsi.
    */
   PROXY_SECRET?: string;
 }
@@ -39,6 +39,8 @@ const DROPPED_HEADERS = new Set([
   "forwarded",
   // Hanya Function ini yang boleh menetapkan header rahasia; nilai kiriman klien selalu dibuang.
   "x-proxy-secret",
+  // Sama: IP klien untuk rate limit hanya boleh berasal dari CF-Connecting-IP (di-set di bawah).
+  "x-tp-client-ip",
 ]);
 
 function errorResponse(message: string): Response {
@@ -52,10 +54,15 @@ function buildUpstreamHeaders(incoming: Headers, proxySecret: string | undefined
     headers.append(name, value);
   });
 
-  // Ruling R6/R11: X-Forwarded-For ditimpa dengan tepat satu entri, IP klien dari Cloudflare. API hanya mempercayainya
-  // jika request juga membawa x-proxy-secret yang benar.
+  // Ruling R11: IP klien dari Cloudflare dikirim di header khusus `x-tp-client-ip`, yang dipakai API untuk rate limit
+  // hanya jika request juga membawa x-proxy-secret yang benar. Header khusus dipilih karena X-Forwarded-For bisa
+  // ditambah atau diubah perantara (mis. Render) sebelum sampai ke API. X-Forwarded-For tetap ditimpa dengan tepat
+  // satu entri yang sama untuk log dan konsumen lain; API tidak lagi membacanya untuk kunci rate limit.
   const clientIp = incoming.get("cf-connecting-ip");
-  if (clientIp) headers.set("x-forwarded-for", clientIp);
+  if (clientIp) {
+    headers.set("x-tp-client-ip", clientIp);
+    headers.set("x-forwarded-for", clientIp);
+  }
   headers.set("x-forwarded-proto", "https");
   if (proxySecret) headers.set("x-proxy-secret", proxySecret);
   return headers;

@@ -165,6 +165,10 @@ main:focus {
   text-align: center;
 }
 
+.header-error .button {
+  margin-inline-start: var(--space-3);
+}
+
 /* Tata letak halaman */
 .app-main {
   max-width: 64rem;

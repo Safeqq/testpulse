@@ -6,12 +6,17 @@ export class AppShell {
   readonly logoutButton: Locator;
   readonly loginLink: Locator;
   readonly registerLink: Locator;
+  /** Banner "sesi belum dapat diperiksa" (status auth `error`) beserta tombol coba lagi. */
+  readonly sessionError: Locator;
+  readonly sessionRetry: Locator;
 
   constructor(private readonly page: Page) {
     this.currentUser = page.getByTestId("current-user");
     this.logoutButton = page.getByTestId("logout");
     this.loginLink = page.getByRole("banner").getByRole("link", { name: "Masuk" });
     this.registerLink = page.getByRole("banner").getByRole("link", { name: "Daftar" });
+    this.sessionError = page.getByTestId("auth-error");
+    this.sessionRetry = page.getByTestId("auth-retry");
   }
 
   async logout(): Promise<void> {

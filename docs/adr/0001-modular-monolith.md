@@ -25,7 +25,7 @@ Alternatif yang dipertimbangkan:
 
 Memakai **modular monolith**:
 
-- `apps/api`: satu proses Fastify + PostgreSQL (Drizzle ORM dan migrasi). Kode dibagi per modul (`auth`, `projects`, `invitations`; modul tahap berikut menyusul). Tiap modul punya lapisan `domain` murni (tanpa I/O), `repository`, dan `routes`. Konvensinya: modul memanggil modul lain lewat fungsi service/akses yang diekspor, bukan dengan membaca tabel modul lain secara langsung. Ini niat desain yang dijaga lewat review, belum ditegakkan tooling, dan ada pengecualian yang diketahui: repository `invitations` membaca `projects` dan `memberships` serta menambah baris `memberships` agar penerimaan undangan (cek status, tambah anggota, tandai terpakai) berjalan dalam satu transaksi atomik.
+- `apps/api`: satu proses Fastify + PostgreSQL (Drizzle ORM dan migrasi). Kode dibagi per modul (`auth`, `projects`, `invitations`; modul tahap berikut menyusul). Tiap modul punya lapisan `domain` murni (tanpa I/O), `repository`, dan `routes`. Konvensinya: modul memanggil modul lain lewat fungsi service/akses yang diekspor, bukan dengan membaca tabel modul lain secara langsung. Ini niat desain yang dijaga lewat review, belum ditegakkan tooling, dan ada pengecualian yang diketahui, dari dua jenis. (1) Transaksi atomik: repository `invitations` membaca `projects` dan `memberships` serta menambah baris `memberships` agar penerimaan undangan (cek status, tambah anggota, tandai terpakai) berjalan dalam satu transaksi. (2) Tampilan gabungan: `projects/repository.ts` (`listMembers`, `findMember`) dan `invitations/repository.ts` (`listActiveInvitations`) membaca tabel `users` milik modul `auth` langsung (join) untuk menampilkan id, nama, dan email anggota serta id dan nama pembuat undangan. Pola ini sengaja dipilih daripada memanggil `auth` per baris; yang dibaca hanya kolom tampilan, tidak pernah `password_hash`.
 - `apps/web`: React + Vite SPA, dilayani sebagai berkas statis. Browser hanya melihat satu origin; `/api/*` diteruskan ke API (nginx secara lokal, Cloudflare Pages Function di production).
 - `packages/shared`: schema Zod, tipe, enum role, dan kode error yang dipakai bersama oleh API, web, dan test.
 - Semua dalam satu monorepo pnpm.
@@ -45,6 +45,6 @@ Microservices ditolak karena menambah jaringan, deployment, dan observability ya
 **Negatif dan risiko**
 
 - Semua modul diskalakan dan di-deploy bersama; satu modul yang berat memengaruhi yang lain. Dapat diterima pada skala portfolio.
-- Disiplin batas modul hanya dijaga konvensi dan review, belum oleh tooling, dan sudah ada satu pengecualian yang disengaja (transaksi penerimaan undangan yang menyentuh tabel `projects`/`memberships`). Jika pelanggaran bertambah, dapat ditambahkan aturan lint.
+- Disiplin batas modul hanya dijaga konvensi dan review, belum oleh tooling, dan sudah ada beberapa pengecualian yang disengaja dan terdokumentasi di atas (transaksi penerimaan undangan, serta join ke `users` untuk tampilan anggota dan undangan). Jika pelanggaran bertambah, dapat ditambahkan aturan lint.
 - Render free tier tidur saat idle (cold start sekitar 30 sampai 60 detik); ini keterbatasan hosting, bukan arsitektur, dan didokumentasikan di [deploy.md](../deploy.md).
 - Jika suatu modul kelak perlu dipisah, batas modul dan kontrak HTTP yang sudah ada memudahkan ekstraksi.

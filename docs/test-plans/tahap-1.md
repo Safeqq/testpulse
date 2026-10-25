@@ -45,6 +45,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | AUTH-10 | Hashing password | Salt acak per user, verifikasi benar/salah, input rusak tidak melempar | U | [passwords.test.ts](../../apps/api/src/modules/auth/domain/passwords.test.ts) |
 | AUTH-11 | Form: password 7 karakter ditolak di klien; email terdaftar dipetakan ke error umum; `next` valid diikuti dan `next` ke luar situs diabaikan | Perilaku UI sesuai, tanpa request yang tidak perlu | E | auth.spec.ts (E2E) |
 | AUTH-12 | Halaman `/login` dan `/register` | 0 pelanggaran axe serious/critical | E | auth.spec.ts (E2E) |
+| AUTH-13 | `/auth/me` gagal sementara (503, bukan 401) | Pengguna tidak diarahkan ke `/login`; banner dengan tombol "Coba lagi" tampil; setelah dicoba ulang sesi pulih. Hanya 401 yang berarti anonim | E | auth.spec.ts (E2E, "/auth/me gagal sementara") |
 
 ### 4.2 Project dan visibilitas
 
@@ -101,16 +102,16 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | ID | Skenario | Hasil yang diharapkan | Lapisan | Test |
 |---|---|---|---|---|
 | SEC-01 | Rate limit login dan register | 10 percobaan pertama diproses, ke-11 429 `RATE_LIMITED`; hitungan login dan register terpisah | I | [security.int.test.ts](../../apps/api/test/integration/security.int.test.ts) |
-| SEC-02 | `X-Forwarded-For` palsu | Hanya dipercaya jika `x-proxy-secret` cocok; tanpa `PROXY_SECRET` diabaikan; bucket pemanggil langsung dan lewat proxy terpisah | U, I | [client-ip.test.ts](../../apps/api/src/http/client-ip.test.ts), security.int.test.ts |
+| SEC-02 | Header IP palsu (`x-tp-client-ip`, `X-Forwarded-For`) | `x-tp-client-ip` hanya dipercaya jika `x-proxy-secret` cocok; tanpa `PROXY_SECRET` diabaikan; `X-Forwarded-For` tidak pernah memengaruhi kunci; bucket pemanggil langsung dan lewat proxy terpisah | U, I | [client-ip.test.ts](../../apps/api/src/http/client-ip.test.ts), security.int.test.ts |
 | SEC-03 | CSRF | `Origin` asing pada metode yang mengubah data 403; `Origin` sama atau tanpa `Origin` diproses; `text/plain` dan form-urlencoded dengan body 400 | I, A | security.int.test.ts, auth.spec.ts |
 | SEC-04 | Header keamanan API | Helmet aktif pada respons | I, A | security.int.test.ts, auth.spec.ts |
-| SEC-05 | Log tidak membocorkan rahasia | Token undangan pada URL dan nilai `x-proxy-secret` tidak masuk log | U, I | [logging.test.ts](../../apps/api/src/http/logging.test.ts), [logging.int.test.ts](../../apps/api/test/integration/logging.int.test.ts) |
+| SEC-05 | Log tidak membocorkan rahasia | Token undangan pada URL, nilai `x-proxy-secret`, dan data pengguna/hash password dari error database (params query) tidak masuk log; error DB tetap tercatat (nama, query tanpa nilai, kode penyebab) dan respons 500 generik | U, I | [logging.test.ts](../../apps/api/src/http/logging.test.ts), [logging.int.test.ts](../../apps/api/test/integration/logging.int.test.ts) |
 | SEC-06 | Bentuk error standar | Kode dan pesan sesuai; error tak terduga 500 tanpa detail internal; rute tak dikenal 404 | U, I | [errors.test.ts](../../apps/api/src/http/errors.test.ts), [health.int.test.ts](../../apps/api/test/integration/health.int.test.ts) |
 | SEC-07 | Paritas header nginx dan Cloudflare Pages | Empat header sama dengan nilai sama persis | U | [headers.test.ts](../../apps/web/test/functions/headers.test.ts) |
-| SEC-08 | Pages Function proxy | Meneruskan method/path/body/cookie; POST dan DELETE tanpa body diteruskan dengan body null; `X-Forwarded-For` klien ditimpa; secret klien diganti; header `cf-*` tidak diteruskan; upstream gagal ditangani | U | [proxy.test.ts](../../apps/web/test/functions/proxy.test.ts) |
-| SEC-09 | ZAP baseline | 0 temuan High; logika gate sendiri diuji | CI | [check-zap-report.mjs](../../tests/security/check-zap-report.mjs), [check-zap-report.test.mjs](../../tests/security/check-zap-report.test.mjs), [ci.yml](../../.github/workflows/ci.yml) |
-| SEC-10 | Kesehatan layanan | `/api/health` 200 saat DB terjangkau, 503 saat tidak; migrasi membuat semua tabel | I, A, S | health.int.test.ts, auth.spec.ts, [smoke.spec.ts](../../tests/smoke/smoke.spec.ts) |
-| SEC-11 | Konfigurasi | Default env, validasi `DATABASE_URL`/`APP_ORIGIN`/`PORT`, `PROXY_SECRET` opsional | U | [config.test.ts](../../apps/api/src/config.test.ts) |
+| SEC-08 | Pages Function proxy | Meneruskan method/path/body/cookie; POST dan DELETE tanpa body diteruskan dengan body null; `X-Forwarded-For` dan `x-tp-client-ip` klien ditimpa/dibuang (IP dari `CF-Connecting-IP`); secret klien diganti; header `cf-*` tidak diteruskan; upstream gagal ditangani | U | [proxy.test.ts](../../apps/web/test/functions/proxy.test.ts) |
+| SEC-09 | ZAP baseline | 0 temuan High; laporan tanpa site (scan tidak mencapai target) gagal; logika gate sendiri diuji (di unit job CI) | CI | [check-zap-report.mjs](../../tests/security/check-zap-report.mjs), [check-zap-report.test.mjs](../../tests/security/check-zap-report.test.mjs), [ci.yml](../../.github/workflows/ci.yml) |
+| SEC-10 | Kesehatan layanan | `/api/health` 200 `{status:"ok", commit}` saat DB terjangkau (commit = revisi yang berjalan, dipakai gate deploy), 503 saat tidak; migrasi membuat semua tabel | I, A, S | health.int.test.ts, auth.spec.ts, [smoke.spec.ts](../../tests/smoke/smoke.spec.ts) |
+| SEC-11 | Konfigurasi | Default env, validasi `DATABASE_URL`/`APP_ORIGIN`/`PORT`; `APP_ORIGIN` dinormalisasi (garis miring akhir dibuang) dan ditolak jika memuat path/query/hash/skema non-http; `PROXY_SECRET` dan `RENDER_GIT_COMMIT` opsional | U | [config.test.ts](../../apps/api/src/config.test.ts) |
 
 ### 4.6 Kontrak dan smoke production
 
@@ -131,4 +132,4 @@ Perintah lengkap per lapisan ada di [README](../../README.md#menjalankan-test-pe
 | Test E2E flaky karena 3 browser dan paralelisme | Data independen per test, `retries: 2` di CI dengan penandaan flaky, trace disimpan saat gagal, worker dibatasi |
 | Rate limit mengganggu suite paralel | Stack test memakai `RATE_LIMIT_MAX=1000`; perilaku 429 dibuktikan terpisah di integration test |
 | Perbedaan perilaku Cloudflare vs nginx | Logika proxy dan paritas header diuji sebagai unit; smoke test production sebagai jaring terakhir |
-| Cold start Render membuat smoke test lambat atau gagal | Deploy menunggu health production sebelum smoke test dijalankan |
+| Cold start Render membuat smoke test lambat atau gagal | Deploy menunggu API revisi baru melaporkan commit yang sedang di-deploy (bukan sekadar 200 dari instance lama) dan memverifikasi lagi lewat Pages Function sebelum smoke test dijalankan |

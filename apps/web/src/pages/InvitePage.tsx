@@ -101,7 +101,7 @@ export function InvitePage() {
           <button
             type="button"
             className="button button-primary button-block"
-            disabled={status === "loading" || accepting}
+            disabled={status === "loading" || status === "error" || accepting}
             onClick={() => void accept()}
             data-testid="invite-accept"
           >

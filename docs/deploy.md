@@ -7,7 +7,7 @@ Panduan berurutan untuk menayangkan TestPulse di internet memakai layanan gratis
 | Database | Neon (Postgres) | Menyimpan data. Migrasi berjalan otomatis saat API menyala. |
 | API | Render (Docker, free web service) | Menjalankan `apps/api`. Tidur setelah ±15 menit tanpa trafik; bangun lagi dalam ±30-60 detik. |
 | Web | Cloudflare Pages | Menyajikan `apps/web` dan **Pages Function** yang meneruskan `/api/*` ke Render, sehingga browser hanya melihat satu origin (cookie sesi aman dan first-party). |
-| Otomatisasi | GitHub Actions (`deploy.yml`) | Setelah CI hijau di `main`: deploy API, deploy web, tunggu sehat, jalankan smoke test. |
+| Otomatisasi | GitHub Actions (`deploy.yml`) | Setelah CI hijau di `main`: picu deploy API, tunggu sampai API **revisi baru** melayani trafik, deploy web, verifikasi lewat Pages Function, jalankan smoke test. |
 
 ```
 Browser -> https://testpulse.pages.dev  (Cloudflare Pages)
@@ -19,7 +19,7 @@ Jangan pernah menempelkan password, token, atau connection string ke file di rep
 
 Nama yang dipakai di panduan ini (boleh diganti, tetapi catat penggantinya):
 
-- Project Neon dan database: `testpulse`
+- Project Neon: `testpulse`. Nama database mengikuti bawaan Neon (`neondb`, seperti di connection string Langkah 1); tidak perlu diganti.
 - Project Cloudflare Pages: `testpulse` (jangan ganti: nama ini tertulis di `deploy.yml`)
 - Service Render: `testpulse-api` (dari `render.yaml`)
 
@@ -85,19 +85,19 @@ Project harus ada sebelum workflow bisa men-deploy ke dalamnya.
 3. Pilih repo dan branch `main`. Render membaca `render.yaml` dan menampilkan service `testpulse-api` (plan **Free**, runtime Docker).
 4. Render meminta nilai variabel yang bertanda `sync: false`:
    - `DATABASE_URL`: connection string Neon dari Langkah 1.
-   - `APP_ORIGIN`: URL web dari Langkah 2, tanpa garis miring di akhir, mis. `https://testpulse.pages.dev`. Nilai ini harus **persis** sama dengan origin yang dilihat browser, karena API menolak (403) request ubah-data dari origin lain.
+   - `APP_ORIGIN`: URL web dari Langkah 2, mis. `https://testpulse.pages.dev`. Nilai ini harus **persis** sama dengan origin yang dilihat browser, karena API menolak (403) request ubah-data dari origin lain. API memvalidasinya saat menyala: satu garis miring di akhir dibuang otomatis, tetapi path (`/app`), query, hash, atau skema selain `http(s)` membuat API gagal start dengan pesan jelas di Logs.
    - `PROXY_SECRET`: nilai acak dari langkah 1.
 5. Klik **Apply** / **Deploy Blueprint**. Build pertama memakan beberapa menit.
 
 Variabel lain sudah terisi dari `render.yaml`: `COOKIE_SECURE=true`, dan `RATE_LIMIT_MAX` sengaja tidak diisi (default 10 percobaan login/daftar per menit per IP).
 
 **Cek:**
-- Tab **Logs** berakhir dengan baris seperti `Server listening at http://0.0.0.0:3000` dan status service **Live**.
-- Salin URL service (mis. `https://testpulse-api.onrender.com`; bisa berbeda jika nama sudah terpakai), lalu:
+- Tab **Logs** berakhir dengan baris seperti `Server listening at http://0.0.0.0:10000` dan status service **Live**. Port di baris itu diisi Render lewat variabel `PORT` (biasanya `10000`; default `3000` hanya berlaku di lokal), jadi angkanya tidak harus `3000`.
+- Salin URL service (mis. `https://testpulse-api.onrender.com`; bisa berbeda jika nama sudah terpakai). URL ini juga dipakai sebagai `API_ORIGIN` (Langkah 4) dan secret `RENDER_API_URL` (Langkah 7). Lalu:
   ```
   curl https://testpulse-api.onrender.com/api/health
   ```
-  Hasil yang benar: `{"status":"ok"}`. Request pertama setelah service tidur bisa lambat (±1 menit). Jika `{"status":"error"}` (503), `DATABASE_URL` salah: perbaiki di **Environment** lalu deploy ulang.
+  Hasil yang benar: `{"status":"ok","commit":"<SHA commit yang sedang berjalan>"}`. Field `commit` (dari `RENDER_GIT_COMMIT`) dipakai workflow deploy untuk memastikan revisi baru benar-benar aktif. Request pertama setelah service tidur bisa lambat (±1 menit). Jika `{"status":"error"}` (503), `DATABASE_URL` salah: perbaiki di **Environment** lalu deploy ulang.
 
 ---
 
@@ -131,11 +131,12 @@ Variabel baru berlaku mulai deploy berikutnya (Langkah 8). Jika `API_ORIGIN` kos
 
 ## Langkah 7. GitHub: isi Secrets
 
-Repo -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret**. Buat ketujuh secret ini (nama harus persis):
+Repo -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret**. Buat kedelapan secret ini (nama harus persis):
 
 | Nama | Isi |
 | --- | --- |
 | `RENDER_DEPLOY_HOOK_URL` | URL Deploy Hook (Langkah 5) |
+| `RENDER_API_URL` | URL service Render dari Langkah 3, tanpa garis miring di akhir dan tanpa `/api`, mis. `https://testpulse-api.onrender.com`. Dipakai workflow untuk menunggu revisi API baru langsung ke Render, sebelum web di-deploy |
 | `CLOUDFLARE_API_TOKEN` | Token Pages:Edit (Langkah 6) |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID (Langkah 6) |
 | `PRODUCTION_URL` | URL web, tanpa garis miring di akhir, mis. `https://testpulse.pages.dev` |
@@ -145,7 +146,7 @@ Repo -> **Settings** -> **Secrets and variables** -> **Actions** -> **New reposi
 
 Alternatif dengan GitHub CLI (nilai diketik di prompt, tidak masuk riwayat shell): `gh secret set NAMA_SECRET`.
 
-**Cek:** halaman Secrets menampilkan tujuh nama di atas.
+**Cek:** halaman Secrets menampilkan delapan nama di atas.
 
 Akun smoke belum ada di production; akan dibuat pada Langkah 9 memakai email dan password yang sama dengan secret di atas.
 
@@ -156,29 +157,31 @@ Akun smoke belum ada di production; akan dibuat pada Langkah 9 memakai email dan
 Rilis pertama tidak bisa hijau penuh karena akun smoke belum ada. Itu normal; tujuan putaran ini adalah memasang web dan memastikan API sehat.
 
 1. Repo -> **Actions** -> workflow **Deploy** -> **Run workflow** (branch `main`). (Setelah ini, workflow berjalan otomatis setiap CI di `main` hijau.)
-2. Pantau: langkah yang berurutan adalah memicu Render, build web, deploy ke Cloudflare Pages, menunggu `/api/health`, lalu smoke test. Dengan GitHub CLI: `gh run watch`.
+2. Pantau. Urutan langkahnya: memicu Render, build web, **Wait for the new API revision** (menunggu `/api/health` di URL Render melaporkan commit yang sedang di-deploy; Render tetap melayani instance lama sampai yang baru sehat, jadi 200 saja tidak cukup), deploy ke Cloudflare Pages, **Verify production through the Pages Function** (health lewat `PRODUCTION_URL`, commit harus sama), lalu smoke test. Dengan GitHub CLI: `gh run watch`.
 
-Hasil yang diharapkan pada putaran ini: semua langkah hijau sampai **Wait for production health**; smoke test **health** dan **halaman masuk** lulus, sedangkan **akun smoke berhasil masuk** dan **project publik terbuka** gagal (akun dan project belum ada).
+Hasil yang diharapkan pada putaran ini: semua langkah hijau sampai **Verify production through the Pages Function**; smoke test **health** dan **halaman masuk** lulus, sedangkan **akun smoke berhasil masuk** dan **project publik terbuka** gagal (akun dan project belum ada).
 
 **Cek manual:**
 ```
-curl https://testpulse.pages.dev/api/health          # {"status":"ok"} lewat Pages Function
+curl https://testpulse.pages.dev/api/health          # {"status":"ok","commit":"<SHA>"} lewat Pages Function
 curl -I https://testpulse.pages.dev/                 # memuat 4 header: Content-Security-Policy, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 ```
 Buka `https://testpulse.pages.dev` di browser: halaman masuk TestPulse tampil.
 
-Jika langkah **Wait for production health** habis waktu (10 menit): cek Logs di Render, nilai `API_ORIGIN` (Langkah 4), dan `DATABASE_URL` (Langkah 3). Lihat tabel masalah umum di bawah.
+Jika **Wait for the new API revision** habis waktu (10 menit): cek Logs dan status deploy di Render (build gagal? service masih menjalankan commit lama?), `RENDER_API_URL` (Langkah 7), dan `DATABASE_URL` (Langkah 3). Jika **Verify production through the Pages Function** yang habis waktu: cek `API_ORIGIN` dan `PROXY_SECRET` di Pages (Langkah 4). Lihat tabel masalah umum di bawah.
 
 ---
 
 ## Langkah 9. Daftarkan akun smoke dan buat project publik
 
-Dilakukan satu kali, lewat web production (bukan lewat script):
+Dilakukan satu kali, lewat web production (bukan lewat script). Pemilik project showcase dan akun smoke sengaja dua akun berbeda: kredensial akun smoke tersimpan di GitHub Secrets, jadi jangan sampai ia memiliki (admin) project yang tampil di portfolio.
 
-1. Buka `https://testpulse.pages.dev/register`. Daftar dengan **email dan password yang sama persis** dengan `SMOKE_EMAIL` / `SMOKE_PASSWORD`. Nama bebas (mis. `Smoke`).
-2. Buat project baru bernama `TestPulse`. Slug otomatis menjadi `testpulse` (harus sama dengan `SMOKE_PUBLIC_SLUG`).
+1. Pakai akun **pribadi** Anda (daftar di `https://testpulse.pages.dev/register` jika belum punya). Ini bukan akun smoke.
+2. Dengan akun pribadi itu buat project baru bernama `TestPulse`. Slug otomatis menjadi `testpulse` (harus sama dengan `SMOKE_PUBLIC_SLUG`).
 3. Project baru berstatus **privat**. Buka pengaturan project (**Settings**) dan ubah visibilitas menjadi **Publik**.
-4. **Cek:** buka `https://testpulse.pages.dev/p/testpulse` di jendela incognito (tanpa login). Lencana "publik" tampil.
+4. Keluar, lalu daftar akun smoke di `https://testpulse.pages.dev/register` dengan **email dan password yang sama persis** dengan `SMOKE_EMAIL` / `SMOKE_PASSWORD`. Nama bebas (mis. `Smoke`).
+5. Akun smoke **tidak perlu menjadi anggota** project mana pun, jadi jangan diundang: smoke hanya login, lalu membuka project publik sebagai pengunjung anonim (konteks browser baru tanpa cookie). Jika Anda tetap ingin akun smoke menjadi anggota, beri role `viewer`, bukan `admin` atau `tester`.
+6. **Cek:** buka `https://testpulse.pages.dev/p/testpulse` di jendela incognito (tanpa login). Lencana "publik" tampil.
 
 Smoke test hanya membaca: ia tidak membuat atau menghapus data. Satu-satunya efek sampingnya adalah baris sesi yang dibuat setiap kali login (kedaluwarsa dalam 14 hari).
 
@@ -186,10 +189,10 @@ Smoke test hanya membaca: ia tidak membuat atau menghapus data. Satu-satunya efe
 
 ## Langkah 10. Rate limit per IP dan `PROXY_SECRET`
 
-Batas 10 percobaan login/daftar per menit dihitung per IP klien. Di belakang proxy API tidak bisa langsung mempercayai `X-Forwarded-For`, karena siapa pun yang menembak URL Render (`*.onrender.com`) langsung bisa menulis header itu sesuka hati dan mengganti "IP"-nya setiap request. Karena itu:
+Batas 10 percobaan login/daftar per menit dihitung per IP klien. Di belakang proxy API tidak bisa langsung mempercayai header IP, karena siapa pun yang menembak URL Render (`*.onrender.com`) langsung bisa menulis header itu sesuka hati dan mengganti "IP"-nya setiap request. Karena itu:
 
-1. Pages Function menimpa `X-Forwarded-For` dengan tepat satu IP klien (dari `CF-Connecting-IP`; kiriman klien dibuang) dan menambahkan header `x-proxy-secret` berisi `PROXY_SECRET`. Header `x-proxy-secret` kiriman klien selalu dibuang.
-2. API (tanpa kepercayaan proxy) memakai IP dari `X-Forwarded-For` **hanya** jika `x-proxy-secret` cocok dengan `PROXY_SECRET` miliknya. Selain itu kunci rate limit adalah peer langsung (Render), sehingga pemanggil langsung dengan header palsu semuanya berbagi satu hitungan. API tidak menolak request tanpa secret (mis. `/api/health`), hanya tidak mempercayai header IP-nya.
+1. Pages Function mengirim IP klien (dari `CF-Connecting-IP`) di header khusus `x-tp-client-ip` dan menambahkan header `x-proxy-secret` berisi `PROXY_SECRET`. Kedua header kiriman klien selalu dibuang. (`X-Forwarded-For` tetap ditimpa dengan IP yang sama untuk log, tetapi API tidak membacanya untuk rate limit, karena perantara seperti Render bisa menambah atau mengubahnya.)
+2. API (tanpa kepercayaan proxy) memakai `x-tp-client-ip` **hanya** jika `x-proxy-secret` cocok dengan `PROXY_SECRET` miliknya dan nilainya tepat satu IP tidak kosong. Selain itu kunci rate limit adalah peer langsung (Render), sehingga pemanggil langsung dengan header palsu semuanya berbagi satu hitungan. API tidak menolak request tanpa secret (mis. `/api/health`), hanya tidak mempercayai header IP-nya.
 
 Verifikasi setelah deploy (Langkah 8 atau 11 selesai):
 
@@ -198,11 +201,11 @@ Verifikasi setelah deploy (Langkah 8 atau 11 selesai):
 3. **Pemalsuan header tidak berguna.** Panggil Render langsung dengan IP palsu yang berganti-ganti (ganti URL dengan URL Render Anda):
    ```
    for i in $(seq 1 12); do curl -s -o /dev/null -w "%{http_code}\n" -X POST \
-     -H "content-type: application/json" -H "x-forwarded-for: 198.51.100.$i" \
+     -H "content-type: application/json" -H "x-tp-client-ip: 198.51.100.$i" -H "x-forwarded-for: 198.51.100.$i" \
      -d '{"email":"x@example.test","password":"salah-salah"}' \
      https://testpulse-api.onrender.com/api/v1/auth/login; done
    ```
-   Hasil yang benar: `401` sepuluh kali lalu `429` (semua berbagi satu bucket walau IP palsunya berbeda). Jika semua `401`, API masih mempercayai `X-Forwarded-For` tanpa secret dan ada yang salah (periksa versi yang ter-deploy).
+   Hasil yang benar: `401` sepuluh kali lalu `429` (semua berbagi satu bucket walau IP palsunya berbeda). Jika semua `401`, API masih mempercayai header IP tanpa secret dan ada yang salah (periksa versi yang ter-deploy).
    Catatan: bucket ini milik peer langsung (proxy Render), jadi tunggu satu menit sebelum menguji lagi dan jangan jalankan saat pengguna lain sedang masuk.
 
 Memutar rahasia: buat nilai baru, ubah di Render (**Environment**) dan di Cloudflare Pages (**Variables and Secrets**), lalu deploy ulang keduanya (Run workflow). Selama nilai berbeda, rate limit terkunci pada satu bucket bersama (gagal aman) tetapi aplikasi tetap berjalan.
@@ -224,17 +227,19 @@ Mulai sekarang, setiap push ke `main` yang membuat CI hijau men-deploy otomatis.
 | Gejala | Penyebab dan solusi |
 | --- | --- |
 | `Check required secrets` gagal | Ada secret yang belum diisi atau salah ketik namanya (Langkah 7). |
-| `Wait for production health` habis waktu | Render gagal build/jalan (lihat Logs), `DATABASE_URL` salah (503 `{"status":"error"}`), atau `API_ORIGIN` kosong/salah di Pages (502). Perbaiki lalu **Run workflow**. |
+| `Wait for the new API revision` habis waktu | Render gagal build/jalan (lihat Logs dan status deploy), masih menjalankan commit lama, `DATABASE_URL` salah (503 `{"status":"error"}`), atau `RENDER_API_URL` salah. Pesan error menyebut commit yang terakhir terlihat. Perbaiki lalu **Run workflow**. |
+| `Verify production through the Pages Function` habis waktu | `API_ORIGIN` kosong/salah di Pages (502), `API_ORIGIN` menunjuk service lain (commit tidak sama), atau Pages belum selesai propagasi. Perbaiki lalu **Run workflow**. |
+| API tidak mau start; Logs Render menyebut `APP_ORIGIN harus berupa origin saja` | `APP_ORIGIN` memuat path, query, hash, atau skema selain `http(s)` (Langkah 3). Isi hanya origin, mis. `https://testpulse.pages.dev`. |
 | `/api/health` 502 dengan "Layanan API belum dikonfigurasi" | `API_ORIGIN` belum diisi pada lingkungan **Production** project Pages; isi lalu deploy ulang. |
 | `/api/health` 502 "API tidak dapat dihubungi" | Render sedang tidur/bangun atau mati. Tunggu ±1 menit dan coba lagi. |
-| Daftar/masuk dari web menghasilkan 403 `FORBIDDEN` | `APP_ORIGIN` di Render tidak sama persis dengan URL web (perhatikan `https`, tanpa garis miring di akhir). |
+| Daftar/masuk dari web menghasilkan 403 `FORBIDDEN` | `APP_ORIGIN` di Render tidak sama persis dengan URL web (perhatikan `https` dan nama host; garis miring di akhir sudah ditoleransi). |
 | Login berhasil tetapi langsung dianggap keluar | `COOKIE_SECURE=true` butuh HTTPS; pastikan memakai URL `https://` dan `API_ORIGIN` mengarah ke Render. |
 | Semua orang kena 429 bersamaan | `PROXY_SECRET` di Pages dan Render tidak sama, atau belum terisi / belum di-deploy ulang (Langkah 10). |
 | Request pertama setelah lama sepi lambat atau 503 sekali | Cold start Render (±30-60 detik) dan Neon yang tidur (beberapa detik). Normal pada paket gratis; ulangi. |
 | Deploy Cloudflare gagal `Authentication error` | Token salah/kedaluwarsa atau tanpa izin Pages:Edit, atau `CLOUDFLARE_ACCOUNT_ID` salah (Langkah 6). |
 | Smoke `akun smoke berhasil masuk` gagal | Email/password akun di production tidak sama dengan `SMOKE_EMAIL`/`SMOKE_PASSWORD` (Langkah 9). |
-| Smoke `project publik terbuka` gagal | Project belum publik atau slug-nya bukan `SMOKE_PUBLIC_SLUG` (Langkah 9). |
+| Smoke `project publik terbuka` gagal | Project belum publik atau slug-nya bukan `SMOKE_PUBLIC_SLUG` (Langkah 9). Akun smoke tidak perlu menjadi anggota. |
 
 ## Daftar rahasia (ringkasan)
 
-Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (ketujuh nama di Langkah 7). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.
+Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (kedelapan nama di Langkah 7). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.

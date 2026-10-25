@@ -43,6 +43,6 @@ Opsi 1 ditolak karena token terbaca JavaScript sehingga XSS berarti pengambilali
 **Negatif dan risiko**
 
 - Setiap request terautentikasi membaca database; dapat diterima pada skala ini, dan dapat di-cache bila perlu.
-- Arsitektur satu-origin bergantung pada proxy. Proxy harus meneruskan cookie dan IP klien dengan benar; karena IP klien dipakai untuk rate limit, API hanya memercayai `X-Forwarded-For` bila header rahasia bersama `x-proxy-secret` cocok. Proxy diuji sebagai unit (`apps/web/test/functions`) dan header keamanannya dijaga paritasnya dengan nginx.
+- Arsitektur satu-origin bergantung pada proxy. Proxy harus meneruskan cookie dan IP klien dengan benar; karena IP klien dipakai untuk rate limit, API hanya memercayai header `x-tp-client-ip` (diisi Function dari `CF-Connecting-IP`) bila header rahasia bersama `x-proxy-secret` cocok. Proxy diuji sebagai unit (`apps/web/test/functions`) dan header keamanannya dijaga paritasnya dengan nginx.
 - Cookie tidak cocok untuk klien non-browser. Tahap 2 dan 6 perlu mekanisme token tambahan (project token, bearer).
 - Tidak ada pembatasan jumlah sesi per user dan tidak ada "keluar dari semua perangkat" di tahap 1; ditunda sampai ada kebutuhan.

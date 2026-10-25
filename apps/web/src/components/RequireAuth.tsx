@@ -5,6 +5,7 @@ import { loginPathFor } from "../lib/navigation";
 
 /**
  * Melindungi halaman: anonim diarahkan ke `/login?next=<path>` (hanya jalur internal). Bisa dipakai sebagai pembungkus atau route layout.
+ * Gagal memeriksa sesi (bukan 401) tidak dianggap anonim: halaman menunggu dan Layout menawarkan coba lagi.
  * Jika user keluar saat berada di halaman ini, tujuannya `/login` polos (tidak ada halaman untuk kembali setelah logout).
  */
 export function RequireAuth({ children }: { children?: ReactNode }) {
@@ -18,6 +19,14 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
     return (
       <p role="status" className="loading">
         Memuat…
+      </p>
+    );
+  }
+  if (status === "error") {
+    // Sesi belum dapat dipastikan: jangan arahkan ke /login (pengguna mungkin masih masuk). Tombol coba lagi ada di Layout.
+    return (
+      <p role="status" className="loading" data-testid="auth-pending">
+        Sesi Anda belum dapat diperiksa.
       </p>
     );
   }

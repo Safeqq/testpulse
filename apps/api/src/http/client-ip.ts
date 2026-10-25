@@ -5,6 +5,9 @@ import type { AppConfig } from "../config.js";
 /** Header yang ditambahkan Pages Function dengan nilai PROXY_SECRET (Ruling R11). */
 export const PROXY_SECRET_HEADER = "x-proxy-secret";
 
+/** Header berisi IP klien dari CF-Connecting-IP; dipercaya hanya bersama `x-proxy-secret` yang cocok (Ruling R11). */
+export const CLIENT_IP_HEADER = "x-tp-client-ip";
+
 type KeyedRequest = Pick<FastifyRequest, "headers" | "ip">;
 
 /** Perbandingan waktu-konstan; di-hash dulu agar panjang berbeda tidak membocorkan apa pun atau melempar error. */
@@ -17,16 +20,20 @@ function secretMatches(provided: string | string[] | undefined, expected: string
 /**
  * Kunci rate limit (register & login).
  * - `PROXY_SECRET` terisi dan header `x-proxy-secret` cocok: request berasal dari Pages Function, yang menetapkan
- *   `X-Forwarded-For` tepat satu entri dari CF-Connecting-IP. Kuncinya entri pertama header itu.
- * - Selain itu (secret tidak diisi, header kosong atau salah): `req.ip`, yaitu peer langsung. Fastify berjalan tanpa
- *   kepercayaan proxy, jadi `X-Forwarded-For` dari pemanggil langsung tidak pernah memengaruhi kunci.
+ *   `x-tp-client-ip` dari CF-Connecting-IP (dan membuang kiriman klien). Kuncinya nilai header itu, asal tepat satu nilai
+ *   tidak kosong. `X-Forwarded-For` tidak pernah dibaca, jadi perantara (Render) yang menambah atau mengubahnya tidak
+ *   memengaruhi kunci.
+ * - Selain itu (secret tidak diisi, header kosong atau salah, `x-tp-client-ip` kosong/ganda): `req.ip`, yaitu peer
+ *   langsung. Fastify berjalan tanpa kepercayaan proxy, jadi header klien dari pemanggil langsung tidak pernah
+ *   memengaruhi kunci.
  */
 export function rateLimitKey(config: Pick<AppConfig, "proxySecret">): (req: KeyedRequest) => string {
   return (req) => {
     if (config.proxySecret && secretMatches(req.headers[PROXY_SECRET_HEADER], config.proxySecret)) {
-      const forwarded = req.headers["x-forwarded-for"];
-      const first = typeof forwarded === "string" ? forwarded.split(",")[0]?.trim() : undefined;
-      if (first) return first;
+      const provided = req.headers[CLIENT_IP_HEADER];
+      // Header ganda diterima Node sebagai "a, b" (atau array): ambigu, jadi tidak dipercaya.
+      const clientIp = typeof provided === "string" ? provided.trim() : "";
+      if (clientIp && !clientIp.includes(",")) return clientIp;
     }
     return req.ip;
   };

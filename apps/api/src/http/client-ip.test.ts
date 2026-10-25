@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PROXY_SECRET_HEADER, rateLimitKey } from "./client-ip.js";
+import { CLIENT_IP_HEADER, PROXY_SECRET_HEADER, rateLimitKey } from "./client-ip.js";
 
 const SECRET = "s3cret-value-for-tests";
 const peer = "10.0.0.7";
@@ -9,15 +9,29 @@ function keyFor(config: { proxySecret?: string }, headers: Record<string, string
 }
 
 describe("rateLimitKey", () => {
-  it("secret cocok: memakai entri pertama X-Forwarded-For (dipangkas)", () => {
-    const headers = { [PROXY_SECRET_HEADER]: SECRET, "x-forwarded-for": " 203.0.113.9 , 198.51.100.1" };
+  it("secret cocok: memakai x-tp-client-ip (dipangkas)", () => {
+    const headers = { [PROXY_SECRET_HEADER]: SECRET, [CLIENT_IP_HEADER]: " 203.0.113.9 " };
     expect(keyFor({ proxySecret: SECRET }, headers)).toBe("203.0.113.9");
   });
 
-  it("secret cocok tetapi X-Forwarded-For kosong atau tidak ada: jatuh ke req.ip", () => {
-    expect(keyFor({ proxySecret: SECRET }, { [PROXY_SECRET_HEADER]: SECRET })).toBe(peer);
-    expect(keyFor({ proxySecret: SECRET }, { [PROXY_SECRET_HEADER]: SECRET, "x-forwarded-for": "  " })).toBe(peer);
-    expect(keyFor({ proxySecret: SECRET }, { [PROXY_SECRET_HEADER]: SECRET, "x-forwarded-for": ", 1.1.1.1" })).toBe(peer);
+  it("secret cocok: X-Forwarded-For tidak pernah dibaca, bahkan jika berbeda dari x-tp-client-ip", () => {
+    const headers = {
+      [PROXY_SECRET_HEADER]: SECRET,
+      [CLIENT_IP_HEADER]: "203.0.113.9",
+      "x-forwarded-for": "198.51.100.1, 10.1.2.3",
+    };
+    expect(keyFor({ proxySecret: SECRET }, headers)).toBe("203.0.113.9");
+  });
+
+  it.each([
+    ["tidak ada", undefined],
+    ["kosong", ""],
+    ["hanya spasi", "   "],
+    ["lebih dari satu nilai", "203.0.113.9, 198.51.100.1"],
+    ["header ganda (array)", ["203.0.113.9", "198.51.100.1"]],
+  ])("secret cocok tetapi x-tp-client-ip %s: jatuh ke req.ip (X-Forwarded-For diabaikan)", (_name, value) => {
+    const headers = { [PROXY_SECRET_HEADER]: SECRET, [CLIENT_IP_HEADER]: value, "x-forwarded-for": "6.6.6.6" };
+    expect(keyFor({ proxySecret: SECRET }, headers)).toBe(peer);
   });
 
   it.each([
@@ -27,14 +41,14 @@ describe("rateLimitKey", () => {
     ["secret salah dengan panjang sama", "x".repeat(SECRET.length)],
     ["secret lebih panjang", `${SECRET}-tambahan`],
     ["header ganda", [SECRET, SECRET]],
-  ])("%s: X-Forwarded-For diabaikan", (_name, provided) => {
-    const headers = { [PROXY_SECRET_HEADER]: provided, "x-forwarded-for": "6.6.6.6" };
+  ])("%s: x-tp-client-ip dan X-Forwarded-For diabaikan", (_name, provided) => {
+    const headers = { [PROXY_SECRET_HEADER]: provided, [CLIENT_IP_HEADER]: "6.6.6.6", "x-forwarded-for": "7.7.7.7" };
     expect(keyFor({ proxySecret: SECRET }, headers)).toBe(peer);
   });
 
-  it("PROXY_SECRET tidak dikonfigurasi: X-Forwarded-For dan header secret diabaikan", () => {
-    const headers = { [PROXY_SECRET_HEADER]: SECRET, "x-forwarded-for": "6.6.6.6" };
+  it("PROXY_SECRET tidak dikonfigurasi: x-tp-client-ip dan header secret diabaikan", () => {
+    const headers = { [PROXY_SECRET_HEADER]: SECRET, [CLIENT_IP_HEADER]: "6.6.6.6", "x-forwarded-for": "7.7.7.7" };
     expect(keyFor({}, headers)).toBe(peer);
-    expect(keyFor({}, { [PROXY_SECRET_HEADER]: "", "x-forwarded-for": "6.6.6.6" })).toBe(peer);
+    expect(keyFor({}, { [PROXY_SECRET_HEADER]: "", [CLIENT_IP_HEADER]: "6.6.6.6" })).toBe(peer);
   });
 });

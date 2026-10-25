@@ -30,17 +30,17 @@ Rencananya, mulai tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sen
 - **Contract test web dan API** dengan Pact: consumer menulis kontrak, provider memverifikasinya terhadap API dan Postgres asli.
 - **Integration test memakai Postgres asli** lewat Testcontainers, bukan mock.
 - **Keamanan sebagai gate**: OWASP ZAP baseline (gagal jika ada temuan High), `pnpm audit`, Dependabot, serta test untuk CSRF, rate limit, hash token sesi/undangan, dan penyensoran token di log.
-- **Rate limit tahan `X-Forwarded-For` palsu**: IP klien hanya dipercaya jika header rahasia bersama (`PROXY_SECRET`) dari Pages Function cocok.
+- **Rate limit tahan header IP palsu**: IP klien (header `x-tp-client-ip` dari Pages Function) hanya dipercaya jika header rahasia bersama (`PROXY_SECRET`) cocok; `X-Forwarded-For` tidak dipakai untuk kunci.
 - **Paritas header keamanan** nginx (lokal) dan Cloudflare Pages (production) dijaga oleh test, agar yang dipindai ZAP sama dengan yang di-deploy.
 - **E2E di 3 browser** (Chromium, Firefox, WebKit) dengan Page Object Model, custom fixtures, pengguna di context terpisah, dan pemeriksaan aksesibilitas axe pada halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan.
-- **CI penuh dengan Allure**: lint, typecheck, unit + coverage gate, integration, contract, API + E2E (sharding), ZAP, laporan gabungan di GitHub Pages; deploy otomatis diikuti smoke test production.
+- **CI penuh dengan Allure**: lint, typecheck, unit + coverage gate, integration, contract, API + E2E (sharding), ZAP, laporan gabungan di GitHub Pages; deploy otomatis (menunggu revisi API baru aktif, lalu deploy web) diikuti smoke test production.
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
 
 ## Roadmap
 
 | Tahap | Isi | Status |
 |---|---|---|
-| **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai (CI hijau pada run terakhir), kecuali deploy live (menunggu setup layanan hosting) |
+| **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai (status CI: lihat badge di atas), kecuali deploy live (menunggu setup layanan hosting) |
 | 2 | Dashboard hasil test, deteksi flaky, reporter CLI, project token, test performa (k6) | Direncanakan |
 | 3 | Bug tracker (bug dari test yang gagal), visual regression | Direncanakan |
 | 4 | Test case management dan test run manual, mutation testing | Direncanakan |

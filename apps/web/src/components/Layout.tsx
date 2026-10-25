@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 
 function Header() {
-  const { user, status, logout } = useAuth();
+  const { user, status, logout, retry } = useAuth();
   const navigate = useNavigate();
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
@@ -65,6 +65,14 @@ function Header() {
       <div role="alert" className={logoutError ? "header-error" : undefined}>
         {logoutError}
       </div>
+      {status === "error" ? (
+        <div role="alert" className="header-error" data-testid="auth-error">
+          Sesi Anda belum dapat diperiksa karena server tidak merespons.
+          <button type="button" className="button button-secondary" data-testid="auth-retry" onClick={retry}>
+            Coba lagi
+          </button>
+        </div>
+      ) : null}
     </header>
   );
 }

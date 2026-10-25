@@ -58,39 +58,57 @@ describe("rate limit per IP di belakang Pages Function (PROXY_SECRET, Ruling R11
     return (await attempt(app, headersFor(10))).statusCode;
   }
 
-  it("secret cocok: tiap IP klien di X-Forwarded-For punya hitungan sendiri", async () => {
+  it("secret cocok: tiap IP klien di x-tp-client-ip punya hitungan sendiri", async () => {
     const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
-    const viaProxy = (ip: string) => ({ "x-proxy-secret": SECRET, "x-forwarded-for": ip });
+    const viaProxy = (ip: string) => ({ "x-proxy-secret": SECRET, "x-tp-client-ip": ip });
 
     expect(await exhaust(app, () => viaProxy("203.0.113.10"))).toBe(429);
     // IP klien lain (lewat Function yang sama) tidak terkena batas klien pertama.
     expect((await attempt(app, viaProxy("203.0.113.11"))).statusCode).toBe(401);
   });
 
+  it("secret cocok: X-Forwarded-For (diubah perantara) tidak memengaruhi kunci", async () => {
+    const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
+    // IP klien tetap, X-Forwarded-For berganti-ganti (mis. perantara menambah hop): tetap satu bucket.
+    const sameClient = (i: number) => ({
+      "x-proxy-secret": SECRET,
+      "x-tp-client-ip": "203.0.113.30",
+      "x-forwarded-for": `198.51.100.${i + 1}, 10.0.0.1`,
+    });
+    expect(await exhaust(app, sameClient)).toBe(429);
+  });
+
   it.each([
     ["secret salah", { "x-proxy-secret": "salah" }],
     ["tanpa header secret", {}],
-  ])("%s + X-Forwarded-For berganti-ganti (pemalsuan): semua berbagi satu hitungan", async (_name, extra) => {
-    const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
-    const forged = (i: number) => ({ ...extra, "x-forwarded-for": `198.51.100.${i + 1}` });
+  ])(
+    "%s + x-tp-client-ip dan X-Forwarded-For berganti-ganti (pemalsuan): semua berbagi satu hitungan",
+    async (_name, extra) => {
+      const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
+      const forged = (i: number) => ({
+        ...extra,
+        "x-tp-client-ip": `198.51.100.${i + 1}`,
+        "x-forwarded-for": `198.51.100.${i + 1}`,
+      });
 
-    // Regresi bypass: sebelumnya IP palsu yang berganti tiap request menghindari batas 10/menit.
-    expect(await exhaust(app, forged)).toBe(429);
-    expect((await attempt(app, forged(50))).statusCode).toBe(429);
-  });
+      // Regresi bypass: IP palsu yang berganti tiap request tidak boleh menghindari batas 10/menit.
+      expect(await exhaust(app, forged)).toBe(429);
+      expect((await attempt(app, forged(50))).statusCode).toBe(429);
+    },
+  );
 
   it("secret benar tidak membuka bucket pemanggil langsung dan sebaliknya", async () => {
     const app = await createTestApp({ rateLimitMax: 10, proxySecret: SECRET });
     // Pemanggil langsung (tanpa secret) menghabiskan bucket peer.
-    expect(await exhaust(app, (i) => ({ "x-forwarded-for": `198.51.100.${i + 1}` }))).toBe(429);
+    expect(await exhaust(app, (i) => ({ "x-tp-client-ip": `198.51.100.${i + 1}` }))).toBe(429);
     // Klien sah lewat Function tetap punya bucket sendiri.
-    const viaProxy = { "x-proxy-secret": SECRET, "x-forwarded-for": "203.0.113.20" };
+    const viaProxy = { "x-proxy-secret": SECRET, "x-tp-client-ip": "203.0.113.20" };
     expect((await attempt(app, viaProxy)).statusCode).toBe(401);
   });
 
-  it("PROXY_SECRET tidak dikonfigurasi: X-Forwarded-For dan header secret diabaikan", async () => {
+  it("PROXY_SECRET tidak dikonfigurasi: x-tp-client-ip dan header secret diabaikan", async () => {
     const app = await createTestApp({ rateLimitMax: 10 });
-    const rotating = (i: number) => ({ "x-proxy-secret": SECRET, "x-forwarded-for": `198.51.100.${i + 1}` });
+    const rotating = (i: number) => ({ "x-proxy-secret": SECRET, "x-tp-client-ip": `198.51.100.${i + 1}` });
 
     expect(await exhaust(app, rotating)).toBe(429);
   });

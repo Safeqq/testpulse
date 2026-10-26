@@ -10,7 +10,7 @@
 |---|---|
 | Laporan test (Allure, live) | <https://safeqq.github.io/testpulse/> |
 | CI (GitHub Actions) | [ci.yml](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml) |
-| Demo live | Segera (belum ter-deploy; langkahnya di [docs/deploy.md](docs/deploy.md)) |
+| Demo live | <https://testpulse-d2p.pages.dev> · project publik: <https://testpulse-d2p.pages.dev/p/testpulse> (API di Render free tier: request pertama setelah idle bisa ±1 menit) |
 | Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [ADR](docs/adr/) |
 
 ## Kenapa proyek ini ada
@@ -40,7 +40,7 @@ Rencananya, mulai tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sen
 
 | Tahap | Isi | Status |
 |---|---|---|
-| **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai (status CI: lihat badge di atas), kecuali deploy live (menunggu setup layanan hosting) |
+| **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai dan live (status CI: lihat badge di atas) |
 | 2 | Dashboard hasil test, deteksi flaky, reporter CLI, project token, test performa (k6) | Direncanakan |
 | 3 | Bug tracker (bug dari test yang gagal), visual regression | Direncanakan |
 | 4 | Test case management dan test run manual, mutation testing | Direncanakan |
@@ -183,7 +183,7 @@ docker-compose.yml  render.yaml
 
 ## Deploy
 
-Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy otomatis oleh [deploy.yml](.github/workflows/deploy.yml) setelah CI hijau di `main`, diikuti smoke test. Setup satu kali ada di [docs/deploy.md](docs/deploy.md). Status saat ini: **belum ter-deploy**.
+Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy otomatis oleh [deploy.yml](.github/workflows/deploy.yml) setelah CI hijau di `main`, diikuti smoke test. Setup satu kali ada di [docs/deploy.md](docs/deploy.md). Status saat ini: **live** di <https://testpulse-d2p.pages.dev>; smoke test production hijau setelah setiap deploy.
 
 ## Keterbatasan yang diketahui
 

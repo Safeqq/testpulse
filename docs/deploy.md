@@ -67,7 +67,7 @@ Project harus ada sebelum workflow bisa men-deploy ke dalamnya.
    npx wrangler@4 login
    npx wrangler@4 pages project create testpulse --production-branch main
    ```
-   Alternatif lewat dashboard: **Workers & Pages** -> **Create** -> tab **Pages** -> **Upload assets** -> nama `testpulse` -> unggah folder berisi satu file `index.html` apa saja -> **Deploy**. Pastikan **production branch** adalah `main`.
+   Alternatif lewat dashboard: **Workers & Pages** -> **Create**. Di halaman "Create an app", **jangan** pilih opsi di kotak tengah (opsi itu membuat *Worker*, bukan *Pages project*); klik link kecil **Continue to Pages** di bawahnya -> pilih upload langsung (**Upload assets** / Direct Upload, bukan "Connect to Git") -> nama `testpulse` -> unggah file **.zip** berisi satu file `index.html` apa saja -> **Deploy**. Pastikan **production branch** adalah `main`.
 2. Catat URL project. Biasanya `https://testpulse.pages.dev`. Jika nama sudah dipakai orang lain, Cloudflare menambahkan akhiran acak; pakai URL yang tertulis di dashboard.
 
 **Cek:** **Workers & Pages** menampilkan project `testpulse`. (Membuka URL-nya sekarang boleh masih menampilkan 404; web baru dipasang pada Langkah 8.)
@@ -78,10 +78,12 @@ Project harus ada sebelum workflow bisa men-deploy ke dalamnya.
 
 1. Buat dulu `PROXY_SECRET`: string acak panjang yang akan sama persis di Render (langkah ini) dan di Cloudflare Pages (Langkah 4). Cara membuatnya:
    ```
-   openssl rand -hex 32
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
-   (atau buat 64 karakter acak dengan password manager). Simpan sementara di tempat aman; jangan dikirim lewat chat atau dimasukkan ke repo. Fungsinya dijelaskan di Langkah 10.
+   (berjalan di PowerShell, CMD, maupun Git Bash; `openssl rand -hex 32` juga bisa jika `openssl` tersedia, atau buat 64 karakter acak dengan password manager). Simpan sementara di tempat aman; jangan dikirim lewat chat atau dimasukkan ke repo. Fungsinya dijelaskan di Langkah 10.
 2. Masuk ke Render, **New** -> **Blueprint**. Hubungkan akun GitHub dan beri akses ke repo `testpulse`.
+   - **Kartu pembayaran:** Render dapat meminta kartu (kredit/debit/virtual) untuk verifikasi anti-penipuan, juga untuk plan **Free** dan juga lewat **New -> Web Service** manual. Masukkan sendiri di dashboard Render; pastikan instance type tetap **Free**.
+   - **Alternatif tanpa Blueprint:** **New** -> **Web Service** -> repo `testpulse`, branch `main`, runtime **Docker**, Dockerfile path `./apps/api/Dockerfile`, build context `.`, region **Singapore**, instance **Free**, health check path `/api/health`, auto-deploy **Off**, lalu isi env `DATABASE_URL`, `APP_ORIGIN`, `PROXY_SECRET`, dan `COOKIE_SECURE=true`. Hasilnya setara dengan `render.yaml`.
 3. Pilih repo dan branch `main`. Render membaca `render.yaml` dan menampilkan service `testpulse-api` (plan **Free**, runtime Docker).
 4. Render meminta nilai variabel yang bertanda `sync: false`:
    - `DATABASE_URL`: connection string Neon dari Langkah 1.
@@ -140,7 +142,7 @@ Repo -> **Settings** -> **Secrets and variables** -> **Actions** -> **New reposi
 | `CLOUDFLARE_API_TOKEN` | Token Pages:Edit (Langkah 6) |
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID (Langkah 6) |
 | `PRODUCTION_URL` | URL web, tanpa garis miring di akhir, mis. `https://testpulse.pages.dev` |
-| `SMOKE_EMAIL` | Email khusus akun smoke, mis. `smoke@contoh-anda.com` (tidak harus email sungguhan, tetapi pilih yang tidak dipakai orang lain) |
+| `SMOKE_EMAIL` | Email khusus akun smoke, mis. `smoke@contoh-anda.com` (tidak harus email sungguhan, tetapi pilih yang tidak dipakai orang lain dan **berbeda dari email akun pribadi Anda**, karena satu email hanya untuk satu akun; trik Gmail `nama+smoke@gmail.com` juga bisa) |
 | `SMOKE_PASSWORD` | Password kuat untuk akun smoke (8-128 karakter; buat acak, jangan pakai ulang password lain) |
 | `SMOKE_PUBLIC_SLUG` | `testpulse` |
 

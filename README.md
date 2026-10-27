@@ -22,9 +22,22 @@ TestPulse punya dua tujuan sekaligus:
 
 Rencananya, mulai tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding). Project TestPulse akan disetel publik sehingga dashboard kualitas yang nyata bisa dilihat lewat link tanpa perlu mendaftar.
 
+## Tampilan
+
+Tampilan memakai Tailwind CSS v4 dan komponen shadcn/ui dengan dua tema: **terang** (terinspirasi gaya dashboard Cloudflare: abu muda dan aksen oranye) dan **gelap** (terinspirasi gaya Neon: hampir hitam dan aksen mint). Ini inspirasi gaya, bukan penyalinan logo atau aset merek mana pun. Tema dipilih lewat tombol di header: **Sistem** (default, mengikuti pengaturan perangkat), **Terang**, atau **Gelap**; pilihan disimpan di browser dan diterapkan sebelum halaman tampil, sehingga tidak berkedip. Semua ini berjalan di bawah CSP ketat tanpa `unsafe-inline` ([ADR 0003](docs/adr/0003-tailwind-shadcn.md)).
+
+Pengunjung yang belum masuk melihat **landing page** di `/` (sebelumnya langsung dialihkan ke halaman masuk); pengguna yang sudah masuk melihat daftar project.
+
+| | Terang | Gelap |
+|---|---|---|
+| **Landing page** (`/`) | ![Landing page, tema terang](docs/images/landing-light.png) | ![Landing page, tema gelap](docs/images/landing-dark.png) |
+| **Project publik** (`/p/testpulse`) | ![Halaman project publik, tema terang](docs/images/project-light.png) | ![Halaman project publik, tema gelap](docs/images/project-dark.png) |
+
+Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/scripts/screenshots.ts`](tests/scripts/screenshots.ts): `pnpm --filter @testpulse/tests screenshots` dengan `BASE_URL=http://localhost:8080`. Data project di screenshot dibuat skrip itu di database lokal yang kosong.
+
 ## Highlights untuk recruiter
 
-- **Matriks otorisasi dibangkitkan dari data.** [`authorization-matrix.ts`](tests/api/authorization-matrix.ts) mendefinisikan 6 aktor x semua endpoint project, dan [`authorization.spec.ts`](tests/api/authorization.spec.ts) menghasilkan satu test per kombinasi. Menambah role atau endpoint berarti menambah baris data.
+- **Matriks otorisasi dibangkitkan dari data.** [`authorization-matrix.ts`](tests/api/authorization-matrix.ts) mendefinisikan 6 aktor x endpoint yang terikat project (baris tabel spec bagian 7), dan [`authorization.spec.ts`](tests/api/authorization.spec.ts) menghasilkan satu test per kombinasi. Menambah role atau endpoint berarti menambah baris data.
 - **Race condition dibuktikan, bukan diasumsikan.** Aturan "minimal satu admin" dijaga dengan `SELECT ... FOR UPDATE`; [test integrasi](apps/api/test/integration/members.int.test.ts) memaksa dua request paralel lolos pengecekan akses lebih dulu lalu memastikan hasilnya tepat satu sukses dan satu `409 LAST_ADMIN`.
 - **Tidak membocorkan keberadaan project privat.** Project privat dan yang tidak ada menghasilkan `404` yang identik (badan respons dibandingkan sama persis).
 - **Contract test web dan API** dengan Pact: consumer menulis kontrak, provider memverifikasinya terhadap API dan Postgres asli.
@@ -32,7 +45,8 @@ Rencananya, mulai tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sen
 - **Keamanan sebagai gate**: OWASP ZAP baseline (gagal jika ada temuan High), `pnpm audit`, Dependabot, serta test untuk CSRF, rate limit, hash token sesi/undangan, dan penyensoran token di log.
 - **Rate limit tahan header IP palsu**: IP klien (header `x-tp-client-ip` dari Pages Function) hanya dipercaya jika header rahasia bersama (`PROXY_SECRET`) cocok; `X-Forwarded-For` tidak dipakai untuk kunci.
 - **Paritas header keamanan** nginx (lokal) dan Cloudflare Pages (production) dijaga oleh test, agar yang dipindai ZAP sama dengan yang di-deploy.
-- **E2E di 3 browser** (Chromium, Firefox, WebKit) dengan Page Object Model, custom fixtures, pengguna di context terpisah, dan pemeriksaan aksesibilitas axe pada halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan.
+- **E2E di 3 browser** (Chromium, Firefox, WebKit) dengan Page Object Model, custom fixtures, pengguna di context terpisah, dan pemeriksaan aksesibilitas axe di **tema terang dan gelap** pada landing, halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan.
+- **Gate CSP di E2E**: setiap test gagal bila ada pelanggaran Content Security Policy (event dan console, gagal tertutup), sehingga tampilan baru terbukti tidak melonggarkan CSP production.
 - **CI penuh dengan Allure**: lint, typecheck, unit + coverage gate, integration, contract, API + E2E (sharding), ZAP, laporan gabungan di GitHub Pages; deploy otomatis (menunggu revisi API baru aktif, lalu deploy web) diikuti smoke test production.
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
 
@@ -51,7 +65,7 @@ Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec
 
 ## Arsitektur
 
-Modular monolith: satu API Fastify + PostgreSQL, SPA React, dan paket bersama untuk schema. Alasannya ada di [ADR 0001](docs/adr/0001-modular-monolith.md); model sesi di [ADR 0002](docs/adr/0002-cookie-session.md).
+Modular monolith: satu API Fastify + PostgreSQL, SPA React, dan paket bersama untuk schema. Alasannya ada di [ADR 0001](docs/adr/0001-modular-monolith.md); model sesi di [ADR 0002](docs/adr/0002-cookie-session.md); pilihan Tailwind + shadcn dan kendala CSP di [ADR 0003](docs/adr/0003-tailwind-shadcn.md).
 
 ```mermaid
 flowchart LR
@@ -66,7 +80,7 @@ flowchart LR
 | Bagian | Teknologi | Production |
 |---|---|---|
 | API | Fastify, Drizzle ORM, Zod | Render (Docker, free tier; ada cold start sekitar 30 sampai 60 detik setelah idle) |
-| Web | React, Vite, React Router | Cloudflare Pages (+ Pages Function untuk `/api/*`) |
+| Web | React, Vite, React Router, Tailwind CSS v4, shadcn/ui | Cloudflare Pages (+ Pages Function untuk `/api/*`) |
 | Database | PostgreSQL | Neon (free) |
 
 Browser hanya melihat satu origin sehingga cookie sesi `HttpOnly` aman dan first-party.
@@ -81,12 +95,12 @@ Seluruh lapisan berjalan otomatis di [CI](.github/workflows/ci.yml); detail dan 
 | Integration (Postgres asli) | Vitest + Testcontainers | `apps/api/test/integration` |
 | API + matriks otorisasi | Playwright `request` | `tests/api` |
 | Contract | Pact JS | `apps/web/test/contract`, `apps/api/test/contract` |
-| E2E (3 browser) + aksesibilitas | Playwright (POM) + axe | `tests/e2e`, `tests/pages` |
+| E2E (3 browser) + aksesibilitas dua tema + gate CSP | Playwright (POM) + axe | `tests/e2e`, `tests/pages`, `tests/support` |
 | Proxy dan paritas header | Vitest | `apps/web/test/functions` |
 | Security (0 temuan High) | OWASP ZAP, `pnpm audit`, Dependabot | `tests/security`, `.github/` |
 | Smoke production (`@smoke`, read-only) | Playwright | `tests/smoke` |
 
-Jumlah test per lapisan (snapshot, bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-9f3b7e9-2026-10-25).
+Jumlah test per lapisan (snapshot per commit `ad6b30d`, 2026-10-27; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-ad6b30d-2026-10-27).
 
 ## Menjalankan secara lokal
 
@@ -174,9 +188,10 @@ tests/
   e2e/ pages/     Playwright E2E dan Page Object Model
   smoke/          Smoke test production (@smoke)
   security/       Gate hasil ZAP
-  support/        Fixtures, klien API, factory data, helper axe
+  support/        Fixtures, klien API, factory data, helper axe, gate CSP
+  scripts/        Skrip bantu (screenshot dokumentasi), bukan test
 docs/
-  TEST_STRATEGY.md   test-plans/   adr/   deploy.md   superpowers/ (spec dan rencana)
+  TEST_STRATEGY.md   test-plans/   adr/   images/ (screenshot)   deploy.md   superpowers/ (spec dan rencana)
 .github/          Workflow CI dan deploy, Dependabot
 docker-compose.yml  render.yaml
 ```

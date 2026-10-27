@@ -10,7 +10,7 @@ const TIERS = [
   { label: "Smoke test production", detail: "Dijalankan setelah setiap deploy", width: "sm:w-[56%]", tint: "bg-primary/5" },
   { label: "OWASP ZAP", detail: "Pemindaian keamanan baseline", width: "sm:w-[63%]", tint: "bg-primary/10" },
   { label: "E2E 3 browser + aksesibilitas", detail: "Chromium, Firefox, WebKit, dua tema", width: "sm:w-[72%]", tint: "bg-primary/15" },
-  { label: "API + matriks otorisasi", detail: "Setiap role terhadap setiap endpoint", width: "sm:w-[80%]", tint: "bg-primary/20" },
+  { label: "API + matriks otorisasi", detail: "Setiap role terhadap endpoint project", width: "sm:w-[80%]", tint: "bg-primary/20" },
   { label: "Contract (Pact)", detail: "Web dan API sepakat soal bentuk data", width: "sm:w-[88%]", tint: "bg-primary/25" },
   { label: "Integration (Postgres asli)", detail: "Database sungguhan, bukan mock", width: "sm:w-[94%]", tint: "bg-primary/30" },
   { label: "Unit", detail: "Aturan domain, schema, dan utilitas", width: "sm:w-full", tint: "bg-primary/35" },
@@ -18,13 +18,13 @@ const TIERS = [
 
 // Snapshot dari docs/TEST_STRATEGY.md (bagian "Jumlah test"); jangan diubah tanpa memperbarui dokumen itu.
 const SNAPSHOT = {
-  commit: "9f3b7e9",
-  date: "25 Oktober 2026",
+  commit: "ad6b30d",
+  date: "27 Oktober 2026",
   rows: [
-    { label: "Integration", value: "122" },
+    { label: "Integration", value: "125" },
     { label: "API + otorisasi", value: "156" },
     { label: "Contract (consumer)", value: "27" },
-    { label: "E2E per browser", value: "32" },
+    { label: "E2E per browser", value: "77" },
   ],
 } as const;
 

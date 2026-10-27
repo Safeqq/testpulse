@@ -6,7 +6,9 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 
 ## 1. Lingkup
 
-**Diuji:** daftar/masuk/keluar/profil, project (buat, daftar, ubah, hapus, visibilitas), anggota dan role (termasuk aturan admin terakhir), undangan lewat link, keamanan terkait (sesi, CSRF, rate limit, kebocoran informasi), aksesibilitas halaman utama, dan deploy production.
+**Diuji:** daftar/masuk/keluar/profil, project (buat, daftar, ubah, hapus, visibilitas), anggota dan role (termasuk aturan admin terakhir), undangan lewat link, keamanan terkait (sesi, CSRF, rate limit, kebocoran informasi), aksesibilitas halaman utama di tema terang dan gelap, tema, landing page, gate CSP, dan deploy production.
+
+> **Perubahan perilaku yang disengaja (UI Tailwind + shadcn, [spec](../superpowers/specs/2026-10-26-ui-tema-landing-design.md) bagian 4):** sebelumnya pengunjung anonim yang membuka `/` dialihkan ke `/login`. Sekarang ia melihat **landing page**. Halaman terlindungi lain (`/projects/new`, `/p/:slug/settings`, dan sebagainya) tetap mengalihkan anonim ke `/login?next=...`, dan logout tetap berakhir di `/login`. Skenario PRJ-11 diperbarui sesuai perubahan ini; skenario tampilan ada di bagian 4.7.
 
 **Tidak diuji (sengaja):** lihat [TEST_STRATEGY.md bagian 6](../TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).
 
@@ -44,7 +46,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | AUTH-09 | Logout | 204, cookie dihapus, sesi lama ditolak; sesi lain milik user yang sama tetap berlaku | I, A, E | auth.int.test.ts, auth.spec.ts, auth.spec.ts (E2E) |
 | AUTH-10 | Hashing password | Salt acak per user, verifikasi benar/salah, input rusak tidak melempar | U | [passwords.test.ts](../../apps/api/src/modules/auth/domain/passwords.test.ts) |
 | AUTH-11 | Form: password 7 karakter ditolak di klien; email terdaftar dipetakan ke error umum; `next` valid diikuti dan `next` ke luar situs diabaikan | Perilaku UI sesuai, tanpa request yang tidak perlu | E | auth.spec.ts (E2E) |
-| AUTH-12 | Halaman `/login` dan `/register` | 0 pelanggaran axe serious/critical | E | auth.spec.ts (E2E) |
+| AUTH-12 | Halaman `/login` dan `/register` | 0 pelanggaran axe serious/critical di tema terang dan gelap | E | auth.spec.ts (E2E) |
 | AUTH-13 | `/auth/me` gagal sementara (503, bukan 401) | Pengguna tidak diarahkan ke `/login`; banner dengan tombol "Coba lagi" tampil; setelah dicoba ulang sesi pulih. Hanya 401 yang berarti anonim | E | auth.spec.ts (E2E, "/auth/me gagal sementara") |
 
 ### 4.2 Project dan visibilitas
@@ -61,10 +63,10 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | PRJ-08 | Project publik dijadikan privat lagi | Pengunjung anonim mendapat "tidak ditemukan" | A, E | projects.spec.ts, [team.spec.ts (E2E)](../../tests/e2e/team.spec.ts) |
 | PRJ-09 | Hapus project dengan `confirmSlug` salah/benar/hilang | 400 `CONFIRMATION_MISMATCH`/204 dan data terkait (anggota, undangan) ikut terhapus/400 `VALIDATION_ERROR` | I, A, E | projects.int.test.ts, projects.spec.ts, team.spec.ts (E2E) |
 | PRJ-10 | UI project publik | Anonim melihat ringkasan dengan penanda "hanya-baca", tanpa tautan pengaturan; project privat dan yang tidak ada tampil sama | E | projects.spec.ts (E2E) |
-| PRJ-11 | Rute terlindungi | `/` dan `/projects/new` mengarahkan anonim ke login | E | projects.spec.ts (E2E) |
-| PRJ-12 | Halaman daftar, buat, dan ringkasan | 0 pelanggaran axe serious/critical | E | projects.spec.ts (E2E) |
-| PRJ-15 | Halaman pengaturan project (admin) dan pratinjau undangan | 0 pelanggaran axe serious/critical | E | team.spec.ts (E2E) |
-| PRJ-13 | Matriks otorisasi project (6 aktor x semua endpoint) | Status dan kode error sesuai tabel spec bagian 7; urutan pengecekan: anonim selalu 401 di endpoint wajib login | A | [authorization-matrix.ts](../../tests/api/authorization-matrix.ts), authorization.spec.ts |
+| PRJ-11 | Rute terlindungi | Anonim di `/` melihat landing page (bukan dialihkan; perubahan perilaku disengaja, lihat bagian 1); `/projects/new` tetap mengarahkan anonim ke login | E | projects.spec.ts (E2E, "anonim di / melihat landing page") |
+| PRJ-12 | Halaman daftar, buat, dan ringkasan | 0 pelanggaran axe serious/critical di tema terang dan gelap | E | projects.spec.ts (E2E) |
+| PRJ-15 | Halaman pengaturan project (admin) dan pratinjau undangan | 0 pelanggaran axe serious/critical di tema terang dan gelap | E | team.spec.ts (E2E) |
+| PRJ-13 | Matriks otorisasi project (6 aktor x endpoint yang terikat project, baris tabel spec bagian 7) | Status dan kode error sesuai tabel spec bagian 7; urutan pengecekan: anonim selalu 401 di endpoint wajib login | A | [authorization-matrix.ts](../../tests/api/authorization-matrix.ts), authorization.spec.ts |
 | PRJ-14 | Keputusan akses (aksi x role x visibilitas) | Sesuai urutan hak admin > tester > viewer; anggota di project publik memakai izin rolenya | U | permissions.test.ts |
 
 ### 4.3 Anggota, role, dan admin terakhir
@@ -120,6 +122,25 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | CON-01 | Web (consumer) mendefinisikan interaksi untuk auth, projects, members, invitations, termasuk jalur error utama | Pact tertulis | C | [auth.pact.test.ts](../../apps/web/test/contract/auth.pact.test.ts), projects.pact.test.ts, members.pact.test.ts, invitations.pact.test.ts |
 | CON-02 | API (provider) memverifikasi pact dengan state yang disiapkan di DB asli | Semua interaksi terpenuhi | C | [provider.pact.test.ts](../../apps/api/test/contract/provider.pact.test.ts), [states.ts](../../apps/api/test/contract/states.ts) |
 | SMK-01 | Setelah deploy: health, halaman masuk, login akun smoke, project publik terbuka tanpa login | Semua hijau; hanya membaca | S | smoke.spec.ts |
+
+### 4.7 Tampilan: tema, landing page, dan CSP
+
+Ditambahkan oleh tahap UI Tailwind + shadcn ([spec](../superpowers/specs/2026-10-26-ui-tema-landing-design.md), bagian 3, 6, dan 7; keputusan di [ADR 0003](../adr/0003-tailwind-shadcn.md)). Cara kerja helper dan gate dijelaskan di [TEST_STRATEGY.md bagian 2.1](../TEST_STRATEGY.md#21-tema-gate-csp-dan-landing-page).
+
+| ID | Skenario | Hasil yang diharapkan | Lapisan | Test |
+|---|---|---|---|---|
+| UI-01 | Pilihan tema "Sistem" dan skema warna yang diemulasikan | Gelap menghasilkan `<html class="dark">`, terang tanpa kelas; berubah langsung saat emulasi berubah tanpa reload | E | [theme.spec.ts](../../tests/e2e/theme.spec.ts) |
+| UI-02 | Memilih Terang atau Gelap lewat `ThemeToggle` | Pilihan menang atas sistem dan tersimpan (`tp-theme`) setelah reload; kembali ke Sistem mengikuti emulasi lagi | E | theme.spec.ts |
+| UI-03 | Tanpa kedip | Kelas `dark` sudah terpasang sebelum bundle React dimuat (`theme-init.js` sinkron), juga untuk pilihan tersimpan | E, U | theme.spec.ts, [theme-init.test.ts](../../apps/web/test/unit/theme-init.test.ts), [theme.test.ts](../../apps/web/src/lib/theme.test.ts) |
+| UI-04 | `localStorage` melempar error atau nilai `tp-theme` tak dikenal | Halaman tetap tampil dengan tema sistem; toggle tetap berfungsi | E, U | theme.spec.ts, theme-init.test.ts |
+| UI-05 | `<meta name="theme-color">` dan operasi keyboard pemilih tema | Meta mengikuti tema aktif; menu dibuka dan ditutup dengan keyboard, Escape mengembalikan fokus | E | theme.spec.ts |
+| UI-06 | Viewport HP 375x812 | Tanpa scroll horizontal (termasuk nama user 80 karakter); menu mobile tersembunyi sampai dibuka, berisi navigasi dan logout | E | theme.spec.ts, [landing.spec.ts](../../tests/e2e/landing.spec.ts) |
+| UI-07 | Landing page untuk anonim di `/` | Semua bagian (hero, fitur, cara kerja, kualitas, roadmap, footer) tampil; judul dan heading sesuai; tidak dialihkan | E | landing.spec.ts |
+| UI-08 | Tombol dan link landing | Daftar ke `/register`, Lihat demo ke `/p/testpulse`; link Allure/CI/Source/Strategi ber-`href` persis, `target="_blank"`, `rel` aman; badge "Segera" hanya pada fitur Tahap 2 sampai 5 | E | landing.spec.ts |
+| UI-09 | Routing `/` menurut status auth | Login: "Project saya", bukan landing; memuat: kerangka netral tanpa landing dan tanpa pengalihan; `/auth/me` 503: banner galat sesi, landing tidak dirender; logout dari `/` berakhir di `/login` | E | landing.spec.ts |
+| UI-10 | Aksesibilitas landing dan halaman utama di kedua tema | 0 pelanggaran axe serious/critical di terang dan gelap (lihat AUTH-12, PRJ-12, PRJ-15) | E | landing.spec.ts, auth.spec.ts, projects.spec.ts, team.spec.ts |
+| UI-11 | Helper aksesibilitas dua tema | Tidak menggantung bila ada animasi tak berhingga; selesai dalam batas waktu | E | [a11y-helper.spec.ts](../../tests/e2e/a11y-helper.spec.ts) |
+| UI-12 | Gate CSP | Pelanggaran CSP (event dan console) membuat test gagal, dihitung sekali, gagal tertutup bila guard tidak terpasang; artefak `<select>` WebKit dikecualikan tanpa menyembunyikan style inline asli. Bermakna di stack Docker/nginx | E | [csp-guard.spec.ts](../../tests/e2e/csp-guard.spec.ts), [csp.ts](../../tests/support/csp.ts) |
 
 ## 5. Cara menjalankan
 

@@ -47,8 +47,8 @@ export const test = base.extend<Fixtures & InternalFixtures>({
     const contexts: BrowserContext[] = [];
     await use(async (options) => {
       const context = await browser.newContext({ baseURL, ...options });
-      cspGuards.push(await attachCspGuard(context));
       contexts.push(context);
+      cspGuards.push(await attachCspGuard(context));
       return context;
     });
     await Promise.all(contexts.map((c) => c.close()));

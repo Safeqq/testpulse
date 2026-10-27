@@ -180,12 +180,13 @@ test.describe("Project", () => {
     await expect(project.notFound).toContainText(NOT_FOUND);
   });
 
-  test("/ dan /projects/new mengarahkan user anonim ke login", async ({ page }) => {
+  test("anonim di / melihat landing page; /projects/new tetap mengarah ke login", async ({ page }) => {
     await page.goto("/projects/new");
     await expect(page).toHaveURL(/\/login\?next=%2Fprojects%2Fnew$/);
 
     await page.goto("/");
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page.getByTestId("landing-hero")).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
   });
 
   test("logout dari halaman terlindungi berakhir di /login tanpa next", async ({ signedInPage }) => {

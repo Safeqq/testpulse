@@ -1,10 +1,10 @@
-import type { Page } from "@playwright/test";
 import { LoginPage } from "../pages/LoginPage.js";
 import { NewProjectPage } from "../pages/NewProjectPage.js";
 import { RegisterPage } from "../pages/RegisterPage.js";
 import { AppShell } from "../pages/AppShell.js";
 import { newUserData } from "../support/data.js";
 import { expect, test } from "../support/fixtures.js";
+import { simulateMeOutage } from "../support/outage.js";
 
 test.describe("Autentikasi", () => {
   test("daftar akun baru mengarahkan ke beranda dan menampilkan nama user", async ({ page }) => {
@@ -103,25 +103,6 @@ test.describe("Autentikasi", () => {
   });
 
   test.describe("/auth/me gagal sementara (bukan 401)", () => {
-    const unavailable = { error: { code: "INTERNAL_ERROR", message: "Layanan sedang tidak tersedia" } };
-
-    /**
-     * Menjawab 503 untuk /auth/me selama `outage.active`, lalu meneruskan ke API sungguhan. Berbasis keadaan, bukan
-     * hitungan panggilan: dev server (React StrictMode) memanggil /auth/me dua kali saat halaman dibuka.
-     */
-    async function simulateMeOutage(page: Page): Promise<{ active: boolean; calls: number }> {
-      const outage = { active: true, calls: 0 };
-      await page.route("**/api/v1/auth/me", async (route) => {
-        outage.calls += 1;
-        if (outage.active) {
-          await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify(unavailable) });
-        } else {
-          await route.continue();
-        }
-      });
-      return outage;
-    }
-
     test("halaman terlindungi: tidak diarahkan ke /login, ada coba lagi, lalu pulih", async ({ signedInPage }) => {
       const { page, user } = await signedInPage();
       const shell = new AppShell(page);

@@ -113,14 +113,13 @@ test.describe("Project", () => {
 
   test("project publik terbuka tanpa login: penanda hanya-baca dan tanpa tautan pengaturan", async ({
     api,
-    browser,
-    baseURL,
+    newContext,
   }) => {
     const owner = await api.register();
     const created = await api.createProject(owner);
     await api.setVisibility(owner, created.slug, "public");
 
-    const context = await browser.newContext({ baseURL });
+    const context = await newContext();
     try {
       const page = await context.newPage();
       const project = new ProjectPage(page);
@@ -154,11 +153,11 @@ test.describe("Project", () => {
     await expect(project.loginButton).toHaveCount(0);
   });
 
-  test("project privat dibuka tanpa login tampil sebagai tidak ditemukan", async ({ api, browser, baseURL }) => {
+  test("project privat dibuka tanpa login tampil sebagai tidak ditemukan", async ({ api, newContext }) => {
     const owner = await api.register();
     const created = await api.createProject(owner);
 
-    const context = await browser.newContext({ baseURL });
+    const context = await newContext();
     try {
       const page = await context.newPage();
       const project = new ProjectPage(page);
@@ -204,8 +203,7 @@ test.describe("Project", () => {
   test("halaman daftar, buat, dan ringkasan lolos pemeriksaan aksesibilitas", async ({
     api,
     signedInPage,
-    browser,
-    baseURL,
+    newContext,
     expectNoA11yViolations,
   }) => {
     const owner = await api.register();
@@ -224,7 +222,7 @@ test.describe("Project", () => {
     await new ProjectPage(page).goto(created.slug);
     await expectNoA11yViolations(page);
 
-    const anon = await browser.newContext({ baseURL });
+    const anon = await newContext();
     try {
       const anonPage = await anon.newPage();
       await new ProjectPage(anonPage).goto(created.slug);

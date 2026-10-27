@@ -16,8 +16,7 @@ test.describe("Tim, undangan, dan visibilitas", () => {
   test("alur lengkap: undang, terima, hak akses, admin terakhir, visibilitas, cabut undangan, hapus project", async ({
     api,
     signedInPage,
-    browser,
-    baseURL,
+    newContext,
     expectNoA11yViolations,
   }) => {
     const admin = await api.register();
@@ -77,7 +76,7 @@ test.describe("Tim, undangan, dan visibilitas", () => {
     await expect(adminSettings.visibilityPublic).toBeChecked();
     await expect(adminSettings.toast).toContainText("publik");
 
-    const anonContext = await browser.newContext({ baseURL });
+    const anonContext = await newContext();
     try {
       const anonPage = await anonContext.newPage();
       const anonProject = new ProjectPage(anonPage);
@@ -134,15 +133,13 @@ test.describe("Tim, undangan, dan visibilitas", () => {
 
   test("salin tautan menulis ke clipboard sungguhan dan memberi tahu berhasil (chromium)", async ({
     api,
-    browser,
-    baseURL,
+    newContext,
     browserName,
   }) => {
     test.skip(browserName !== "chromium", "izin clipboard-read/clipboard-write hanya dapat diberikan di Chromium");
     const admin = await api.register();
     const project = await api.createProject(admin);
-    const context = await browser.newContext({
-      baseURL,
+    const context = await newContext({
       storageState: await admin.request.storageState(),
       permissions: ["clipboard-read", "clipboard-write"],
     });
@@ -196,15 +193,14 @@ test.describe("Tim, undangan, dan visibilitas", () => {
 
   test("anonim melihat pratinjau undangan lalu masuk dan kembali untuk menerima", async ({
     api,
-    browser,
-    baseURL,
+    newContext,
   }) => {
     const admin = await api.register();
     const guest = await api.register();
     const project = await api.createProject(admin);
     const invitation = await api.createInvitation(admin, project.slug, "tester");
 
-    const context = await browser.newContext({ baseURL });
+    const context = await newContext();
     try {
       const page = await context.newPage();
       const invite = new InvitePage(page);

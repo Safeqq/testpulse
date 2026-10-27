@@ -55,7 +55,7 @@ function DashboardPreview() {
                 <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${stat.dot}`} />
                 {stat.label}
               </dt>
-              <dd className="mt-1 text-xl font-semibold tabular-nums sm:text-2xl">{stat.value}</dd>
+              <dd className="mt-1 font-mono text-xl font-semibold tabular-nums sm:text-2xl">{stat.value}</dd>
             </div>
           ))}
         </dl>

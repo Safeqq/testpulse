@@ -1,3 +1,7 @@
+/* Font di-host sendiri: file .woff2 ikut ter-build dan disajikan dari origin TestPulse, sehingga lolos CSP
+   (`default-src 'self'`) tanpa Google Fonts. Varian variable = satu file untuk semua ketebalan. */
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -80,7 +84,8 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-sans: "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 @layer base {

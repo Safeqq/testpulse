@@ -81,7 +81,7 @@ export function Quality() {
               {SNAPSHOT.rows.map((row) => (
                 <div key={row.label} className="min-w-0">
                   <dt className="text-xs text-muted-foreground">{row.label}</dt>
-                  <dd className="text-xl font-semibold tabular-nums">{row.value}</dd>
+                  <dd className="font-mono text-xl font-semibold tabular-nums">{row.value}</dd>
                 </div>
               ))}
             </dl>

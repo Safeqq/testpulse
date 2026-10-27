@@ -34,7 +34,7 @@ export function Roadmap() {
               </span>
               <div className="min-w-0 pt-0.5">
                 <p className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold">Tahap {item.stage}</span>
+                  <span className="font-mono text-sm font-semibold">Tahap {item.stage}</span>
                   <Badge variant={live ? "default" : item.status === "Berikutnya" ? "secondary" : "outline"}>
                     {item.status}
                   </Badge>

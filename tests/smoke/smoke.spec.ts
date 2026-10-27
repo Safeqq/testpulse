@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test";
 import { AppShell } from "../pages/AppShell.js";
 import { LoginPage } from "../pages/LoginPage.js";
 import { ProjectPage } from "../pages/ProjectPage.js";
+import { expect, test } from "../support/fixtures.js";
 
 /**
  * Smoke test production (tag @smoke). Hanya membaca: tidak membuat, mengubah, atau menghapus data.
@@ -11,6 +11,9 @@ import { ProjectPage } from "../pages/ProjectPage.js";
  *   SMOKE_EMAIL, SMOKE_PASSWORD  akun khusus smoke yang sudah didaftarkan di production
  *   SMOKE_PUBLIC_SLUG            slug project publik yang sudah ada di production
  * Di CI variabel yang kurang membuat test GAGAL (konfigurasi deploy rusak); di lokal test di-skip.
+ *
+ * `test`/`expect` berasal dari fixtures bersama agar guard CSP ikut terpasang: smoke production ikut gagal bila
+ * CSP Cloudflare sungguhan diblokir. Fixture `api` (pendaftaran user) sengaja TIDAK dipakai: production hanya dibaca.
  */
 
 interface SmokeEnv {
@@ -29,9 +32,9 @@ function requireSmokeEnv(names: Array<"SMOKE_EMAIL" | "SMOKE_PASSWORD" | "SMOKE_
 
 function smokeEnv(): SmokeEnv {
   return {
-    email: process.env.SMOKE_EMAIL!.trim(),
-    password: process.env.SMOKE_PASSWORD!,
-    publicSlug: process.env.SMOKE_PUBLIC_SLUG!.trim(),
+    email: process.env.SMOKE_EMAIL?.trim() ?? "",
+    password: process.env.SMOKE_PASSWORD ?? "",
+    publicSlug: process.env.SMOKE_PUBLIC_SLUG?.trim() ?? "",
   };
 }
 

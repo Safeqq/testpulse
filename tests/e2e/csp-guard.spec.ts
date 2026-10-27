@@ -225,3 +225,22 @@ test.describe("fixture test menggagalkan test yang melanggar CSP", () => {
     });
   });
 });
+
+// Kanari header CSP: hanya bermakna terhadap stack yang disajikan nginx/Cloudflare (BASE_URL terisi). Dev server Vite
+// tidak mengirim CSP, jadi tanpa BASE_URL test ini dilewati. Tanpa header ini seluruh gate "0 pelanggaran" tak berarti.
+test.describe("kanari header CSP pada dokumen yang disajikan", () => {
+  test.skip(!process.env.BASE_URL, "BASE_URL tidak diisi: dev server tidak mengirim CSP");
+
+  for (const path of ["/", "/login"]) {
+    test(`respons dokumen ${path} membawa CSP dengan style-src 'self' dan script-src 'self'`, async ({ request }) => {
+      const response = await request.get(path);
+      expect(response.status()).toBe(200);
+      const csp = response.headers()["content-security-policy"];
+      expect(csp, "header content-security-policy").toBeTruthy();
+      const directives = (csp ?? "").split(";").map((d) => d.trim());
+      expect(directives).toContain("style-src 'self'");
+      expect(directives).toContain("script-src 'self'");
+      expect(csp).not.toMatch(/unsafe-inline|unsafe-eval/);
+    });
+  }
+});

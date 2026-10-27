@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -10,6 +11,8 @@ export default defineConfig({
     ],
     projects: [
       {
+        // Alias `@/` sama dengan vite.config.ts agar modul yang mengimpor lewat alias dapat diuji.
+        resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
         test: {
           name: "unit",
           environment: "node",

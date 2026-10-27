@@ -94,12 +94,12 @@ test.describe("Autentikasi", () => {
     await expect(page).toHaveURL(`${baseURL}/`);
   });
 
-  test("/login dan /register lolos pemeriksaan aksesibilitas", async ({ page, expectNoA11yViolations }) => {
+  test("/login dan /register lolos pemeriksaan aksesibilitas", async ({ page, expectNoA11yViolationsInBothThemes }) => {
     await new LoginPage(page).goto();
-    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInBothThemes(page);
 
     await new RegisterPage(page).goto();
-    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInBothThemes(page);
   });
 
   test.describe("/auth/me gagal sementara (bukan 401)", () => {

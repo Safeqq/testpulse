@@ -1,4 +1,6 @@
 import { useId, type HTMLInputAutoCompleteAttribute, type HTMLInputTypeAttribute } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface FormFieldProps {
   name: string;
@@ -30,9 +32,9 @@ export function FormField({
   const describedBy = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className="field">
-      <label htmlFor={id}>{label}</label>
-      <input
+    <div className="grid gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <Input
         id={id}
         name={name}
         type={type}
@@ -44,12 +46,12 @@ export function FormField({
         onChange={(e) => onChange(e.target.value)}
       />
       {hint ? (
-        <p id={hintId} className="field-hint">
+        <p id={hintId} className="text-sm text-muted-foreground">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="field-error" data-testid={`field-error-${name}`}>
+        <p id={errorId} className="text-sm font-medium text-destructive" data-testid={`field-error-${name}`}>
           {error}
         </p>
       ) : null}

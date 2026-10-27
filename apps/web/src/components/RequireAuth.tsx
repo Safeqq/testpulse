@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Loader2 } from "lucide-react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { loginPathFor } from "../lib/navigation";
@@ -17,7 +18,8 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
 
   if (status === "loading") {
     return (
-      <p role="status" className="loading">
+      <p role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+        <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none" />
         Memuat…
       </p>
     );
@@ -25,7 +27,7 @@ export function RequireAuth({ children }: { children?: ReactNode }) {
   if (status === "error") {
     // Sesi belum dapat dipastikan: jangan arahkan ke /login (pengguna mungkin masih masuk). Tombol coba lagi ada di Layout.
     return (
-      <p role="status" className="loading" data-testid="auth-pending">
+      <p role="status" className="py-16 text-center text-sm text-muted-foreground" data-testid="auth-pending">
         Sesi Anda belum dapat diperiksa.
       </p>
     );

@@ -11,3 +11,18 @@ export async function expectNoA11yViolations(page: Page): Promise<void> {
     .map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.map((n) => n.target.join(" ")) }));
   expect(blocking, "pelanggaran aksesibilitas serious/critical").toEqual([]);
 }
+
+/**
+ * Menjalankan `expectNoA11yViolations` pada halaman saat ini di tema terang, lalu gelap. Tema diganti lewat emulasi
+ * `prefers-color-scheme` (preferensi pengguna tetap "system"); axe baru dijalankan setelah kelas `dark` di `<html>`
+ * sesuai. Emulasi diakhiri pada `light`, jadi test yang memanggilnya melanjutkan dengan tema terang.
+ */
+export async function expectNoA11yViolationsInBothThemes(page: Page): Promise<void> {
+  for (const scheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    const html = page.locator("html");
+    if (scheme === "dark") await expect(html).toHaveClass(/(^|\s)dark(\s|$)/);
+    else await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/);
+    await expectNoA11yViolations(page);
+  }
+}

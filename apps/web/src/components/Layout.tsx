@@ -2,6 +2,7 @@ import { Menu, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { BrandMark } from "@/components/BrandMark";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
@@ -11,24 +12,8 @@ const MENU_ID = "site-menu";
 
 function navLinkClass({ isActive }: { isActive: boolean }): string {
   return cn(
-    "rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/60 focus-visible:outline-none",
+    "rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none",
     isActive ? "text-foreground" : "text-muted-foreground",
-  );
-}
-
-function BrandMark() {
-  return (
-    <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true" focusable="false">
-      <rect width="32" height="32" rx="8" className="fill-primary" />
-      <path
-        d="M4 17h6l3-8 5 15 3-7h7"
-        fill="none"
-        className="stroke-primary-foreground"
-        strokeWidth="2.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -76,7 +61,7 @@ function Header() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
         <Link
           to="/"
-          className="flex items-center gap-2 rounded-md text-lg font-semibold tracking-tight text-foreground no-underline hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/60 focus-visible:outline-none"
+          className="flex items-center gap-2 rounded-md text-lg font-semibold tracking-tight text-foreground no-underline hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
         >
           <BrandMark />
           <span>TestPulse</span>

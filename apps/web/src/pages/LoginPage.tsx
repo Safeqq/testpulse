@@ -1,6 +1,9 @@
 import { loginBody } from "@testpulse/shared";
 import { useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { BrandMark } from "@/components/BrandMark";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
 import { FormError } from "../components/FormError";
 import { FormField } from "../components/FormField";
 import { useAuth } from "../lib/auth";
@@ -49,40 +52,59 @@ export function LoginPage() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="login-title">
-      <h1 id="login-title">Masuk ke TestPulse</h1>
-      <p className="lead">Masuk untuk melihat dan mengelola project test Anda.</p>
+    <section className="mx-auto w-full max-w-md py-4 md:py-10" aria-labelledby="login-title">
+      <Card>
+        <CardHeader className="items-center text-center">
+          <BrandMark size={40} />
+          <h1 id="login-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            Masuk ke TestPulse
+          </h1>
+          <CardDescription>Masuk untuk melihat dan mengelola project test Anda.</CardDescription>
+        </CardHeader>
 
-      <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={submitting}>
-        <FormError message={formError} />
-        <FormField
-          name="email"
-          label="Email"
-          type="email"
-          autoComplete="email"
-          testIdPrefix="login"
-          value={email}
-          onChange={setEmail}
-          error={fieldErrors.email}
-        />
-        <FormField
-          name="password"
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          testIdPrefix="login"
-          value={password}
-          onChange={setPassword}
-          error={fieldErrors.password}
-        />
-        <button type="submit" className="button button-primary button-block" disabled={submitting} data-testid="login-submit">
-          {submitting ? "Memproses…" : "Masuk"}
-        </button>
-      </form>
+        <CardContent>
+          <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+            <FormError message={formError} />
+            <div className="grid gap-4">
+              <FormField
+                name="email"
+                label="Email"
+                type="email"
+                autoComplete="email"
+                testIdPrefix="login"
+                value={email}
+                onChange={setEmail}
+                error={fieldErrors.email}
+              />
+              <FormField
+                name="password"
+                label="Password"
+                type="password"
+                autoComplete="current-password"
+                testIdPrefix="login"
+                value={password}
+                onChange={setPassword}
+                error={fieldErrors.password}
+              />
+              <Button type="submit" size="lg" className="w-full" disabled={submitting} data-testid="login-submit">
+                {submitting ? "Memproses…" : "Masuk"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
 
-      <p className="auth-alt">
-        Belum punya akun? <Link to={registerPathFor(next)}>Daftar sekarang</Link>
-      </p>
+        <CardFooter className="justify-center text-sm text-muted-foreground">
+          <p>
+            Belum punya akun?{" "}
+            <Link
+              to={registerPathFor(next)}
+              className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Daftar sekarang
+            </Link>
+          </p>
+        </CardFooter>
+      </Card>
     </section>
   );
 }

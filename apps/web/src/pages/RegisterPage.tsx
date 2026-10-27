@@ -1,6 +1,9 @@
 import { registerBody } from "@testpulse/shared";
 import { useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
+import { BrandMark } from "@/components/BrandMark";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
 import { FormError } from "../components/FormError";
 import { FormField } from "../components/FormField";
 import { useAuth } from "../lib/auth";
@@ -50,55 +53,69 @@ export function RegisterPage() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="register-title">
-      <h1 id="register-title">Buat akun TestPulse</h1>
-      <p className="lead">Daftar gratis untuk mulai mengelola hasil test tim Anda.</p>
+    <section className="mx-auto w-full max-w-md py-4 md:py-10" aria-labelledby="register-title">
+      <Card>
+        <CardHeader className="items-center text-center">
+          <BrandMark size={40} />
+          <h1 id="register-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            Buat akun TestPulse
+          </h1>
+          <CardDescription>Daftar gratis untuk mulai mengelola hasil test tim Anda.</CardDescription>
+        </CardHeader>
 
-      <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={submitting}>
-        <FormError message={formError} />
-        <FormField
-          name="name"
-          label="Nama"
-          autoComplete="name"
-          testIdPrefix="register"
-          value={name}
-          onChange={setName}
-          error={fieldErrors.name}
-        />
-        <FormField
-          name="email"
-          label="Email"
-          type="email"
-          autoComplete="email"
-          testIdPrefix="register"
-          value={email}
-          onChange={setEmail}
-          error={fieldErrors.email}
-        />
-        <FormField
-          name="password"
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          hint="Minimal 8 karakter."
-          testIdPrefix="register"
-          value={password}
-          onChange={setPassword}
-          error={fieldErrors.password}
-        />
-        <button
-          type="submit"
-          className="button button-primary button-block"
-          disabled={submitting}
-          data-testid="register-submit"
-        >
-          {submitting ? "Memproses…" : "Daftar"}
-        </button>
-      </form>
+        <CardContent>
+          <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+            <FormError message={formError} />
+            <div className="grid gap-4">
+              <FormField
+                name="name"
+                label="Nama"
+                autoComplete="name"
+                testIdPrefix="register"
+                value={name}
+                onChange={setName}
+                error={fieldErrors.name}
+              />
+              <FormField
+                name="email"
+                label="Email"
+                type="email"
+                autoComplete="email"
+                testIdPrefix="register"
+                value={email}
+                onChange={setEmail}
+                error={fieldErrors.email}
+              />
+              <FormField
+                name="password"
+                label="Password"
+                type="password"
+                autoComplete="new-password"
+                hint="Minimal 8 karakter."
+                testIdPrefix="register"
+                value={password}
+                onChange={setPassword}
+                error={fieldErrors.password}
+              />
+              <Button type="submit" size="lg" className="w-full" disabled={submitting} data-testid="register-submit">
+                {submitting ? "Memproses…" : "Daftar"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
 
-      <p className="auth-alt">
-        Sudah punya akun? <Link to={loginPathFor(next)}>Masuk</Link>
-      </p>
+        <CardFooter className="justify-center text-sm text-muted-foreground">
+          <p>
+            Sudah punya akun?{" "}
+            <Link
+              to={loginPathFor(next)}
+              className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            >
+              Masuk
+            </Link>
+          </p>
+        </CardFooter>
+      </Card>
     </section>
   );
 }

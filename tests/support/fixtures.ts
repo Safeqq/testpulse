@@ -1,5 +1,5 @@
 import { test as base, expect, type BrowserContext, type BrowserContextOptions, type Page } from "@playwright/test";
-import { expectNoA11yViolations } from "./a11y.js";
+import { expectNoA11yViolations, expectNoA11yViolationsInBothThemes } from "./a11y.js";
 import { TestApi, type TestUser } from "./api-client.js";
 import { attachCspGuard, describeViolation, type CspGuard } from "./csp.js";
 
@@ -15,6 +15,8 @@ interface Fixtures {
   /** Context baru (baseURL dari config, guard CSP terpasang, ditutup otomatis di akhir test). */
   newContext: (options?: BrowserContextOptions) => Promise<BrowserContext>;
   expectNoA11yViolations: (page: Page) => Promise<void>;
+  /** Seperti `expectNoA11yViolations`, tetapi di tema terang lalu gelap (berakhir di terang). */
+  expectNoA11yViolationsInBothThemes: (page: Page) => Promise<void>;
 }
 
 interface InternalFixtures {
@@ -65,6 +67,10 @@ export const test = base.extend<Fixtures & InternalFixtures>({
 
   expectNoA11yViolations: async ({}, use) => {
     await use(expectNoA11yViolations);
+  },
+
+  expectNoA11yViolationsInBothThemes: async ({}, use) => {
+    await use(expectNoA11yViolationsInBothThemes);
   },
 });
 

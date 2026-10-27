@@ -25,7 +25,7 @@ export function Footer() {
                 href={link.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded-sm text-link underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                className="rounded-sm text-link underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
               >
                 {link.label}
                 <span className="sr-only"> (membuka tab baru)</span>

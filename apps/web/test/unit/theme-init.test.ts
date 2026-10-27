@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
-import { parsePreference, resolveTheme } from "../../src/lib/theme";
+import { parsePreference, resolveTheme, THEME_COLORS } from "../../src/lib/theme";
 
 // theme-init.js adalah JS biasa di public/ (dimuat sinkron di <head>, tidak bisa mengimpor TS), jadi
 // perilakunya harus identik dengan theme.ts. Test ini menjalankan berkas aslinya di sandbox `node:vm`.
@@ -33,9 +33,15 @@ function runInit(stored: Stored, systemDark: boolean) {
     },
     matchMedia: (query: string) => ({ matches: query === "(prefers-color-scheme: dark)" && systemDark }),
   };
-  const sandbox = { window, document: { documentElement: root }, localStorage: window.localStorage, matchMedia: window.matchMedia };
+  // Elemen <meta name="theme-color"> palsu: hanya selector yang tepat yang mengembalikannya.
+  const meta = { content: "#f4f5f7", setAttribute(name: string, value: string) { if (name === "content") this.content = value; } };
+  const document = {
+    documentElement: root,
+    querySelector: (selector: string) => (selector === 'meta[name="theme-color"]' ? meta : null),
+  };
+  const sandbox = { window, document, localStorage: window.localStorage, matchMedia: window.matchMedia };
   vm.runInNewContext(script, sandbox);
-  return { dark: classes.has("dark"), colorScheme: root.style.colorScheme };
+  return { dark: classes.has("dark"), colorScheme: root.style.colorScheme, themeColor: meta.content };
 }
 
 describe("public/theme-init.js", () => {
@@ -48,6 +54,8 @@ describe("public/theme-init.js", () => {
     const result = runInit(s, systemDark);
     expect(result.dark).toBe(expected === "dark");
     expect(result.colorScheme).toBe(expected);
+    // Chrome browser (address bar) harus sudah gelap sebelum React dimuat.
+    expect(result.themeColor).toBe(THEME_COLORS[expected]);
   });
 
   it("tetap menerapkan tema bila matchMedia tidak tersedia", () => {

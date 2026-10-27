@@ -11,7 +11,7 @@ import { useLoad } from "../lib/useLoad";
 
 const listProjects = () => api.projects.list();
 
-/** Beranda: daftar project milik user yang masuk (dibungkus RequireAuth di App). */
+/** Beranda: daftar project milik user yang masuk (dirender oleh HomeRoute untuk user yang sudah masuk). */
 export function ProjectsPage() {
   useDocumentTitle("Project saya");
   const load = useLoad(listProjects);
@@ -53,7 +53,7 @@ export function ProjectsPage() {
                   <Link
                     to={`/p/${project.slug}`}
                     title={project.name}
-                    className="block truncate rounded-sm text-base font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl focus-visible:ring-[3px] focus-visible:ring-ring"
+                    className="block truncate rounded-sm text-base font-semibold text-foreground outline-hidden after:absolute after:inset-0 after:rounded-xl focus-visible:ring-[3px] focus-visible:ring-ring"
                   >
                     {project.name}
                   </Link>

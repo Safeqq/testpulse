@@ -109,7 +109,7 @@ export function RegisterPage() {
             Sudah punya akun?{" "}
             <Link
               to={loginPathFor(next)}
-              className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
             >
               Masuk
             </Link>

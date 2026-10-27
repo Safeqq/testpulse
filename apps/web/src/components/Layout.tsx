@@ -1,7 +1,7 @@
 import { Menu, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { KeyboardEvent, MouseEvent } from "react";
-import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { BrandMark } from "@/components/BrandMark";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ const MENU_ID = "site-menu";
 
 function navLinkClass({ isActive }: { isActive: boolean }): string {
   return cn(
-    "rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none",
+    "rounded-md px-2 py-1.5 text-sm font-medium transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden",
     isActive ? "text-foreground" : "text-muted-foreground",
   );
 }
@@ -21,7 +21,11 @@ function Header() {
   const { user, status, logout, retry } = useAuth();
   const navigate = useNavigate();
   const [logoutError, setLogoutError] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+  // Menu terbuka hanya untuk lokasi saat tombol dibuka, jadi pindah rute (tautan, logo, tombol kembali) menutupnya.
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const menuOpen = openKey === location.key;
+  const setMenuOpen = (open: boolean) => setOpenKey(open ? location.key : null);
   const menuToggleRef = useRef<HTMLButtonElement>(null);
 
   async function handleLogout() {
@@ -61,7 +65,7 @@ function Header() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5">
         <Link
           to="/"
-          className="flex items-center gap-2 rounded-md text-lg font-semibold tracking-tight text-foreground no-underline hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+          className="flex items-center gap-2 rounded-md text-lg font-semibold tracking-tight text-foreground no-underline hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
         >
           <BrandMark />
           <span>TestPulse</span>
@@ -79,7 +83,7 @@ function Header() {
             aria-expanded={menuOpen}
             aria-controls={MENU_ID}
             data-testid="mobile-menu-toggle"
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={() => setMenuOpen(!menuOpen)}
             onKeyDown={handleMenuKeyDown}
           >
             {menuOpen ? <X aria-hidden="true" /> : <Menu aria-hidden="true" />}
@@ -95,36 +99,35 @@ function Header() {
           onKeyDown={handleMenuKeyDown}
           onClick={handleMenuClick}
         >
-          <nav aria-label="Navigasi utama" className="flex flex-col md:flex-row md:items-center md:gap-1">
-            {status === "authenticated" && user ? (
-              <NavLink to="/" end className={navLinkClass}>
-                Project saya
-              </NavLink>
-            ) : null}
-          </nav>
-
           {status === "authenticated" && user ? (
-            <div className="flex min-w-0 items-center gap-3">
-              <span
-                className="min-w-0 flex-1 truncate text-sm font-medium text-foreground md:max-w-[16rem] md:flex-none"
-                data-testid="current-user"
-                title={user.name}
-              >
-                {user.name}
-              </span>
-              <Button type="button" variant="outline" size="sm" data-testid="logout" onClick={handleLogout}>
-                Keluar
-              </Button>
-            </div>
+            <>
+              <nav aria-label="Navigasi utama" className="flex flex-col md:flex-row md:items-center md:gap-1">
+                <NavLink to="/" end className={navLinkClass}>
+                  Project saya
+                </NavLink>
+              </nav>
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className="min-w-0 flex-1 truncate text-sm font-medium text-foreground md:max-w-[16rem] md:flex-none"
+                  data-testid="current-user"
+                  title={user.name}
+                >
+                  {user.name}
+                </span>
+                <Button type="button" variant="outline" size="sm" data-testid="logout" onClick={handleLogout}>
+                  Keluar
+                </Button>
+              </div>
+            </>
           ) : status === "anonymous" ? (
-            <div className="flex items-center gap-2">
+            <nav aria-label="Navigasi utama" className="flex items-center gap-2 md:ml-auto">
               <NavLink to="/login" className={navLinkClass}>
                 Masuk
               </NavLink>
               <Button asChild size="sm">
                 <Link to="/register">Daftar</Link>
               </Button>
-            </div>
+            </nav>
           ) : null}
         </div>
       </div>
@@ -154,7 +157,7 @@ export function Layout() {
   return (
     <>
       <Header />
-      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 py-8 outline-none">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 py-8 outline-hidden">
         <Outlet />
       </main>
     </>

@@ -92,8 +92,8 @@ export function Hero() {
           Pantau kesehatan testing tim Anda di satu tempat.
         </h1>
         <p className="mt-5 max-w-xl text-lg text-muted-foreground">
-          Kumpulkan hasil automated test dari CI, deteksi test flaky, kelola bug report, test case manual, dan
-          crowdtesting dalam satu platform untuk tim QA.
+          Kumpulkan hasil automated test dari CI dan deteksi test flaky dalam satu platform untuk tim QA, lalu
+          bertahap menambah bug report, test case manual, dan crowdtesting.
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild size="lg">

@@ -96,7 +96,7 @@ function SettingsContent({ initial }: { initial: ProjectDto }) {
       <div className="grid gap-3">
         <Link
           to={`/p/${project.slug}`}
-          className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+          className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
           Kembali ke project

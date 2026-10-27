@@ -62,14 +62,6 @@ export function NewProjectPage() {
 
   return (
     <section className="mx-auto grid w-full max-w-lg grid-cols-1 gap-4 py-2 md:py-6" aria-labelledby="new-project-title">
-      <Link
-        to="/"
-        className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        Kembali ke project saya
-      </Link>
-
       <Card>
         <CardHeader>
           <h1 id="new-project-title" className="text-2xl font-semibold tracking-tight">
@@ -115,6 +107,14 @@ export function NewProjectPage() {
           </form>
         </CardContent>
       </Card>
+
+      <Link
+        to="/"
+        className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Kembali ke project saya
+      </Link>
     </section>
   );
 }

@@ -216,6 +216,28 @@ test.describe("Tema", () => {
       await expect(shell.loginLink).toBeHidden();
     });
 
+    test("menu navigasi tertutup otomatis saat pindah rute (logo, tombol kembali)", async ({ page }) => {
+      const login = new LoginPage(page);
+      const shell = new AppShell(page);
+      await login.goto();
+
+      await shell.mobileMenuToggle.click();
+      await expect(shell.mobileMenuToggle).toHaveAttribute("aria-expanded", "true");
+      await expect(shell.registerLink).toBeVisible();
+
+      // Logo di luar panel menu: klik padanya pindah rute tanpa melewati handler klik panel.
+      await page.getByRole("banner").getByRole("link", { name: "TestPulse" }).click();
+      await expect(page).not.toHaveURL(/\/login$/);
+      await expect(shell.mobileMenuToggle).toHaveAttribute("aria-expanded", "false");
+      await expect(shell.registerLink).toBeHidden();
+
+      await shell.mobileMenuToggle.click();
+      await expect(shell.mobileMenuToggle).toHaveAttribute("aria-expanded", "true");
+      await page.goBack();
+      await expect(page).toHaveURL(/\/login$/);
+      await expect(shell.mobileMenuToggle).toHaveAttribute("aria-expanded", "false");
+    });
+
     test("pemilih tema bekerja dengan keyboard di viewport mobile", async ({ page }) => {
       const login = new LoginPage(page);
       const shell = new AppShell(page);
@@ -261,5 +283,9 @@ test.describe("Tema", () => {
 
     await expect(shell.mobileMenuToggle).toBeHidden();
     await shell.expectAnonymous();
+    // Landmark navigasi tidak boleh kosong: untuk pengunjung anonim ia berisi tautan Masuk dan Daftar.
+    const nav = page.getByRole("banner").getByRole("navigation", { name: "Navigasi utama" });
+    await expect(nav.getByRole("link", { name: "Masuk" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Daftar" })).toBeVisible();
   });
 });

@@ -53,7 +53,7 @@ export function VisibilitySection({ project, onSaved, notify }: Props) {
           return (
             <label
               key={option.value}
-              className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-accent has-[input:checked]:border-primary has-[input:checked]:bg-accent has-[input:focus-visible]:ring-[3px] has-[input:focus-visible]:ring-ring has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-70"
+              className="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors hover:bg-accent has-[input:checked]:border-ring has-[input:checked]:bg-accent has-[input:focus-visible]:ring-[3px] has-[input:focus-visible]:ring-ring has-[input:disabled]:cursor-not-allowed has-[input:disabled]:opacity-70"
             >
               <input
                 type="radio"
@@ -63,7 +63,7 @@ export function VisibilitySection({ project, onSaved, notify }: Props) {
                 onChange={() => void choose(option.value)}
                 aria-labelledby={labelId}
                 aria-describedby={hintId}
-                className="mt-1 size-4 shrink-0 accent-primary"
+                className="mt-1 size-4 shrink-0 accent-link"
                 data-testid={`visibility-${option.value}`}
               />
               <span className="grid gap-1">

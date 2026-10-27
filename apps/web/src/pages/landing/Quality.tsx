@@ -10,7 +10,7 @@ const TIERS = [
   { label: "Smoke test production", detail: "Dijalankan setelah setiap deploy", width: "sm:w-[56%]", tint: "bg-primary/5" },
   { label: "OWASP ZAP", detail: "Pemindaian keamanan baseline", width: "sm:w-[63%]", tint: "bg-primary/10" },
   { label: "E2E 3 browser + aksesibilitas", detail: "Chromium, Firefox, WebKit, dua tema", width: "sm:w-[72%]", tint: "bg-primary/15" },
-  { label: "API + matriks otorisasi", detail: "Setiap role terhadap endpoint project", width: "sm:w-[80%]", tint: "bg-primary/20" },
+  { label: "API + matriks otorisasi", detail: "Setiap aktor (role, non-anggota, anonim) terhadap endpoint project", width: "sm:w-[80%]", tint: "bg-primary/20" },
   { label: "Contract (Pact)", detail: "Web dan API sepakat soal bentuk data", width: "sm:w-[88%]", tint: "bg-primary/25" },
   { label: "Integration (Postgres asli)", detail: "Database sungguhan, bukan mock", width: "sm:w-[94%]", tint: "bg-primary/30" },
   { label: "Unit", detail: "Aturan domain, schema, dan utilitas", width: "sm:w-full", tint: "bg-primary/35" },

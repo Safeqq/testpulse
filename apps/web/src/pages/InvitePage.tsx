@@ -115,7 +115,7 @@ export function InvitePage() {
                 <p className="text-center text-sm">
                   <Link
                     to={`/p/${invitation.projectSlug}`}
-                    className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                    className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
                   >
                     Buka project
                   </Link>
@@ -141,7 +141,7 @@ export function InvitePage() {
               Belum punya akun?{" "}
               <Link
                 to={registerPathFor(invitePath)}
-                className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden"
               >
                 Daftar sekarang
               </Link>

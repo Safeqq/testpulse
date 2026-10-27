@@ -89,6 +89,15 @@
   }
 }
 
+/* Mode kontras tinggi (Windows forced-colors) menghapus box-shadow, sehingga cincin fokus berbasis ring/latar
+   tak terlihat. Di luar @layer agar menang atas utilitas Tailwind (outline-hidden dll.). */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid CanvasText;
+    outline-offset: 2px;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

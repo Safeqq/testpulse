@@ -12,16 +12,24 @@ export async function expectNoA11yViolations(page: Page): Promise<void> {
   expect(blocking, "pelanggaran aksesibilitas serious/critical").toEqual([]);
 }
 
+/** Batas atas menunggu transisi; animasi yang tidak kunjung selesai tidak boleh menggantung test. */
+const SETTLE_CAP_MS = 1500;
+
 /**
- * Menunggu transisi CSS (mis. `transition-colors` saat tema berganti) selesai. Tanpa ini axe bisa membaca warna di
- * tengah transisi dan melaporkan kontras palsu.
+ * Menunggu transisi CSS dan animasi berhingga (mis. `transition-colors` saat tema berganti) selesai. Tanpa ini axe
+ * bisa membaca warna di tengah transisi dan melaporkan kontras palsu. Animasi tak berhingga (mis. `animate-spin`)
+ * tidak ditunggu, dan seluruh penantian dibatasi `SETTLE_CAP_MS` agar tidak pernah menggantung.
  */
 async function settleTransitions(page: Page): Promise<void> {
-  await page.evaluate(async () => {
+  await page.evaluate(async (capMs) => {
     // Dua frame agar gaya baru dihitung dan transisi sudah terdaftar di getAnimations().
     await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    await Promise.allSettled(document.getAnimations().map((animation) => animation.finished));
-  });
+    const finite = document
+      .getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity);
+    const cap = new Promise<void>((resolve) => setTimeout(resolve, capMs));
+    await Promise.race([Promise.allSettled(finite.map((animation) => animation.finished)), cap]);
+  }, SETTLE_CAP_MS);
 }
 
 /**

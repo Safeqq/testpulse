@@ -287,8 +287,9 @@ test.describe("Project", () => {
     expectNoA11yViolationsInBothThemes,
   }) => {
     const owner = await api.register();
-    const name = `Proyek ${uniqueSuffix()} ${"panjang ".repeat(12)}`.trim().slice(0, 80).trim();
-    expect(name.length).toBeGreaterThan(70);
+    // Tepat 80 karakter (batas API) dan tidak berakhir dengan spasi, sehingga tidak dipangkas oleh trim di server.
+    const name = `${`Proyek ${uniqueSuffix()} ${"panjang ".repeat(12)}`.slice(0, 79)}x`;
+    expect(name).toHaveLength(80);
     const created = await api.createProject(owner, { name });
     const { page } = await signedInPage(owner);
     await page.setViewportSize({ width: 375, height: 812 });
@@ -310,6 +311,7 @@ test.describe("Project", () => {
     await project.goto(created.slug);
     await expect(project.title).toHaveAttribute("title", created.name);
     await expect(project.title).toHaveCSS("text-overflow", "ellipsis");
+    expect(await project.title.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     expect(await noHorizontalScroll()).toBe(true);
   });
 });

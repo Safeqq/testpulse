@@ -11,6 +11,14 @@ export default defineConfig({
     projects: [
       {
         test: {
+          name: "unit",
+          environment: "node",
+          // Logika murni sisi klien (tema, dll.) dan skrip statis di public/.
+          include: ["src/**/*.test.ts", "test/unit/**/*.test.ts"],
+        },
+      },
+      {
+        test: {
           name: "functions",
           environment: "node",
           // Pages Function proxy dan paritas header keamanan (nginx vs _headers).

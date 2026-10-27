@@ -1,8 +1,13 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   server: {
     port: 5173,
     strictPort: true,
@@ -15,7 +20,14 @@ export default defineConfig({
   },
   // Pre-bundle sejak awal supaya tidak ada reload halaman di tengah sesi karena dependensi baru ditemukan.
   optimizeDeps: {
-    include: ["react", "react-dom/client", "react-router-dom", "@testpulse/shared > zod"],
+    include: [
+      "react",
+      "react-dom/client",
+      "react-router-dom",
+      "@testpulse/shared > zod",
+      "@radix-ui/react-dropdown-menu",
+      "lucide-react",
+    ],
   },
   build: {
     rollupOptions: {

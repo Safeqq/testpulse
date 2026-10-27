@@ -1,11 +1,17 @@
 import { ROLES, type MemberDto, type Role } from "@testpulse/shared";
+import { Loader2, LogOut } from "lucide-react";
 import { useCallback, useId, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { NativeSelect } from "@/components/NativeSelect";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { LoadError } from "../../components/LoadError";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/forms";
 import { ROLE_LABEL } from "../../lib/roles";
 import { useLoad } from "../../lib/useLoad";
+import { SettingsSection } from "./SettingsSection";
 
 interface Props {
   slug: string;
@@ -22,10 +28,14 @@ export function MembersSection({ slug, meId, isAdmin, notify, onOwnRoleChanged }
   const load = useLoad(fetchMembers);
 
   return (
-    <section className="card" aria-labelledby="members-title">
-      <h2 id="members-title">Anggota</h2>
+    <SettingsSection
+      id="members"
+      title="Anggota"
+      description={isAdmin ? "Ubah peran anggota atau keluarkan dari project." : "Anggota project ini dan perannya."}
+    >
       {load.state === "loading" ? (
-        <p role="status" className="loading">
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
           Memuat anggota…
         </p>
       ) : load.state === "error" ? (
@@ -40,7 +50,7 @@ export function MembersSection({ slug, meId, isAdmin, notify, onOwnRoleChanged }
           onOwnRoleChanged={onOwnRoleChanged}
         />
       )}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -97,7 +107,7 @@ function MemberList({ slug, meId, isAdmin, initial, notify, onOwnRoleChanged }: 
 
   return (
     <>
-      <ul className="member-list" data-testid="member-list">
+      <ul className="m-0 grid list-none divide-y divide-border rounded-lg border p-0" data-testid="member-list">
         {members.map((member) => (
           <MemberRow
             key={member.userId}
@@ -110,17 +120,23 @@ function MemberList({ slug, meId, isAdmin, initial, notify, onOwnRoleChanged }: 
           />
         ))}
       </ul>
-      <div className="leave-box">
-        <button
+
+      <Separator className="my-5" />
+      <div className="grid justify-items-start gap-2">
+        <Button
           type="button"
-          className="button button-danger-outline"
+          variant="outline"
+          className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
           disabled={leaving}
           onClick={() => void leave()}
           data-testid="leave-project"
         >
+          <LogOut aria-hidden="true" />
           {leaving ? "Memproses…" : "Keluar dari project"}
-        </button>
-        <p className="field-hint">Anda kehilangan akses ke project privat ini sampai diundang kembali.</p>
+        </Button>
+        <p className="text-sm text-muted-foreground">
+          Anda kehilangan akses ke project privat ini sampai diundang kembali.
+        </p>
       </div>
     </>
   );
@@ -138,21 +154,24 @@ interface RowProps {
 function MemberRow({ member, isSelf, isAdmin, disabled, onChangeRole, onRemove }: RowProps) {
   const selectId = useId();
   return (
-    <li className="member-row" data-testid={`member-row-${member.userId}`}>
-      <div className="member-info">
-        <span className="member-name">
+    <li
+      className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3"
+      data-testid={`member-row-${member.userId}`}
+    >
+      <div className="grid min-w-0 gap-0.5">
+        <span className="flex items-center gap-2 text-sm font-medium [overflow-wrap:anywhere]">
           {member.name}
-          {isSelf ? <span className="chip">Anda</span> : null}
+          {isSelf ? <Badge variant="outline">Anda</Badge> : null}
         </span>
-        <span className="member-email">{member.email}</span>
+        <span className="text-sm text-muted-foreground [overflow-wrap:anywhere]">{member.email}</span>
       </div>
-      <div className="member-actions">
+      <div className="flex flex-wrap items-center gap-2">
         {isAdmin ? (
           <>
-            <label htmlFor={selectId} className="visually-hidden">
+            <label htmlFor={selectId} className="sr-only">
               Peran {member.name}
             </label>
-            <select
+            <NativeSelect
               id={selectId}
               value={member.role}
               disabled={disabled}
@@ -164,22 +183,23 @@ function MemberRow({ member, isSelf, isAdmin, disabled, onChangeRole, onRemove }
                   {ROLE_LABEL[role]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
             {isSelf ? null : (
-              <button
+              <Button
                 type="button"
-                className="button button-secondary"
+                variant="outline"
+                size="sm"
                 disabled={disabled}
                 aria-label={`Keluarkan ${member.name}`}
                 onClick={onRemove}
                 data-testid={`member-remove-${member.userId}`}
               >
                 Keluarkan
-              </button>
+              </Button>
             )}
           </>
         ) : (
-          <span className="chip chip-role">{ROLE_LABEL[member.role]}</span>
+          <Badge variant="secondary">{ROLE_LABEL[member.role]}</Badge>
         )}
       </div>
     </li>

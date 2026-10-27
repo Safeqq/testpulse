@@ -17,7 +17,7 @@ test.describe("Tim, undangan, dan visibilitas", () => {
     api,
     signedInPage,
     newContext,
-    expectNoA11yViolations,
+    expectNoA11yViolationsInBothThemes,
   }) => {
     const admin = await api.register();
     const second = await api.register();
@@ -33,7 +33,7 @@ test.describe("Tim, undangan, dan visibilitas", () => {
     const inviteUrl = await adminSettings.createInvitation("viewer");
     expect(inviteUrl).toContain("/invite/");
     await expect(adminSettings.toast).toContainText("Undangan Viewer dibuat");
-    await expectNoA11yViolations(adminPage);
+    await expectNoA11yViolationsInBothThemes(adminPage);
 
     // 2. User kedua membuka URL: pratinjau menampilkan project & role, lalu menerima.
     const { page: secondPage } = await signedInPage(second);
@@ -41,7 +41,7 @@ test.describe("Tim, undangan, dan visibilitas", () => {
     await invite.goto(inviteUrl);
     await expect(invite.preview).toContainText(created.name);
     await expect(invite.preview).toContainText("Viewer");
-    await expectNoA11yViolations(secondPage);
+    await expectNoA11yViolationsInBothThemes(secondPage);
     await invite.accept.click();
     await expect(secondPage).toHaveURL(new RegExp(`/p/${created.slug}$`));
     await expect(new ProjectPage(secondPage).title).toHaveText(created.name);

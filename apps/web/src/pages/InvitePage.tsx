@@ -1,5 +1,11 @@
 import { useCallback, useState } from "react";
+import { Loader2, MailX } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { BrandMark } from "@/components/BrandMark";
+import { EmptyState } from "@/components/EmptyState";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
 import { FormError } from "../components/FormError";
 import { LoadError } from "../components/LoadError";
 import { api, ApiError } from "../lib/api";
@@ -24,7 +30,8 @@ export function InvitePage() {
 
   if (load.state === "loading") {
     return (
-      <p role="status" className="loading">
+      <p role="status" className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+        <Loader2 aria-hidden="true" className="size-4 motion-safe:animate-spin" />
         Memuat undangan…
       </p>
     );
@@ -34,12 +41,20 @@ export function InvitePage() {
     // 404 (tidak ada/dicabut) dan 410 (dipakai/kedaluwarsa) tidak akan membaik dengan mencoba lagi.
     if (load.error instanceof ApiError && (load.error.status === 404 || load.error.status === 410)) {
       return (
-        <section className="empty-state" data-testid="invite-error">
-          <h1>Undangan tidak dapat dipakai</h1>
-          <p>{load.error.message}</p>
-          <Link to="/" className="button button-secondary">
-            Ke beranda
-          </Link>
+        <section className="mx-auto w-full max-w-lg py-4 md:py-10">
+          <EmptyState
+            icon={MailX}
+            title="Undangan tidak dapat dipakai"
+            headingLevel="h1"
+            data-testid="invite-error"
+            action={
+              <Button asChild variant="outline">
+                <Link to="/">Ke beranda</Link>
+              </Button>
+            }
+          >
+            <p>{load.error.message}</p>
+          </EmptyState>
         </section>
       );
     }
@@ -65,50 +80,75 @@ export function InvitePage() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="invite-title">
-      <h1 id="invite-title">Undangan bergabung</h1>
+    <section className="mx-auto w-full max-w-md py-4 md:py-10" aria-labelledby="invite-title">
+      <Card>
+        <CardHeader className="items-center text-center">
+          <BrandMark size={40} />
+          <h1 id="invite-title" className="mt-2 text-2xl font-semibold tracking-tight">
+            Undangan bergabung
+          </h1>
+          <CardDescription>Seseorang mengundang Anda untuk bergabung ke sebuah project di TestPulse.</CardDescription>
+        </CardHeader>
 
-      <div className="invite-preview" data-testid="invite-preview">
-        <p>
-          Anda diundang bergabung ke project <strong>{invitation.projectName}</strong> sebagai{" "}
-          <strong>{ROLE_LABEL[invitation.role]}</strong>.
-        </p>
-        <p className="field-hint">Berlaku sampai {formatDateTime(invitation.expiresAt)}.</p>
-      </div>
-
-      {status === "anonymous" ? (
-        <>
-          <p className="lead">Masuk atau daftar dulu untuk menerima undangan ini.</p>
-          <Link
-            to={loginPathFor(invitePath)}
-            className="button button-primary button-block"
-            data-testid="invite-accept"
-          >
-            Masuk untuk menerima
-          </Link>
-          <p className="auth-alt">
-            Belum punya akun? <Link to={registerPathFor(invitePath)}>Daftar sekarang</Link>
-          </p>
-        </>
-      ) : (
-        <>
-          <FormError message={error} />
-          {alreadyMember ? (
-            <p className="auth-alt">
-              <Link to={`/p/${invitation.projectSlug}`}>Buka project</Link>
+        <CardContent className="grid gap-4">
+          <div className="grid gap-1.5 rounded-lg border bg-muted p-4 [overflow-wrap:anywhere]" data-testid="invite-preview">
+            <p className="text-sm">
+              Anda diundang bergabung ke project <strong className="font-semibold">{invitation.projectName}</strong>{" "}
+              sebagai <Badge variant="secondary">{ROLE_LABEL[invitation.role]}</Badge>
             </p>
-          ) : null}
-          <button
-            type="button"
-            className="button button-primary button-block"
-            disabled={status === "loading" || status === "error" || accepting}
-            onClick={() => void accept()}
-            data-testid="invite-accept"
-          >
-            {accepting ? "Memproses…" : "Terima undangan"}
-          </button>
-        </>
-      )}
+            <p className="text-sm text-muted-foreground">Berlaku sampai {formatDateTime(invitation.expiresAt)}.</p>
+          </div>
+
+          {status === "anonymous" ? (
+            <>
+              <p className="text-sm text-muted-foreground">Masuk atau daftar dulu untuk menerima undangan ini.</p>
+              <Button asChild size="lg" className="w-full">
+                <Link to={loginPathFor(invitePath)} data-testid="invite-accept">
+                  Masuk untuk menerima
+                </Link>
+              </Button>
+            </>
+          ) : (
+            <>
+              <FormError message={error} />
+              {alreadyMember ? (
+                <p className="text-center text-sm">
+                  <Link
+                    to={`/p/${invitation.projectSlug}`}
+                    className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+                  >
+                    Buka project
+                  </Link>
+                </p>
+              ) : null}
+              <Button
+                type="button"
+                size="lg"
+                className="w-full"
+                disabled={status === "loading" || status === "error" || accepting}
+                onClick={() => void accept()}
+                data-testid="invite-accept"
+              >
+                {accepting ? "Memproses…" : "Terima undangan"}
+              </Button>
+            </>
+          )}
+        </CardContent>
+
+        {status === "anonymous" ? (
+          <CardFooter className="justify-center text-sm text-muted-foreground">
+            <p>
+              Belum punya akun?{" "}
+              <Link
+                to={registerPathFor(invitePath)}
+                className="rounded-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+              >
+                Daftar sekarang
+              </Link>
+            </p>
+          </CardFooter>
+        ) : null}
+      </Card>
     </section>
   );
 }

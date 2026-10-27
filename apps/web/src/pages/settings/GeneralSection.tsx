@@ -1,9 +1,11 @@
 import { updateProjectBody, type ProjectDto } from "@testpulse/shared";
 import { useRef, useState, type FormEvent } from "react";
+import { Button } from "@/components/ui/button";
 import { FormError } from "../../components/FormError";
 import { FormField } from "../../components/FormField";
 import { api } from "../../lib/api";
 import { focusField, serverErrorToForm, validate } from "../../lib/forms";
+import { SettingsSection } from "./SettingsSection";
 
 interface Props {
   project: ProjectDto;
@@ -49,23 +51,26 @@ export function GeneralSection({ project, onSaved, notify }: Props) {
   }
 
   return (
-    <section className="card" aria-labelledby="general-title">
-      <h2 id="general-title">Umum</h2>
+    <SettingsSection id="general" title="Umum" description="Nama yang tampil di daftar project dan halaman ini.">
       <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={saving}>
         <FormError message={formError} />
-        <FormField
-          name="name"
-          label="Nama project"
-          testIdPrefix="settings"
-          hint={`Alamat project tetap /p/${project.slug}.`}
-          value={name}
-          onChange={setName}
-          error={fieldErrors.name}
-        />
-        <button type="submit" className="button button-primary" disabled={saving} data-testid="settings-save">
-          {saving ? "Menyimpan…" : "Simpan"}
-        </button>
+        <div className="grid gap-4">
+          <FormField
+            name="name"
+            label="Nama project"
+            testIdPrefix="settings"
+            hint={`Alamat project tetap /p/${project.slug}.`}
+            value={name}
+            onChange={setName}
+            error={fieldErrors.name}
+          />
+          <div>
+            <Button type="submit" disabled={saving} data-testid="settings-save">
+              {saving ? "Menyimpan…" : "Simpan"}
+            </Button>
+          </div>
+        </div>
       </form>
-    </section>
+    </SettingsSection>
   );
 }

@@ -1,6 +1,9 @@
 import type { ProjectDto, Role } from "@testpulse/shared";
 import { useCallback, useState } from "react";
+import { ArrowLeft, FolderSearch, Loader2, ShieldAlert } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
+import { EmptyState } from "@/components/EmptyState";
+import { Button } from "@/components/ui/button";
 import { LoadError } from "../../components/LoadError";
 import { Toast } from "../../components/Toast";
 import { api, ApiError } from "../../lib/api";
@@ -24,19 +27,28 @@ export function ProjectSettingsPage() {
 
   if (load.state === "loading") {
     return (
-      <p role="status" className="loading">
+      <p role="status" className="flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
         Memuat pengaturan…
       </p>
     );
   }
   if (notFound) {
     return (
-      <section className="empty-state" data-testid="project-not-found">
-        <h1>Project tidak ditemukan</h1>
-        <p>Project tidak ditemukan, atau Anda tidak memiliki akses.</p>
-        <Link to="/" className="button button-secondary">
-          Ke project saya
-        </Link>
+      <section className="mx-auto w-full max-w-lg py-4 md:py-10">
+        <EmptyState
+          icon={FolderSearch}
+          title="Project tidak ditemukan"
+          headingLevel="h1"
+          data-testid="project-not-found"
+          action={
+            <Button asChild variant="outline">
+              <Link to="/">Ke project saya</Link>
+            </Button>
+          }
+        >
+          <p>Project tidak ditemukan, atau Anda tidak memiliki akses.</p>
+        </EmptyState>
       </section>
     );
   }
@@ -58,12 +70,20 @@ function SettingsContent({ initial }: { initial: ProjectDto }) {
   if (project.myRole === null) {
     // Project publik dibuka oleh non-anggota: tidak ada yang bisa dikelola.
     return (
-      <section className="empty-state" data-testid="settings-not-member">
-        <h1>Pengaturan hanya untuk anggota</h1>
-        <p>Anda belum menjadi anggota project ini. Minta admin project untuk mengirim undangan.</p>
-        <Link to={`/p/${project.slug}`} className="button button-secondary">
-          Kembali ke project
-        </Link>
+      <section className="mx-auto w-full max-w-lg py-4 md:py-10">
+        <EmptyState
+          icon={ShieldAlert}
+          title="Pengaturan hanya untuk anggota"
+          headingLevel="h1"
+          data-testid="settings-not-member"
+          action={
+            <Button asChild variant="outline">
+              <Link to={`/p/${project.slug}`}>Kembali ke project</Link>
+            </Button>
+          }
+        >
+          <p>Anda belum menjadi anggota project ini. Minta admin project untuk mengirim undangan.</p>
+        </EmptyState>
       </section>
     );
   }
@@ -72,16 +92,22 @@ function SettingsContent({ initial }: { initial: ProjectDto }) {
   const handleOwnRole = (role: Role) => setProject((p) => ({ ...p, myRole: role }));
 
   return (
-    <section aria-labelledby="settings-title" className="settings">
-      <div className="page-header">
-        <div>
-          <h1 id="settings-title" data-testid="settings-title">
-            Pengaturan: {project.name}
-          </h1>
-          <p className="lead">
-            <Link to={`/p/${project.slug}`}>Kembali ke project</Link>
-          </p>
-        </div>
+    <section aria-labelledby="settings-title" className="mx-auto grid w-full max-w-3xl grid-cols-1 gap-6">
+      <div className="grid gap-3">
+        <Link
+          to={`/p/${project.slug}`}
+          className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Kembali ke project
+        </Link>
+        <h1
+          id="settings-title"
+          className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]"
+          data-testid="settings-title"
+        >
+          Pengaturan: {project.name}
+        </h1>
       </div>
 
       {isAdmin ? (

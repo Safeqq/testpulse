@@ -154,7 +154,7 @@ export function Layout() {
   return (
     <>
       <Header />
-      <main id="main" tabIndex={-1} className="app-main">
+      <main id="main" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 py-8 outline-none">
         <Outlet />
       </main>
     </>

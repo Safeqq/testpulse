@@ -1,10 +1,12 @@
 import type { ProjectDto } from "@testpulse/shared";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { FormError } from "../../components/FormError";
 import { FormField } from "../../components/FormField";
 import { api } from "../../lib/api";
 import { serverErrorToForm } from "../../lib/forms";
+import { SettingsSection } from "./SettingsSection";
 
 /** Hapus project permanen (admin); tombol aktif hanya jika slug diketik persis. */
 export function DangerZone({ project }: { project: ProjectDto }) {
@@ -28,31 +30,36 @@ export function DangerZone({ project }: { project: ProjectDto }) {
   }
 
   return (
-    <section className="card card-danger" aria-labelledby="danger-title">
-      <h2 id="danger-title">Zona berbahaya</h2>
-      <p className="section-lead">
-        Menghapus project menghapus semua anggota dan undangannya secara permanen. Tindakan ini tidak dapat dibatalkan.
-      </p>
+    <SettingsSection
+      id="danger"
+      title="Zona berbahaya"
+      tone="danger"
+      description="Menghapus project menghapus semua anggota dan undangannya secara permanen. Tindakan ini tidak dapat dibatalkan."
+    >
       <form onSubmit={handleSubmit} noValidate aria-busy={deleting}>
         <FormError message={error} />
-        <FormField
-          name="confirm"
-          label="Ketik slug project untuk mengonfirmasi"
-          testIdPrefix="delete"
-          autoComplete="off"
-          hint={`Ketik ${project.slug} persis seperti itu.`}
-          value={confirm}
-          onChange={setConfirm}
-        />
-        <button
-          type="submit"
-          className="button button-danger"
-          disabled={deleting || confirm !== project.slug}
-          data-testid="delete-project"
-        >
-          {deleting ? "Menghapus…" : "Hapus project"}
-        </button>
+        <div className="grid gap-4">
+          <FormField
+            name="confirm"
+            label="Ketik slug project untuk mengonfirmasi"
+            testIdPrefix="delete"
+            autoComplete="off"
+            hint={`Ketik ${project.slug} persis seperti itu.`}
+            value={confirm}
+            onChange={setConfirm}
+          />
+          <div>
+            <Button
+              type="submit"
+              variant="destructive"
+              disabled={deleting || confirm !== project.slug}
+              data-testid="delete-project"
+            >
+              {deleting ? "Menghapus…" : "Hapus project"}
+            </Button>
+          </div>
+        </div>
       </form>
-    </section>
+    </SettingsSection>
   );
 }

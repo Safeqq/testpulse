@@ -1,21 +1,6 @@
-/* Urutan layer: styles.css lama ("legacy") ada di atas preflight Tailwind tetapi di bawah komponen/utilitas,
-   sehingga halaman lama tetap tampil seperti semula sampai ditulis ulang (Task 3-5), sedangkan kelas utilitas
-   pada komponen baru selalu menang. Hapus layer legacy bersama styles.css di Task 5. */
-@layer theme, base, legacy, components, utilities;
-
 @import "tailwindcss";
-@import "./styles.css" layer(legacy);
 
 @custom-variant dark (&:where(.dark, .dark *));
-
-/* Preflight Tailwind menghapus garis bawah tautan; halaman lama bergantung padanya (tautan di dalam teks harus
-   dapat dibedakan tanpa warna, WCAG 1.4.1). Terbatas pada tautan tanpa kelas, sehingga tautan komponen baru
-   (selalu berkelas) tidak terpengaruh. Hapus bersama styles.css (Task 5). */
-@layer legacy {
-  main a:not([class]) {
-    text-decoration: underline;
-  }
-}
 
 /* Token tema (spec §3.1). Kelas `.dark` dipasang di <html> oleh public/theme-init.js dan ThemeProvider.
    Penyesuaian demi kontras WCAG AA dicatat di laporan implementasi Task 2. */
@@ -43,9 +28,11 @@
   --ring: #0051c3;
   --link: #0051c3;
   --radius: 0.5rem;
+  color-scheme: light;
 }
 
 .dark {
+  color-scheme: dark;
   --background: #0b0d0f;
   --foreground: #f2f4f5;
   --card: #14171a;
@@ -102,26 +89,9 @@
   }
 }
 
-/* Tanpa layer agar menang atas aturan `body` lama; keduanya mengikuti token tema baru. */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
-}
-
-/* Peralihan sementara: halaman lama (styles.css) memakai token --color-* sendiri. Di tema gelap token itu
-   dipetakan ke palet baru agar halaman yang belum ditulis ulang tetap terbaca. Hapus bersama styles.css (Task 5). */
-.dark {
-  --color-bg: #0b0d0f;
-  --color-surface: #14171a;
-  --color-border: #3a424a;
-  --color-text: #f2f4f5;
-  --color-text-muted: #a3adb5;
-  --color-primary: #34d59a;
-  --color-primary-hover: #6ee7b7;
-  --color-on-primary: #0b0d0f;
-  --color-danger: #f87171;
-  --color-danger-bg: #2a1214;
-  --color-danger-border: #7f1d1d;
-  --color-focus: #6ee7b7;
+  -webkit-font-smoothing: antialiased;
 }

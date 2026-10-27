@@ -1,11 +1,17 @@
 import { INVITABLE_ROLES, type CreatedInvitationDto, type InvitableRole, type InvitationDto } from "@testpulse/shared";
+import { Copy, Link2, Loader2 } from "lucide-react";
 import { useCallback, useId, useState } from "react";
+import { NativeSelect } from "@/components/NativeSelect";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { LoadError } from "../../components/LoadError";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/forms";
 import { formatDateTime } from "../../lib/format";
 import { ROLE_LABEL } from "../../lib/roles";
 import { useLoad } from "../../lib/useLoad";
+import { SettingsSection } from "./SettingsSection";
 
 interface Props {
   slug: string;
@@ -21,10 +27,14 @@ export function InvitationsSection({ slug, meId, meName, notify }: Props) {
   const load = useLoad(fetchInvitations);
 
   return (
-    <section className="card" aria-labelledby="invitations-title">
-      <h2 id="invitations-title">Undangan</h2>
+    <SettingsSection
+      id="invitations"
+      title="Undangan"
+      description="Undangan berlaku 7 hari dan hanya bisa dipakai satu kali. Tester dapat mengirim hasil test; Viewer hanya dapat melihat."
+    >
       {load.state === "loading" ? (
-        <p role="status" className="loading">
+        <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
           Memuat undangan…
         </p>
       ) : load.state === "error" ? (
@@ -32,7 +42,7 @@ export function InvitationsSection({ slug, meId, meName, notify }: Props) {
       ) : (
         <InvitationPanel slug={slug} meId={meId} meName={meName} initial={load.data} notify={notify} />
       )}
-    </section>
+    </SettingsSection>
   );
 }
 
@@ -93,16 +103,11 @@ function InvitationPanel({ slug, meId, meName, initial, notify }: Props & { init
   }
 
   return (
-    <>
-      <p className="section-lead">
-        Undangan berlaku 7 hari dan hanya bisa dipakai satu kali. Tester dapat mengirim hasil test; Viewer hanya dapat
-        melihat.
-      </p>
-
-      <div className="invite-form">
-        <div className="field">
-          <label htmlFor={roleId}>Peran undangan</label>
-          <select
+    <div className="grid gap-5">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor={roleId}>Peran undangan</Label>
+          <NativeSelect
             id={roleId}
             value={role}
             onChange={(e) => setRole(e.target.value as InvitableRole)}
@@ -113,69 +118,68 @@ function InvitationPanel({ slug, meId, meName, initial, notify }: Props & { init
                 {ROLE_LABEL[r]}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
-        <button
-          type="button"
-          className="button button-primary"
-          disabled={creating}
-          onClick={() => void create()}
-          data-testid="invite-create"
-        >
+        <Button type="button" disabled={creating} onClick={() => void create()} data-testid="invite-create">
+          <Link2 aria-hidden="true" />
           {creating ? "Membuat…" : "Buat undangan"}
-        </button>
+        </Button>
       </div>
 
       {created ? (
-        <div className="invite-created">
-          <p className="invite-created-note">
+        <div className="grid gap-3 rounded-lg border border-primary bg-accent p-4">
+          <p className="text-sm">
             Tautan undangan {ROLE_LABEL[created.role]} siap dibagikan. Tautan lengkap hanya ditampilkan sekarang; salin
             sebelum meninggalkan halaman ini.
           </p>
-          <div className="invite-created-row">
-            <code className="invite-url" data-testid="invite-url">
+          <div className="flex flex-wrap items-center gap-3">
+            <code
+              className="min-w-0 flex-[1_1_16rem] rounded-md border bg-card px-3 py-2 font-mono text-sm break-all"
+              data-testid="invite-url"
+            >
               {created.url}
             </code>
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={() => void copy(created.url)}
-              data-testid="invite-copy"
-            >
+            <Button type="button" variant="outline" onClick={() => void copy(created.url)} data-testid="invite-copy">
+              <Copy aria-hidden="true" />
               Salin tautan
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
 
       {invitations.length === 0 ? (
-        <p className="empty-note" data-testid="invite-empty">
+        <p className="text-sm text-muted-foreground" data-testid="invite-empty">
           Belum ada undangan aktif.
         </p>
       ) : (
-        <ul className="invite-list" data-testid="invite-list">
+        <ul className="m-0 grid list-none divide-y divide-border rounded-lg border p-0" data-testid="invite-list">
           {invitations.map((invitation) => (
-            <li key={invitation.id} className="invite-row" data-testid={`invite-row-${invitation.id}`}>
-              <div className="invite-info">
-                <span className="chip chip-role">{ROLE_LABEL[invitation.role]}</span>
-                <span className="invite-meta">
+            <li
+              key={invitation.id}
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 px-4 py-3"
+              data-testid={`invite-row-${invitation.id}`}
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <Badge variant="secondary">{ROLE_LABEL[invitation.role]}</Badge>
+                <span className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
                   Berlaku sampai {formatDateTime(invitation.expiresAt)} · dibuat oleh {invitation.createdBy.name}
                 </span>
               </div>
-              <button
+              <Button
                 type="button"
-                className="button button-secondary"
+                variant="outline"
+                size="sm"
                 disabled={revoking !== null}
                 aria-label={`Cabut undangan ${ROLE_LABEL[invitation.role]} yang berlaku sampai ${formatDateTime(invitation.expiresAt)}`}
                 onClick={() => void revoke(invitation)}
                 data-testid={`invite-revoke-${invitation.id}`}
               >
                 Cabut
-              </button>
+              </Button>
             </li>
           ))}
         </ul>
       )}
-    </>
+    </div>
   );
 }

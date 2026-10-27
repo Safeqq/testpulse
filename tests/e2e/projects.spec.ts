@@ -200,11 +200,11 @@ test.describe("Project", () => {
     await expect(page).toHaveURL(/\/login$/);
   });
 
-  test("halaman daftar, buat, dan ringkasan lolos pemeriksaan aksesibilitas", async ({
+  test("halaman daftar, buat, dan ringkasan lolos pemeriksaan aksesibilitas di kedua tema", async ({
     api,
     signedInPage,
     newContext,
-    expectNoA11yViolations,
+    expectNoA11yViolationsInBothThemes,
   }) => {
     const owner = await api.register();
     const created = await api.createProject(owner);
@@ -214,24 +214,102 @@ test.describe("Project", () => {
     const projects = new ProjectsPage(page);
     await projects.goto();
     await expect(projects.item(created.slug)).toBeVisible();
-    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInBothThemes(page);
 
     await new NewProjectPage(page).goto();
-    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInBothThemes(page);
 
     await new ProjectPage(page).goto(created.slug);
-    await expectNoA11yViolations(page);
+    await expectNoA11yViolationsInBothThemes(page);
 
     const anon = await newContext();
     try {
       const anonPage = await anon.newPage();
       await new ProjectPage(anonPage).goto(created.slug);
-      await expectNoA11yViolations(anonPage);
+      await expectNoA11yViolationsInBothThemes(anonPage);
 
       await new ProjectPage(anonPage).goto(`tidak-ada-${uniqueSuffix()}`);
-      await expectNoA11yViolations(anonPage);
+      await expectNoA11yViolationsInBothThemes(anonPage);
     } finally {
       await anon.close();
     }
+  });
+
+  test("daftar kosong dan ringkasan project (empty state) lolos aksesibilitas di kedua tema", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { page } = await signedInPage();
+    const projects = new ProjectsPage(page);
+    await projects.goto();
+    await expect(projects.empty).toBeVisible();
+    await expectNoA11yViolationsInBothThemes(page);
+
+    const owner = await api.register();
+    const created = await api.createProject(owner);
+    const member = await signedInPage(owner);
+    await new ProjectPage(member.page).goto(created.slug);
+    await expect(new ProjectPage(member.page).emptyResults).toBeVisible();
+    await expectNoA11yViolationsInBothThemes(member.page);
+  });
+
+  test("keadaan error (slug dipakai, nama kosong, gagal memuat) lolos aksesibilitas di kedua tema", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const owner = await api.register();
+    const taken = await api.createProject(owner);
+    const { page } = await signedInPage();
+    const create = new NewProjectPage(page);
+
+    await create.goto();
+    await create.submit.click();
+    await expect(create.fieldError("name")).toBeVisible();
+    await expectNoA11yViolationsInBothThemes(page);
+
+    await create.create({ name: "Proyek Lain", slug: taken.slug });
+    await expect(create.fieldError("slug")).toHaveText("Slug sudah dipakai");
+    await expectNoA11yViolationsInBothThemes(page);
+
+    await page.route("**/api/v1/projects", (route) =>
+      route.fulfill({ status: 500, json: { error: { code: "INTERNAL_ERROR", message: "Gagal memuat project." } } }),
+    );
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "Coba lagi" })).toBeVisible();
+    await expectNoA11yViolationsInBothThemes(page);
+  });
+
+  test("nama project 80 karakter dipotong dengan elipsis tanpa scroll horizontal di HP", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const owner = await api.register();
+    const name = `Proyek ${uniqueSuffix()} ${"panjang ".repeat(12)}`.trim().slice(0, 80).trim();
+    expect(name.length).toBeGreaterThan(70);
+    const created = await api.createProject(owner, { name });
+    const { page } = await signedInPage(owner);
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    const projects = new ProjectsPage(page);
+    await projects.goto();
+    const link = projects.item(created.slug).getByRole("link", { name: created.name });
+    await expect(link).toBeVisible();
+
+    const noHorizontalScroll = () =>
+      page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+    expect(await noHorizontalScroll()).toBe(true);
+    await expect(link).toHaveAttribute("title", created.name);
+    await expect(link).toHaveCSS("text-overflow", "ellipsis");
+    expect(await link.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    const project = new ProjectPage(page);
+    await project.goto(created.slug);
+    await expect(project.title).toHaveAttribute("title", created.name);
+    await expect(project.title).toHaveCSS("text-overflow", "ellipsis");
+    expect(await noHorizontalScroll()).toBe(true);
   });
 });

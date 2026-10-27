@@ -1,6 +1,9 @@
 import { createProjectBody, slugify, slugSchema } from "@testpulse/shared";
+import { ArrowLeft } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { FormError } from "../components/FormError";
 import { FormField } from "../components/FormField";
 import { ApiError, api } from "../lib/api";
@@ -58,46 +61,60 @@ export function NewProjectPage() {
   }
 
   return (
-    <section className="auth-card" aria-labelledby="new-project-title">
-      <h1 id="new-project-title">Buat project</h1>
-      <p className="lead">Beri nama project Anda. Slug dibuat otomatis dari nama, atau isi sendiri.</p>
+    <section className="mx-auto grid w-full max-w-lg grid-cols-1 gap-4 py-2 md:py-6" aria-labelledby="new-project-title">
+      <Link
+        to="/"
+        className="inline-flex w-fit items-center gap-1.5 rounded-sm text-sm font-medium text-link underline underline-offset-4 hover:no-underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Kembali ke project saya
+      </Link>
 
-      <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={submitting}>
-        <FormError message={formError} />
-        <FormField
-          name="name"
-          label="Nama project"
-          testIdPrefix="project"
-          value={name}
-          onChange={setName}
-          error={fieldErrors.name}
-        />
-        <FormField
-          name="slug"
-          label="Slug (opsional)"
-          testIdPrefix="project"
-          hint="Huruf kecil, angka, dan tanda hubung; 3–40 karakter. Kosongkan untuk membuatnya dari nama."
-          value={slug}
-          onChange={setSlug}
-          error={fieldErrors.slug}
-        />
-        <p className="slug-preview">
-          Alamat project: <span className="slug-preview-path">/p/</span>
-          <code data-testid="slug-preview">{effectiveSlug || "…"}</code>
-        </p>
-        <button
-          type="submit"
-          className="button button-primary button-block"
-          disabled={submitting}
-          data-testid="create-project-submit"
-        >
-          {submitting ? "Memproses…" : "Buat project"}
-        </button>
-      </form>
+      <Card>
+        <CardHeader>
+          <h1 id="new-project-title" className="text-2xl font-semibold tracking-tight">
+            Buat project
+          </h1>
+          <CardDescription>Beri nama project Anda. Slug dibuat otomatis dari nama, atau isi sendiri.</CardDescription>
+        </CardHeader>
 
-      <p className="auth-alt">
-        <Link to="/">Kembali ke project saya</Link>
-      </p>
+        <CardContent>
+          <form ref={formRef} onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+            <FormError message={formError} />
+            <div className="grid gap-4">
+              <FormField
+                name="name"
+                label="Nama project"
+                testIdPrefix="project"
+                value={name}
+                onChange={setName}
+                error={fieldErrors.name}
+              />
+              <FormField
+                name="slug"
+                label="Slug (opsional)"
+                testIdPrefix="project"
+                hint="Huruf kecil, angka, dan tanda hubung; 3–40 karakter. Kosongkan untuk membuatnya dari nama."
+                value={slug}
+                onChange={setSlug}
+                error={fieldErrors.slug}
+              />
+              <p className="rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+                Alamat project:{" "}
+                <span className="font-mono break-all">
+                  <span>/p/</span>
+                  <code className="font-semibold text-foreground" data-testid="slug-preview">
+                    {effectiveSlug || "…"}
+                  </code>
+                </span>
+              </p>
+              <Button type="submit" size="lg" className="w-full" disabled={submitting} data-testid="create-project-submit">
+                {submitting ? "Memproses…" : "Buat project"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </section>
   );
 }

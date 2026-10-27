@@ -1,11 +1,15 @@
+import { BarChart3, FolderSearch, Globe, Loader2, Settings } from "lucide-react";
 import { useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
+import { EmptyState } from "@/components/EmptyState";
+import { RoleBadge, VisibilityBadge } from "@/components/ProjectBadges";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { LoadError } from "../components/LoadError";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useDocumentTitle } from "../lib/forms";
 import { loginPathFor } from "../lib/navigation";
-import { ROLE_LABEL } from "../lib/roles";
 import { useLoad } from "../lib/useLoad";
 
 /** Ringkasan project. Terbuka tanpa login untuk project publik; project privat/tidak ada tampil sama (spec §5.7). */
@@ -20,7 +24,8 @@ export function ProjectPage() {
 
   if (load.state === "loading") {
     return (
-      <p role="status" className="loading">
+      <p role="status" className="flex items-center gap-2 text-muted-foreground">
+        <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
         Memuat project…
       </p>
     );
@@ -28,18 +33,26 @@ export function ProjectPage() {
 
   if (notFound) {
     return (
-      <section className="empty-state" data-testid="project-not-found">
-        <h1>Project tidak ditemukan</h1>
-        <p>Project tidak ditemukan. Jika ini project privat, silakan masuk.</p>
-        {status === "anonymous" ? (
-          <Link to={loginPathFor(`/p/${slug}`)} className="button button-primary">
-            Masuk
-          </Link>
-        ) : (
-          <Link to="/" className="button button-secondary">
-            Ke project saya
-          </Link>
-        )}
+      <section className="mx-auto w-full max-w-lg py-4 md:py-10">
+        <EmptyState
+          icon={FolderSearch}
+          title="Project tidak ditemukan"
+          headingLevel="h1"
+          data-testid="project-not-found"
+          action={
+            status === "anonymous" ? (
+              <Button asChild>
+                <Link to={loginPathFor(`/p/${slug}`)}>Masuk</Link>
+              </Button>
+            ) : (
+              <Button asChild variant="outline">
+                <Link to="/">Ke project saya</Link>
+              </Button>
+            )
+          }
+        >
+          <p>Project tidak ditemukan. Jika ini project privat, silakan masuk.</p>
+        </EmptyState>
       </section>
     );
   }
@@ -52,41 +65,57 @@ export function ProjectPage() {
   const isMember = project.myRole !== null;
 
   return (
-    <section aria-labelledby="project-title">
-      <div className="page-header">
-        <div>
-          <h1 id="project-title" data-testid="project-title">
+    <section aria-labelledby="project-title" className="grid grid-cols-1 gap-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 sm:flex-1">
+          <h1
+            id="project-title"
+            className="truncate text-2xl font-semibold tracking-tight"
+            title={project.name}
+            data-testid="project-title"
+          >
             {project.name}
           </h1>
-          <div className="project-meta">
-            <span className="project-item-slug">/p/{project.slug}</span>
+          <p className="mt-1 truncate font-mono text-sm text-muted-foreground">/p/{project.slug}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {!isMember && project.visibility === "public" ? (
-              <span className="chip chip-public" data-testid="public-badge">
+              <Badge variant="default" data-testid="public-badge">
+                <Globe aria-hidden="true" />
                 Project publik · hanya-baca
-              </span>
+              </Badge>
             ) : (
-              <span className="chip">{project.visibility === "public" ? "Publik" : "Privat"}</span>
+              <VisibilityBadge visibility={project.visibility} />
             )}
-            {project.myRole ? <span className="chip chip-role">Peran Anda: {ROLE_LABEL[project.myRole]}</span> : null}
+            {project.myRole ? <RoleBadge role={project.myRole} prefix="Peran Anda: " /> : null}
           </div>
         </div>
-        <div className="page-actions">
+        <div className="shrink-0">
           {isMember ? (
-            <Link to={`/p/${project.slug}/settings`} className="button button-secondary" data-testid="settings-link">
-              Pengaturan
-            </Link>
+            <Button asChild variant="outline">
+              <Link to={`/p/${project.slug}/settings`} data-testid="settings-link">
+                <Settings aria-hidden="true" />
+                Pengaturan
+              </Link>
+            </Button>
           ) : status === "anonymous" ? (
-            <Link to={loginPathFor(`/p/${project.slug}`)} className="button button-primary" data-testid="project-login">
-              Masuk
-            </Link>
+            <Button asChild>
+              <Link to={loginPathFor(`/p/${project.slug}`)} data-testid="project-login">
+                Masuk
+              </Link>
+            </Button>
           ) : null}
         </div>
       </div>
 
-      <div className="empty-state" data-testid="empty-results">
-        <h2>Belum ada hasil test</h2>
-        <p>Hasil test akan tampil di sini setelah fitur pengiriman hasil tersedia di tahap berikutnya.</p>
-      </div>
+      <EmptyState icon={BarChart3} title="Belum ada hasil test" data-testid="empty-results">
+        <p>
+          Dashboard hasil test, tren lulus/gagal, dan deteksi test flaky akan tampil di sini setelah reporter CI
+          tersedia di Tahap 2.
+        </p>
+        <Badge variant="outline" className="mt-3">
+          Segera · Tahap 2
+        </Badge>
+      </EmptyState>
     </section>
   );
 }

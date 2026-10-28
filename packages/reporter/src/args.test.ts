@@ -74,6 +74,14 @@ describe("parseArgs", () => {
     expect(usageMessage(BASE, { TESTPULSE_TOKEN: "   " })).toContain("TESTPULSE_TOKEN");
   });
 
+  it("token dengan bentuk salah ditolak tanpa mengulang nilainya", () => {
+    for (const bad of ["tp_pendek", "x".repeat(46), `tp_${"A".repeat(44)}`, `tp_${"A".repeat(42)}!`, `Bearer ${TOKEN}`]) {
+      const message = usageMessage(BASE, { TESTPULSE_TOKEN: bad });
+      expect(message).toContain("TESTPULSE_TOKEN");
+      expect(message).not.toContain(bad);
+    }
+  });
+
   it("menolak URL yang bukan http(s) atau memuat kredensial", () => {
     expect(usageMessage(["--url", "ftp://x.example.com", ...BASE.slice(2)])).toContain("--url");
     expect(usageMessage(["--url", "bukan-url", ...BASE.slice(2)])).toContain("--url");

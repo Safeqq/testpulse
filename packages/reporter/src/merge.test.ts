@@ -71,6 +71,15 @@ describe("mergeJUnit", () => {
     expect(suitesOf(merged)).toHaveLength(1);
   });
 
+  it("menolak <testsuites> bersarang alih-alih membuangnya diam-diam", () => {
+    const doc = `<testsuites><testsuite name="a"/><testsuites><testsuite name="b"/></testsuites></testsuites>`;
+    const err = mergeError([SUITE_DOC, doc]);
+    expect(err.message).toContain("bersarang");
+    expect(err.index).toBe(1);
+    // Juga di dalam <testsuite>.
+    expect(mergeError([`<testsuite name="a"><testsuites/></testsuite>`]).message).toContain("bersarang");
+  });
+
   it("menghapus BOM di awal dokumen", () => {
     expect(suitesOf(mergeJUnit(["﻿" + SUITES_DOC]))).toHaveLength(2);
   });

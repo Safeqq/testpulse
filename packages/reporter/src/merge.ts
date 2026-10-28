@@ -41,6 +41,9 @@ function extractSuites(doc: string, index: number): string[] {
 
     if (closing) depth--;
     else if (depth === 0) rootName = name;
+    else if (name === "testsuites") {
+      throw new MergeError("memuat <testsuites> bersarang, yang tidak didukung", index);
+    }
 
     // `depth` kini adalah kedalaman elemen ini (akar = 0), baik saat dibuka maupun ditutup.
     const isSuiteLevel = rootName === "testsuites" ? depth === 1 : depth === 0;

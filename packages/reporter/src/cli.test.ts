@@ -87,6 +87,54 @@ describe("main: argumen", () => {
   });
 });
 
+describe("main: galat tak terduga dan peringatan", () => {
+  it("galat tak terduga -> exit 1, hanya pesan tersaring, tanpa stack dan tanpa token", async () => {
+    const h = harness();
+    const boom = new Error(`penulisan gagal untuk ${TOKEN}[31m`);
+    h.io.out = () => {
+      throw boom;
+    };
+    expect(await run(h, ["single.xml"])).toBe(1);
+    expect(h.err).toHaveLength(1);
+    expect(h.err[0]).toContain("Kesalahan tak terduga");
+    expect(h.err[0]).toContain("penulisan gagal");
+    expect(h.err[0]).not.toContain("\n");
+    expect(h.err[0]).not.toContain("    at ");
+    expectNoToken(h);
+  });
+
+  it("galat yang bukan Error juga ditangani", async () => {
+    const h = harness();
+    h.io.out = () => {
+      throw `string ${TOKEN}`;
+    };
+    expect(await run(h, ["single.xml"])).toBe(1);
+    expectNoToken(h);
+  });
+
+  it.each(["http://pulse.example.com", "http://192.168.1.10:3000", "http://[2001:db8::1]"])(
+    "peringatan untuk %s (http ke host non-lokal), upload tetap berjalan",
+    async (url) => {
+      const h = harness();
+      expect(await run(h, ["single.xml"], ["--url", url])).toBe(0);
+      expect(h.err).toHaveLength(1);
+      expect(h.err[0]).toContain("Peringatan");
+      expect(h.err[0]).toContain("http://");
+      expect(h.requests).toHaveLength(1);
+      expectNoToken(h);
+    },
+  );
+
+  it.each(["http://localhost:3000", "http://127.0.0.1:8080", "http://[::1]:3000", "https://pulse.example.com"])(
+    "tanpa peringatan untuk %s",
+    async (url) => {
+      const h = harness();
+      expect(await run(h, ["single.xml"], ["--url", url])).toBe(0);
+      expect(h.err).toEqual([]);
+    },
+  );
+});
+
 describe("main: berkas", () => {
   it("glob mencocokkan beberapa file dan semuanya digabung dalam satu upload", async () => {
     const h = harness();

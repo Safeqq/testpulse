@@ -23,6 +23,9 @@ export interface ReporterOptions {
 
 export const TOKEN_ENV = "TESTPULSE_TOKEN";
 
+/** Bentuk token CI yang diterbitkan server: `tp_` + 32 byte base64url (43 karakter). */
+const TOKEN_SHAPE = /^tp_[A-Za-z0-9_-]{43}$/;
+
 export const USAGE = [
   "Pemakaian: testpulse-report --url <urlDasar> --project <slug> --branch <branch> [opsi] <berkas|glob>...",
   "",
@@ -95,6 +98,10 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv): ReporterOptio
 
   const token = env[TOKEN_ENV]?.trim();
   if (!token) throw new UsageError(`Environment variable ${TOKEN_ENV} wajib diisi dengan token CI project`);
+
+  if (!TOKEN_SHAPE.test(token)) {
+    throw new UsageError(`${TOKEN_ENV} bukan token CI yang sah (format: tp_ diikuti 43 karakter base64url)`);
+  }
 
   return {
     url: parseBaseUrl(values.url),

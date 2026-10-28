@@ -7,6 +7,7 @@ import { LoadError } from "../../components/LoadError";
 import { api } from "../../lib/api";
 import { errorMessage, focusField, serverErrorToForm, validate } from "../../lib/forms";
 import { formatDateTime } from "../../lib/format";
+import { curlExample } from "../../lib/ingest";
 import { useLoad } from "../../lib/useLoad";
 import { SettingsSection } from "./SettingsSection";
 
@@ -16,16 +17,6 @@ interface Props {
   meId: string;
   meName: string;
   notify: (message: string) => void;
-}
-
-/** Contoh unggah laporan JUnit; URL berasal dari origin halaman sehingga benar di lingkungan mana pun. */
-function curlExample(slug: string, token: string): string {
-  return [
-    `curl -X POST "${window.location.origin}/api/v1/projects/${slug}/runs?branch=main" \\`,
-    `  -H "Authorization: Bearer ${token}" \\`,
-    `  -H "Content-Type: application/xml" \\`,
-    `  --data-binary @junit.xml`,
-  ].join("\n");
 }
 
 /** Token CI aktif (admin). Nilai token hanya diterima sekali, saat token dibuat. */

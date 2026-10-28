@@ -1,4 +1,4 @@
-import { BarChart3, FolderSearch, Globe, Loader2, Settings } from "lucide-react";
+import { FolderSearch, Globe, Loader2, Settings } from "lucide-react";
 import { useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
@@ -11,6 +11,7 @@ import { useAuth } from "../lib/auth";
 import { useDocumentTitle } from "../lib/forms";
 import { loginPathFor } from "../lib/navigation";
 import { useLoad } from "../lib/useLoad";
+import { ProjectResults } from "./project/ProjectResults";
 
 /** Ringkasan project. Terbuka tanpa login untuk project publik; project privat/tidak ada tampil sama (spec §5.7). */
 export function ProjectPage() {
@@ -107,15 +108,7 @@ export function ProjectPage() {
         </div>
       </div>
 
-      <EmptyState icon={BarChart3} title="Belum ada hasil test" data-testid="empty-results">
-        <p>
-          Dashboard hasil test, tren lulus/gagal, dan deteksi test flaky akan tampil di sini setelah reporter CI
-          tersedia di Tahap 2.
-        </p>
-        <Badge variant="outline" className="mt-3">
-          Segera · Tahap 2
-        </Badge>
-      </EmptyState>
+      <ProjectResults project={project} />
     </section>
   );
 }

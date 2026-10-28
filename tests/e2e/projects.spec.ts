@@ -38,7 +38,7 @@ test.describe("Project", () => {
 
     await expect(page).toHaveURL(new RegExp(`/p/proyek-e2e-${suffix}$`));
     await expect(project.title).toHaveText(`Proyek E2E ${suffix}`);
-    await expect(project.emptyResults).toContainText("Belum ada hasil test");
+    await expect(project.setupInstructions).toContainText("Belum ada hasil test");
     await expect(project.settingsLink).toBeVisible();
   });
 
@@ -251,7 +251,7 @@ test.describe("Project", () => {
     const created = await api.createProject(owner);
     const member = await signedInPage(owner);
     await new ProjectPage(member.page).goto(created.slug);
-    await expect(new ProjectPage(member.page).emptyResults).toBeVisible();
+    await expect(new ProjectPage(member.page).setupInstructions).toBeVisible();
     await expectNoA11yViolationsInBothThemes(member.page);
   });
 

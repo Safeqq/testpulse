@@ -1,8 +1,9 @@
-import type { IngestQuery } from "@testpulse/shared";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import type { IngestQuery, ResultStatus } from "@testpulse/shared";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { projects, runs, testCases, testResults } from "../../db/schema.js";
 import { touchToken } from "../tokens/auth.js";
+import { FLAKY_WINDOW } from "./domain/flaky.js";
 import type { ParsedReport, ParsedResult } from "./domain/junit.js";
 
 /** Jumlah run terbaru yang disimpan per project (spec Tahap 2 §4, retensi). */
@@ -129,4 +130,222 @@ export async function insertRun(
 
     return { runId: run.id, totals };
   });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Baca hasil (spec Tahap 2 §7). Query run memakai indeks (project_id[, branch], created_at desc).
+// ---------------------------------------------------------------------------------------------------------------
+
+export type RunRecord = typeof runs.$inferSelect;
+export type ResultFilter = "failed" | "flaky" | "all";
+
+const newestFirst = [desc(runs.createdAt), desc(runs.id)] as const;
+
+/** Run terbaru per branch, diurutkan dari branch dengan run paling baru. */
+export async function listBranchHeads(db: Db, projectId: string): Promise<RunRecord[]> {
+  const heads = db
+    .selectDistinctOn([runs.branch])
+    .from(runs)
+    .where(eq(runs.projectId, projectId))
+    .orderBy(runs.branch, ...newestFirst)
+    .as("heads");
+  return db.select().from(heads).orderBy(desc(heads.createdAt), desc(heads.id));
+}
+
+/** Branch dari run terbaru project, atau `null` bila belum ada run. */
+export async function latestBranch(db: Db, projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ branch: runs.branch })
+    .from(runs)
+    .where(eq(runs.projectId, projectId))
+    .orderBy(...newestFirst)
+    .limit(1);
+  return row?.branch ?? null;
+}
+
+/**
+ * Satu halaman run (`created_at desc, id desc`), dimulai setelah posisi cursor `after`.
+ *
+ * Posisi dibaca ulang dari baris run cursor bila masih ada: `created_at` di DB berpresisi mikrodetik, sedangkan
+ * `Date` di cursor hanya milidetik — tanpa ini run dalam milidetik yang sama bisa terlewat. Bila run cursor sudah
+ * dihapus, `createdAt` dari cursor menjadi cadangan.
+ */
+export async function listRuns(
+  db: Db,
+  projectId: string,
+  opts: { branch?: string; after?: { createdAt: Date; id: string }; limit: number },
+): Promise<RunRecord[]> {
+  const conditions = [eq(runs.projectId, projectId)];
+  if (opts.branch !== undefined) conditions.push(eq(runs.branch, opts.branch));
+  if (opts.after) {
+    const { createdAt, id } = opts.after;
+    const position = sql`coalesce(
+      (select cursor_run.created_at from runs cursor_run
+        where cursor_run.id = ${id}::uuid and cursor_run.project_id = ${projectId}),
+      ${createdAt.toISOString()}::timestamptz)`;
+    // `created_at <= posisi` tersirat dari perbandingan baris, tetapi membuat indeks created_at terpakai.
+    conditions.push(
+      sql`${runs.createdAt} <= ${position}`,
+      sql`(${runs.createdAt}, ${runs.id}) < (${position}, ${id}::uuid)`,
+    );
+  }
+  return db
+    .select()
+    .from(runs)
+    .where(and(...conditions))
+    .orderBy(...newestFirst)
+    .limit(opts.limit);
+}
+
+export async function findRun(db: Db, projectId: string, runId: string): Promise<RunRecord | undefined> {
+  const [run] = await db
+    .select()
+    .from(runs)
+    .where(and(eq(runs.projectId, projectId), eq(runs.id, runId)));
+  return run;
+}
+
+/** Hasil test satu run, urut `id` (= urutan suite/nama saat disimpan), mulai setelah hasil ber-id `afterId`. */
+export async function listRunResults(
+  db: Db,
+  runId: string,
+  opts: { filter: ResultFilter; afterId?: number; limit: number },
+) {
+  const conditions = [eq(testResults.runId, runId)];
+  if (opts.filter === "failed") conditions.push(eq(testResults.status, "failed"));
+  if (opts.filter === "flaky") conditions.push(eq(testResults.flakyInRun, true));
+  if (opts.afterId !== undefined) conditions.push(sql`${testResults.id} > ${opts.afterId}`);
+  return db
+    .select({
+      id: testResults.id,
+      testCaseId: testResults.testCaseId,
+      suite: testCases.suite,
+      name: testCases.name,
+      status: testResults.status,
+      flakyInRun: testResults.flakyInRun,
+      retries: testResults.retries,
+      durationMs: testResults.durationMs,
+      message: testResults.message,
+    })
+    .from(testResults)
+    .innerJoin(testCases, eq(testCases.id, testResults.testCaseId))
+    .where(and(...conditions))
+    .orderBy(asc(testResults.id))
+    .limit(opts.limit);
+}
+
+/** Menghapus run milik project (hasilnya ikut terhapus lewat cascade); `false` bila tidak ada. */
+export async function deleteRun(db: Db, projectId: string, runId: string): Promise<boolean> {
+  const deleted = await db
+    .delete(runs)
+    .where(and(eq(runs.projectId, projectId), eq(runs.id, runId)))
+    .returning({ id: runs.id });
+  return deleted.length > 0;
+}
+
+/** `limit` run terbaru di branch, urut dari yang terbaru. */
+export async function listRecentRuns(db: Db, projectId: string, branch: string, limit: number): Promise<RunRecord[]> {
+  return db
+    .select()
+    .from(runs)
+    .where(and(eq(runs.projectId, projectId), eq(runs.branch, branch)))
+    .orderBy(...newestFirst)
+    .limit(limit);
+}
+
+export interface FlakyRow {
+  testCaseId: string;
+  suite: string;
+  name: string;
+  score: number;
+  lastStatus: ResultStatus;
+}
+
+/**
+ * Daftar test flaky di branch, dihitung seluruhnya di SQL dengan rumus spec §6 (paritas dengan `flakyScore`):
+ * per test, ambil hasil dari `FLAKY_WINDOW` run terakhir branch yang memuat test itu (window function), abaikan
+ * `skipped`, lalu skor = min(100, round(100 × (flip + flakyRuns) / n)). `round(numeric)` membulatkan setengah
+ * menjauhi nol, sama dengan `Math.round` untuk bilangan positif (Ruling T2-c). Skor 0 dibuang; urut skor turun lalu
+ * nama (suite dan id sebagai pemutus seri). `lastStatus` = hasil terbaru di jendela, termasuk `skipped`.
+ */
+export async function listFlakyTests(db: Db, projectId: string, branch: string, limit: number): Promise<FlakyRow[]> {
+  const result = await db.execute<{
+    test_case_id: string;
+    suite: string;
+    name: string;
+    score: number;
+    last_status: ResultStatus;
+  }>(sql`
+    with windowed as (
+      select tr.test_case_id, tr.status, tr.flaky_in_run,
+             row_number() over (partition by tr.test_case_id order by r.created_at desc, r.id desc) as recency
+      from runs r
+      join test_results tr on tr.run_id = r.id
+      where r.project_id = ${projectId} and r.branch = ${branch}
+    ),
+    recent as (
+      select * from windowed where recency <= ${FLAKY_WINDOW}
+    ),
+    executed as (
+      select test_case_id, status, flaky_in_run,
+             lag(status) over (partition by test_case_id order by recency desc) as previous_status
+      from recent
+      where status <> 'skipped'
+    ),
+    scored as (
+      select test_case_id,
+             least(100, round(
+               100 * (count(*) filter (where previous_status <> status) + count(*) filter (where flaky_in_run))::numeric
+               / count(*)
+             ))::int as score
+      from executed
+      group by test_case_id
+    )
+    select s.test_case_id, tc.suite, tc.name, s.score, latest.status as last_status
+    from scored s
+    join test_cases tc on tc.id = s.test_case_id
+    join recent latest on latest.test_case_id = s.test_case_id and latest.recency = 1
+    where s.score > 0
+    order by s.score desc, tc.name asc, tc.suite asc, tc.id asc
+    limit ${limit}
+  `);
+  return result.rows.map((row) => ({
+    testCaseId: row.test_case_id,
+    suite: row.suite,
+    name: row.name,
+    score: row.score,
+    lastStatus: row.last_status,
+  }));
+}
+
+export async function findTestCase(db: Db, projectId: string, testCaseId: string) {
+  const [testCase] = await db
+    .select({ id: testCases.id, suite: testCases.suite, name: testCases.name })
+    .from(testCases)
+    .where(and(eq(testCases.projectId, projectId), eq(testCases.id, testCaseId)));
+  return testCase;
+}
+
+/** `limit` hasil terbaru satu test di branch, urut dari yang terbaru. */
+export async function listTestHistory(
+  db: Db,
+  projectId: string,
+  testCaseId: string,
+  branch: string,
+  limit: number,
+) {
+  return db
+    .select({
+      runId: runs.id,
+      createdAt: runs.createdAt,
+      status: testResults.status,
+      flakyInRun: testResults.flakyInRun,
+      retries: testResults.retries,
+      durationMs: testResults.durationMs,
+    })
+    .from(testResults)
+    .innerJoin(runs, eq(runs.id, testResults.runId))
+    .where(and(eq(testResults.testCaseId, testCaseId), eq(runs.projectId, projectId), eq(runs.branch, branch)))
+    .orderBy(...newestFirst)
+    .limit(limit);
 }

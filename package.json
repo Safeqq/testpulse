@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "test:unit": "pnpm -r --if-present test:unit",
     "test:int": "pnpm -r --if-present test:int",
-    "test:contract": "pnpm --filter @testpulse/web test:contract && pnpm --filter @testpulse/api test:contract"
+    "test:contract": "pnpm --filter @testpulse/web test:contract && pnpm --filter @testpulse/reporter test:contract && pnpm --filter @testpulse/api test:contract"
   },
   "devDependencies": {
     "allure": "^3.22.1",

@@ -9,7 +9,9 @@ import { buildApp } from "../../src/app.js";
 import { createDb } from "../../src/db/client.js";
 import { createContractStates, type ContractStates } from "./states.js";
 
-const PACT_FILE = path.resolve(import.meta.dirname, "../../../../pacts/testpulse-web-testpulse-api.json");
+const PACTS_DIR = path.resolve(import.meta.dirname, "../../../../pacts");
+/** Consumer: web (cookie sesi) dan reporter CLI (Bearer token CI, endpoint upload). */
+const CONSUMERS = ["testpulse-web", "testpulse-reporter"] as const;
 
 describe("verifikasi kontrak provider (testpulse-api)", () => {
   let app: FastifyInstance;
@@ -18,9 +20,6 @@ describe("verifikasi kontrak provider (testpulse-api)", () => {
   let states: ContractStates;
 
   beforeAll(async () => {
-    if (!existsSync(PACT_FILE)) {
-      throw new Error(`File pact tidak ditemukan: ${PACT_FILE}. Jalankan test consumer dulu (pnpm test:contract).`);
-    }
     const created = createDb(inject("databaseUrl"));
     pool = created.pool;
     states = createContractStates(created.db);
@@ -44,11 +43,15 @@ describe("verifikasi kontrak provider (testpulse-api)", () => {
     await pool?.end();
   });
 
-  it("semua interaksi dari consumer testpulse-web terverifikasi", async () => {
+  it.each(CONSUMERS)("semua interaksi dari consumer %s terverifikasi", async (consumer) => {
+    const pactFile = path.join(PACTS_DIR, `${consumer}-testpulse-api.json`);
+    if (!existsSync(pactFile)) {
+      throw new Error(`File pact tidak ditemukan: ${pactFile}. Jalankan test consumer dulu (pnpm test:contract).`);
+    }
     const output = await new Verifier({
       provider: "testpulse-api",
       providerBaseUrl: baseUrl,
-      pactUrls: [PACT_FILE],
+      pactUrls: [pactFile],
       stateHandlers: states.stateHandlers,
       beforeEach: states.beforeEach,
       requestFilter: states.requestFilter,

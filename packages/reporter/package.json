@@ -1,0 +1,31 @@
+{
+  "name": "@testpulse/reporter",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CLI testpulse-report: menggabungkan laporan JUnit XML dan mengunggahnya ke TestPulse.",
+  "bin": {
+    "testpulse-report": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run --project unit",
+    "test:contract": "vitest run --project contract"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.11.2"
+  },
+  "devDependencies": {
+    "@pact-foundation/pact": "^17.1.4",
+    "@testpulse/shared": "workspace:*",
+    "@types/node": "^24.19.2",
+    "vitest": "^5.0.5"
+  }
+}

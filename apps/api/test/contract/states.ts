@@ -2,7 +2,7 @@ import type { IncomingHttpHeaders } from "node:http";
 import type { VerifierOptions } from "@pact-foundation/pact";
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "../../src/db/client.js";
-import { invitations, memberships, projects, sessions, users } from "../../src/db/schema.js";
+import { invitations, memberships, projectTokens, projects, sessions, users } from "../../src/db/schema.js";
 import { hashPassword } from "../../src/modules/auth/domain/passwords.js";
 import { generateToken, hashToken, SESSION_TTL_DAYS } from "../../src/modules/auth/domain/tokens.js";
 
@@ -20,11 +20,17 @@ const OWNER = { id: "55555555-5555-4555-8555-555555555555", email: "owner@pact.d
 const INVITATION_ID = "33333333-3333-4333-8333-333333333333";
 const PROJECT_SLUG = "pact-project";
 const PUBLIC_SLUG = "pact-public";
+const INGEST_PROJECT_SLUG = "testpulse";
 
 /** Token mentah yang dikirim consumer (hanya SHA-256-nya yang disimpan, seperti pada API). */
 const FAKE_SESSION_TOKEN = "pact-token";
 const INVITE_TOKEN = "pact-invite-token";
 const EXPIRED_INVITE_TOKEN = "pact-expired-token";
+/**
+ * Token CI mentah yang dikirim reporter (packages/reporter/test/contract/pact.ts). Bentuknya `tp_` + 43 karakter
+ * base64url, seperti token asli; hanya SHA-256-nya yang disimpan.
+ */
+const INGEST_TOKEN = "tp_pact-ingest-token-for-contract-tests-A1B2C3";
 
 interface Person {
   id: string;
@@ -133,6 +139,14 @@ export function createContractStates(db: Db): ContractStates {
 
     "undangan pact-expired-token kedaluwarsa untuk pact-project": async () => {
       await ensureInvitation(EXPIRED_INVITE_TOKEN, new Date(Date.now() - DAY_MS));
+    },
+
+    "project testpulse punya token aktif pact-ingest-token": async () => {
+      const project = await ensureProject(INGEST_PROJECT_SLUG, "TestPulse", "public", OWNER);
+      await db
+        .insert(projectTokens)
+        .values({ projectId: project.id, name: "Pact ingest", tokenHash: hashToken(INGEST_TOKEN), createdBy: OWNER.id })
+        .onConflictDoNothing();
     },
 
     "sari anggota tester di pact-project": async () => {

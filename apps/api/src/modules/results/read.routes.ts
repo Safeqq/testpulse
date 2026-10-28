@@ -12,6 +12,7 @@ import {
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { AppError } from "../../http/errors.js";
+import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser, requireUser } from "../auth/service.js";
 import { resolveProject } from "../projects/access.js";
@@ -36,8 +37,6 @@ export const RESULTS_PAGE_SIZE = 100;
 export const TREND_POINTS = 30;
 export const MAX_FLAKY_TESTS = 50;
 export const HISTORY_LENGTH = 20;
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Aturan `branch` sama persis dengan query upload (1–200 karakter `[A-Za-z0-9._/-]`). */
 const branchParam = ingestQuery.in.shape.branch.optional();
@@ -130,7 +129,7 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
       const afterId = query.cursor === undefined ? undefined : decodeResultCursor(query.cursor);
       if (afterId === null) throw invalidCursor();
 
-      if (!UUID_PATTERN.test(req.params.runId)) throw runNotFound();
+      if (!isUuid(req.params.runId)) throw runNotFound();
       const run = await findRun(app.db, project.id, req.params.runId);
       if (!run) throw runNotFound();
 
@@ -163,7 +162,7 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
     loginRequired,
     async (req, reply) => {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "runs:delete");
-      if (!UUID_PATTERN.test(req.params.runId)) throw runNotFound();
+      if (!isUuid(req.params.runId)) throw runNotFound();
       if (!(await deleteRun(app.db, project.id, req.params.runId))) throw runNotFound();
       return reply.status(204).send();
     },
@@ -201,7 +200,7 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
     async (req): Promise<TestHistoryDto> => {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
       const query = parseOrThrow(branchQuery, req.query);
-      if (!UUID_PATTERN.test(req.params.testCaseId)) throw testNotFound();
+      if (!isUuid(req.params.testCaseId)) throw testNotFound();
       const testCase = await findTestCase(app.db, project.id, req.params.testCaseId);
       if (!testCase) throw testNotFound();
 

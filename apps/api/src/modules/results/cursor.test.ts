@@ -13,6 +13,11 @@ describe("cursor run (createdAt, id)", () => {
     expect(decodeCursor(cursor)).toEqual({ createdAt, id: ID });
   });
 
+  it.each(["0001-01-01T00:00:00.000Z", "9999-12-31T23:59:59.999Z"])("batas tahun %s diterima", (iso) => {
+    const createdAt = new Date(iso);
+    expect(decodeCursor(encodeCursor(createdAt, ID))).toEqual({ createdAt, id: ID });
+  });
+
   it.each([
     ["string kosong", ""],
     ["karakter di luar base64url", "abc$def"],
@@ -22,6 +27,9 @@ describe("cursor run (createdAt, id)", () => {
     ["tanggal tidak valid", b64(`bukan-tanggal|${ID}`)],
     ["tanggal tidak kanonis", b64(`2026-10-28|${ID}`)],
     ["id bukan uuid", b64("2026-10-28T08:15:30.123Z|123")],
+    ["tahun 0000 (ditolak Postgres)", b64(`0000-01-01T00:00:00.000Z|${ID}`)],
+    ["tahun 6 digit positif", b64(`+010000-01-01T00:00:00.000Z|${ID}`)],
+    ["tahun negatif", b64(`-000001-01-01T00:00:00.000Z|${ID}`)],
     ["sampah acak", "Zm9vYmFy"],
   ])("cursor rusak (%s) → null", (_label, cursor) => {
     expect(decodeCursor(cursor)).toBeNull();

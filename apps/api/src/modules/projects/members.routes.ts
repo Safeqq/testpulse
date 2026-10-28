@@ -1,12 +1,11 @@
 import { updateMemberBody, type MemberDto } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
 import { AppError } from "../../http/errors.js";
+import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser, requireUser } from "../auth/service.js";
 import { resolveProject } from "./access.js";
 import { changeMemberRole, findMember, listMembers, type MemberRecord } from "./repository.js";
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function memberNotFound(): AppError {
   return new AppError(404, "MEMBER_NOT_FOUND", "Anggota tidak ditemukan");
@@ -37,7 +36,7 @@ export async function memberRoutes(app: FastifyInstance): Promise<void> {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "members:manage");
       const { role } = parseOrThrow(updateMemberBody, req.body);
       const { userId } = req.params;
-      if (!UUID_PATTERN.test(userId)) throw memberNotFound();
+      if (!isUuid(userId)) throw memberNotFound();
 
       const result = await changeMemberRole(app.db, project.id, userId, role);
       if (result === "not_member") throw memberNotFound();
@@ -65,7 +64,7 @@ export async function memberRoutes(app: FastifyInstance): Promise<void> {
         isSelf ? "project:read" : "members:manage",
       );
       if (isSelf && role === null) throw memberNotFound();
-      if (!UUID_PATTERN.test(userId)) throw memberNotFound();
+      if (!isUuid(userId)) throw memberNotFound();
 
       const result = await changeMemberRole(app.db, project.id, userId, null);
       if (result === "not_member") throw memberNotFound();

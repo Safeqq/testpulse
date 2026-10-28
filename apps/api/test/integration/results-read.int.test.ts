@@ -216,6 +216,8 @@ describe("API baca hasil test & hapus run", () => {
     it.each([
       ["cursor rusak", "cursor=bukan-cursor!"],
       ["cursor base64 sampah", "cursor=Zm9vYmFy"],
+      ["cursor tahun di luar 0001–9999", `cursor=${Buffer.from(`+010000-01-01T00:00:00.000Z|${UNKNOWN_ID}`).toString("base64url")}`],
+      ["cursor tahun 0000", `cursor=${Buffer.from(`0000-01-01T00:00:00.000Z|${UNKNOWN_ID}`).toString("base64url")}`],
       ["branch berspasi", "branch=a%20b"],
       ["branch kosong", "branch="],
       ["branch 201 karakter", `branch=${"a".repeat(201)}`],
@@ -482,6 +484,8 @@ describe("API baca hasil test & hapus run", () => {
         "always-pass": [L, L, L, L],
         "always-fail": [G, G, G, G],
         "skip-only": [S, S, S, S],
+        // 3 flip + 2 flaky_in_run dari 4 hasil = 125 → dibatasi least(100, …).
+        capped: [G, R, G, R],
       };
       for (let i = 0; i < 55; i += 1) tests[`t${String(54 - i).padStart(2, "0")}`] = shapes[i % shapes.length]!;
       await seedMatrix(fx, tests);
@@ -503,12 +507,13 @@ describe("API baca hasil test & hapus run", () => {
       expect(list.map((t) => t.name)).not.toContain("always-pass");
       expect(list.map((t) => t.name)).not.toContain("skip-only");
       expect(list[0]).toEqual({
-        testCaseId: await testCaseId(fx.project.id, list[0]!.name),
+        testCaseId: await testCaseId(fx.project.id, "capped"),
         suite: "suite",
-        name: list[0]!.name,
-        score: 75,
-        lastStatus: "failed",
+        name: "capped",
+        score: 100,
+        lastStatus: "passed",
       });
+      expect(list[1]).toMatchObject({ score: 75, lastStatus: "failed" });
     });
 
     it("paritas: 6 pola acak-terkendali, skor SQL = flakyScore atas 20 run terakhir yang memuat test", async () => {
@@ -534,6 +539,8 @@ describe("API baca hasil test & hapus run", () => {
       });
       // Pola paritas pembulatan: 8 hasil dijalankan + 12 skip di jendela, 1 flip → 12,5 → 13 (round(numeric)).
       tests["setengah"] = [...Array.from({ length: 10 }, () => G), ...Array.from({ length: 12 }, () => S), L, L, L, L, L, L, L, G];
+      // Pola pembatas: 3 flip + 2 flaky_in_run dari 4 hasil = 125 → least(100, …) = 100.
+      tests["dibatasi"] = [G, R, G, R];
       await seedMatrix(fx, tests);
       // Run di branch lain tidak memengaruhi skor branch main.
       await seedMatrix(fx, { "pola-0": [G, L, G, L], setengah: [G, L, G, L] }, { branch: "dev", start: -100 });
@@ -548,6 +555,7 @@ describe("API baca hasil test & hapus run", () => {
         expect({ name, score: scores.get(name) ?? 0 }).toEqual({ name, score: expected });
       }
       expect(scores.get("setengah")).toBe(13);
+      expect(scores.get("dibatasi")).toBe(100);
       expect(nonZero).toBeGreaterThanOrEqual(5);
 
       // Tanpa branch: branch run terbaru (main), hasil sama.

@@ -8,6 +8,7 @@ import {
 import type { FastifyInstance } from "fastify";
 import type { AppConfig } from "../../config.js";
 import { AppError } from "../../http/errors.js";
+import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { generateToken, hashToken } from "../auth/domain/tokens.js";
 import { loadUser, requireUser } from "../auth/service.js";
@@ -21,7 +22,6 @@ import {
   revokeActiveInvitation,
 } from "./repository.js";
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function invitationNotFound(): AppError {
@@ -83,7 +83,7 @@ export async function invitationRoutes(app: FastifyInstance, config: AppConfig):
     loginRequired,
     async (req, reply) => {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "invitations:manage");
-      if (!UUID_PATTERN.test(req.params.id)) throw invitationNotFound();
+      if (!isUuid(req.params.id)) throw invitationNotFound();
 
       // Hanya undangan aktif yang bisa dicabut; yang sudah dicabut/terpakai/kedaluwarsa dianggap tidak ada.
       const revoked = await revokeActiveInvitation(app.db, project.id, req.params.id, new Date());

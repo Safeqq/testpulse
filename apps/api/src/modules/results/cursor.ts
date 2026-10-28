@@ -1,11 +1,13 @@
+import { isUuid } from "../../http/uuid.js";
+
 /**
  * Cursor buram untuk paginasi keyset (spec Tahap 2 §7). Isinya base64url tanpa padding; klien tidak boleh
  * menafsirkannya. Dekoder mengembalikan `null` untuk cursor rusak — rute menerjemahkannya menjadi 400.
  */
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const POSITIVE_INTEGER = /^[1-9][0-9]*$/;
+const CANONICAL_ISO = /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 const encode = (text: string) => Buffer.from(text, "utf8").toString("base64url");
 
@@ -24,10 +26,13 @@ export function decodeCursor(cursor: string): { createdAt: Date; id: string } | 
   const parts = decode(cursor)?.split("|");
   if (parts?.length !== 2) return null;
   const [iso = "", id = ""] = parts;
+  // Tahun 4 digit 0001–9999 saja: `toISOString()` juga menghasilkan tahun 0000, ±6 digit, dan negatif, yang
+  // ditolak Postgres saat bind (500).
+  if (!CANONICAL_ISO.test(iso)) return null;
   const createdAt = new Date(iso);
-  // Hanya bentuk kanonis `toISOString()` yang diterima (menolak tanggal tak valid dan format lain).
+  // Hanya bentuk kanonis `toISOString()` yang diterima (menolak tanggal tak valid seperti 2026-02-30).
   if (Number.isNaN(createdAt.getTime()) || createdAt.toISOString() !== iso) return null;
-  if (!UUID.test(id)) return null;
+  if (!isUuid(id)) return null;
   return { createdAt, id };
 }
 

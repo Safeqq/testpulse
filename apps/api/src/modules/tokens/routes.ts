@@ -1,13 +1,12 @@
 import { createTokenBody, type CreatedTokenDto, type TokenDto } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
 import { AppError } from "../../http/errors.js";
+import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { generateToken, hashToken } from "../auth/domain/tokens.js";
 import { loadUser, requireUser } from "../auth/service.js";
 import { resolveProject } from "../projects/access.js";
 import { insertTokenWithinLimit, listActiveTokens, MAX_ACTIVE_TOKENS, revokeActiveToken } from "./repository.js";
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function tokenNotFound(): AppError {
   return new AppError(404, "TOKEN_NOT_FOUND", "Token tidak ditemukan");
@@ -64,7 +63,7 @@ export async function tokenRoutes(app: FastifyInstance): Promise<void> {
     loginRequired,
     async (req, reply) => {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "tokens:manage");
-      if (!UUID_PATTERN.test(req.params.id)) throw tokenNotFound();
+      if (!isUuid(req.params.id)) throw tokenNotFound();
 
       // Hanya token aktif milik project ini yang bisa dicabut; yang sudah dicabut dianggap tidak ada.
       const revoked = await revokeActiveToken(app.db, project.id, req.params.id, new Date());

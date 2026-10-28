@@ -46,3 +46,9 @@ describe("flakyScore", () => {
     expect(flakyScore([{ status: "skipped", flakyInRun: true }, { status: "passed", flakyInRun: false }])).toBe(0);
   });
 });
+
+describe("flakyScore - pembulatan setengah", () => {
+  it("12,5 dibulatkan ke atas menjadi 13 (n=8, satu hasil lulus-dengan-retry)", () => {
+    expect(flakyScore(seq("R L L L L L L L"))).toBe(13);
+  });
+});

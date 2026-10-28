@@ -6,6 +6,10 @@ export const FLAKY_WINDOW = 20;
 /**
  * Skor flaky 0-100 untuk satu test pada satu branch. `results` berurutan dari lama ke baru
  * dan sudah dibatasi ke `FLAKY_WINDOW` run terakhir oleh pemanggil. Hasil `skipped` diabaikan.
+ *
+ * Pembulatan: `Math.round` membulatkan setengah ke atas (mis. 12,5 -> 13). Query SQL harus
+ * memakai `round(numeric)` (setengah menjauhi nol), bukan `round(double precision)` yang
+ * membulatkan ke genap, agar hasilnya identik.
  */
 export function flakyScore(results: ReadonlyArray<{ status: ResultStatus; flakyInRun: boolean }>): number {
   const executed = results.filter((r) => r.status !== "skipped");

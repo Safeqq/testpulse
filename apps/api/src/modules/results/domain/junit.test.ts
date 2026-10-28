@@ -3,6 +3,7 @@ import {
   InvalidReportError,
   MAX_MESSAGE_BYTES,
   MAX_NAME_LENGTH,
+  MAX_SUITE_DEPTH,
   MAX_TESTCASES,
   parseJUnit,
   truncateUtf8,
@@ -247,7 +248,7 @@ describe("parseJUnit - penolakan", () => {
   });
 
   it("menolak DOCTYPE yang didahului BOM atau whitespace", () => {
-    expect(() => parseJUnit('﻿  <!DocType x><testsuite name="S"><testcase name="a"/></testsuite>')).toThrow(InvalidReportError);
+    expect(() => parseJUnit('\uFEFF  <!DocType x><testsuite name="S"><testcase name="a"/></testsuite>')).toThrow(InvalidReportError);
   });
 
   it("menolak XML rusak", () => {
@@ -297,7 +298,7 @@ describe("parseJUnit - pemotongan", () => {
     const xml = suite(`<testcase name="a"><failure message="${"é".repeat(5000)}"/></testcase>`);
     const msg = parseJUnit(xml).results[0]?.message ?? "";
     expect(Buffer.byteLength(msg)).toBeLessThanOrEqual(4096);
-    expect(msg.endsWith("�")).toBe(false);
+    expect(msg.endsWith("\uFFFD")).toBe(false);
     expect(msg).toBe("é".repeat(2048));
   });
 });
@@ -305,7 +306,7 @@ describe("parseJUnit - pemotongan", () => {
 describe("parseJUnit - encoding", () => {
   it("Review Focus 1: BOM + CRLF + nama berisi emoji dan aksen ter-parse utuh", () => {
     const xml =
-      "﻿<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<testsuites>\r\n  <testsuite name=\"S\">\r\n    <testcase name=\"login ✅ café\" time=\"0.1\"/>\r\n  </testsuite>\r\n</testsuites>\r\n";
+      "\uFEFF<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<testsuites>\r\n  <testsuite name=\"S\">\r\n    <testcase name=\"login ✅ café\" time=\"0.1\"/>\r\n  </testsuite>\r\n</testsuites>\r\n";
     const report = parseJUnit(xml);
     expect(report.results).toHaveLength(1);
     expect(report.results[0]?.name).toBe("login ✅ café");
@@ -341,5 +342,72 @@ describe("truncateUtf8", () => {
       expect(out).not.toMatch(LONE_SURROGATE);
       expect(text.startsWith(out)).toBe(true);
     }
+  });
+});
+
+describe("parseJUnit - fix round 1", () => {
+  it("durasi per testcase dijepit ke int4 max", () => {
+    const report = parseJUnit(suite('<testcase name="a" time="9999999"/>'));
+    expect(report.results[0]?.durationMs).toBe(2147483647);
+    expect(report.durationMs).toBe(2147483647);
+  });
+
+  it("time sangat besar (Infinity setelah Number) tetap dijepit", () => {
+    expect(parseJUnit(suite(`<testcase name="a" time="${"9".repeat(400)}"/>`)).results[0]?.durationMs).toBe(2147483647);
+  });
+
+  it("jumlah durasi gabungan dan durasi run dijepit", () => {
+    const report = parseJUnit(suite('<testcase name="a" time="2000000"/><testcase name="a" time="2000000"/><testcase name="b" time="2000000"/>'));
+    expect(report.results[0]?.durationMs).toBe(2147483647);
+    expect(report.durationMs).toBe(2147483647);
+  });
+
+  it("durasi time root yang sangat besar dijepit", () => {
+    expect(parseJUnit(suite('<testcase name="a"/>', 'name="S" time="99999999"')).durationMs).toBe(2147483647);
+  });
+
+  it("isi CDATA tidak didekode entity-nya", () => {
+    const r = parseJUnit(suite('<testcase name="a"><failure><![CDATA[a &amp; b]]></failure></testcase>')).results[0];
+    expect(r?.message).toBe("a &amp; b");
+  });
+
+  it("teks biasa didekode sementara CDATA di sebelahnya tetap literal", () => {
+    const r = parseJUnit(suite('<testcase name="a"><failure type="X">x &amp; <![CDATA[a &lt; b]]></failure></testcase>')).results[0];
+    expect(r?.message).toContain("x &");
+    expect(r?.message).toContain("a &lt; b");
+  });
+
+  it("beberapa CDATA digabung apa adanya", () => {
+    const r = parseJUnit(suite('<testcase name="a"><error><![CDATA[one ]]><![CDATA[two]]></error></testcase>')).results[0];
+    expect(r?.message).toBe("one two");
+  });
+
+  it.each(["&#1;", "&#xFFFE;", "&#xFFFF;", "&#xB;", "&#x110000;", "&#xD800;", "&#0;"])(
+    "referensi karakter di luar XML Char dibiarkan literal: %s",
+    (ref) => {
+      expect(parseJUnit(suite(`<testcase name="a${ref}b"/>`)).results[0]?.name).toBe(`a${ref}b`);
+    },
+  );
+
+  it("referensi karakter yang sah didekode (tab, LF, batas bawah dan atas rentang)", () => {
+    const report = parseJUnit(suite('<testcase name="a&#9;b&#x20;c&#xD7FF;&#xE000;&#xFFFD;&#x10000;&#x10FFFF;"/>'));
+    expect(report.results[0]?.name).toBe("a\tb c" + String.fromCodePoint(0xd7ff, 0xe000, 0xfffd, 0x10000, 0x10ffff));
+  });
+
+  it("menolak testsuite bersarang ~200 tingkat", () => {
+    const depth = 200;
+    const xml = '<testsuite name="S">'.repeat(depth) + '<testcase name="a"/>' + "</testsuite>".repeat(depth);
+    expect(() => parseJUnit(xml)).toThrow(InvalidReportError);
+  });
+
+  it("menerima nesting dalam yang masih di bawah batas", () => {
+    const depth = MAX_SUITE_DEPTH;
+    const xml = '<testsuite name="S">'.repeat(depth) + '<testcase name="a"/>' + "</testsuite>".repeat(depth);
+    expect(parseJUnit(xml).results).toHaveLength(1);
+  });
+
+  it("<flakyError> pada testcase lulus -> flaky, retries dihitung bersama flakyFailure", () => {
+    const xml = suite('<testcase name="a"><flakyError message="e"/><flakyFailure message="f"/></testcase>');
+    expect(parseJUnit(xml).results[0]).toMatchObject({ status: "passed", flakyInRun: true, retries: 2 });
   });
 });

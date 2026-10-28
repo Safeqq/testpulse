@@ -4,6 +4,10 @@ import type { ResultStatus } from "@testpulse/shared";
 export const MAX_TESTCASES = 20000;
 export const MAX_NAME_LENGTH = 500;
 export const MAX_MESSAGE_BYTES = 4096;
+/** Kedalaman maksimum <testsuite> bersarang; melindungi rekursi dari dokumen yang sengaja sangat dalam. */
+export const MAX_SUITE_DEPTH = 100;
+/** Batas int4 PostgreSQL: durasi tidak boleh melebihinya agar penyimpanan tidak gagal. */
+export const MAX_DURATION_MS = 2_147_483_647;
 
 export class InvalidReportError extends Error {
   constructor(message: string) {
@@ -31,13 +35,14 @@ type XmlNode = Record<string, unknown>;
 
 interface Occurrence {
   status: ResultStatus;
-  /** Jumlah <flakyFailure>/<rerunFailure> pada testcase yang lulus (konvensi Surefire). */
+  /** Jumlah <flakyFailure>/<flakyError>/<rerunFailure> pada testcase yang lulus (konvensi Surefire). */
   surefireRetries: number;
   durationMs: number;
   message: string | null;
 }
 
-const ARRAY_TAGS = new Set(["testsuite", "testcase", "failure", "error", "skipped", "flakyFailure", "rerunFailure"]);
+const ARRAY_TAGS = new Set(["testsuite", "testcase", "failure", "error", "skipped", "flakyFailure", "flakyError", "rerunFailure"]);
+const CDATA_KEY = "__cdata";
 
 // Entity tidak di-resolve oleh parser (processEntities: false); hanya entity standar XML dan
 // referensi karakter yang didekode di sini, dalam satu lintasan sehingga tidak ada ekspansi berantai.
@@ -48,6 +53,8 @@ const parser = new XMLParser({
   parseTagValue: false,
   parseAttributeValue: false,
   trimValues: true,
+  // CDATA dipisahkan dari teks biasa agar isinya tidak ikut didekode entity-nya (CDATA bersifat literal).
+  cdataPropName: CDATA_KEY,
   isArray: (tagName) => ARRAY_TAGS.has(tagName),
 });
 
@@ -55,13 +62,24 @@ const DOCTYPE = /<!doctype/i;
 const DURATION = /^(?:\d+\.?\d*|\.\d+)$/;
 const NAMED_ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
 
+/** Production `Char` XML 1.0: referensi karakter di luar himpunan ini dibiarkan literal. */
+function isXmlChar(codePoint: number): boolean {
+  return (
+    codePoint === 0x9 ||
+    codePoint === 0xa ||
+    codePoint === 0xd ||
+    (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+    (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+    (codePoint >= 0x10000 && codePoint <= 0x10ffff)
+  );
+}
+
 function decodeEntities(text: string): string {
   if (!text.includes("&")) return text;
   return text.replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|(lt|gt|amp|quot|apos));/g, (match, hex?: string, dec?: string, named?: string) => {
     if (named) return NAMED_ENTITIES[named] ?? match;
     const codePoint = hex ? parseInt(hex, 16) : parseInt(dec ?? "", 10);
-    const valid = codePoint > 0 && codePoint <= 0x10ffff && !(codePoint >= 0xd800 && codePoint <= 0xdfff);
-    return valid ? String.fromCodePoint(codePoint) : match;
+    return isXmlChar(codePoint) ? String.fromCodePoint(codePoint) : match;
   });
 }
 
@@ -87,9 +105,15 @@ function attr(node: XmlNode, name: string): string | null {
 }
 
 function elementText(value: unknown): string | null {
-  const text = typeof value === "string" ? value : isNode(value) && typeof value["#text"] === "string" ? value["#text"] : "";
-  const decoded = decodeEntities(text).trim();
-  return decoded === "" ? null : decoded;
+  if (typeof value === "string") {
+    const text = decodeEntities(value).trim();
+    return text === "" ? null : text;
+  }
+  if (!isNode(value)) return null;
+  const plain = typeof value["#text"] === "string" ? decodeEntities(value["#text"]) : "";
+  const cdata = asList(value[CDATA_KEY]).filter((part): part is string => typeof part === "string").join("");
+  const text = (plain + cdata).trim();
+  return text === "" ? null : text;
 }
 
 function truncateChars(text: string, maxChars: number): string {
@@ -113,10 +137,13 @@ export function truncateUtf8(text: string, maxBytes: number): string {
   return text.slice(0, end);
 }
 
+function clampMs(ms: number): number {
+  return Math.min(MAX_DURATION_MS, ms);
+}
+
 function parseDurationMs(raw: string | null): number {
   if (raw === null || !DURATION.test(raw)) return 0;
-  const ms = Math.round(Number(raw) * 1000);
-  return Number.isSafeInteger(ms) ? ms : 0;
+  return clampMs(Math.round(Number(raw) * 1000));
 }
 
 /** Elemen <failure>/<error> yang hanya berisi teks di-parse sebagai string, bukan node. */
@@ -134,7 +161,8 @@ function readOccurrence(testcase: XmlNode): Occurrence {
   if (testcase["skipped"] !== undefined) {
     return { status: "skipped", surefireRetries: 0, durationMs, message: null };
   }
-  const surefireRetries = asNodes(testcase["flakyFailure"]).length + asNodes(testcase["rerunFailure"]).length;
+  const surefireRetries =
+    asList(testcase["flakyFailure"]).length + asList(testcase["flakyError"]).length + asList(testcase["rerunFailure"]).length;
   return { status: "passed", surefireRetries, durationMs, message: null };
 }
 
@@ -151,7 +179,7 @@ function merge(suite: string, name: string, occurrences: Occurrence[]): ParsedRe
     status,
     flakyInRun: (hasPassed && hasFailed) || surefireRetries > 0,
     retries: occurrences.length - 1 + surefireRetries,
-    durationMs: occurrences.reduce((sum, o) => sum + o.durationMs, 0),
+    durationMs: clampMs(occurrences.reduce((sum, o) => sum + o.durationMs, 0)),
     message: lastFailure?.message ?? null,
   };
 }
@@ -167,7 +195,7 @@ function rootNode(doc: unknown): { tag: "testsuites" | "testsuite"; node: XmlNod
 }
 
 export function parseJUnit(xml: string): ParsedReport {
-  const source = xml.replace(/^﻿/, "").trimStart();
+  const source = xml.replace(/^\uFEFF/, "").trimStart();
 
   // Cek pada string mentah sebelum parsing: tidak ada DOCTYPE/entity yang pernah sampai ke parser.
   if (DOCTYPE.test(source)) throw new InvalidReportError("DOCTYPE tidak diizinkan");
@@ -187,7 +215,8 @@ export function parseJUnit(xml: string): ParsedReport {
   const groups = new Map<string, { suite: string; name: string; occurrences: Occurrence[] }>();
   let testcaseCount = 0;
 
-  const walk = (suiteNode: XmlNode, inheritedName: string): void => {
+  const walk = (suiteNode: XmlNode, inheritedName: string, depth: number): void => {
+    if (depth > MAX_SUITE_DEPTH) throw new InvalidReportError(`Testsuite bersarang lebih dari ${MAX_SUITE_DEPTH} tingkat`);
     const suiteName = attr(suiteNode, "name") ?? inheritedName;
     for (const testcase of asNodes(suiteNode["testcase"])) {
       testcaseCount += 1;
@@ -200,16 +229,16 @@ export function parseJUnit(xml: string): ParsedReport {
       group.occurrences.push(readOccurrence(testcase));
       groups.set(key, group);
     }
-    for (const child of asNodes(suiteNode["testsuite"])) walk(child, suiteName);
+    for (const child of asNodes(suiteNode["testsuite"])) walk(child, suiteName, depth + 1);
   };
 
-  if (tag === "testsuite") walk(root, "");
-  else for (const child of asNodes(root["testsuite"])) walk(child, "");
+  if (tag === "testsuite") walk(root, "", 1);
+  else for (const child of asNodes(root["testsuite"])) walk(child, "", 1);
 
   if (testcaseCount === 0) throw new InvalidReportError("Laporan tidak memuat testcase");
 
   const results = [...groups.values()].map((g) => merge(g.suite, g.name, g.occurrences));
-  const summedMs = results.reduce((sum, r) => sum + r.durationMs, 0);
+  const summedMs = clampMs(results.reduce((sum, r) => sum + r.durationMs, 0));
   const rootTime = attr(root, "time");
   const durationMs = rootTime !== null && DURATION.test(rootTime) ? parseDurationMs(rootTime) : summedMs;
 

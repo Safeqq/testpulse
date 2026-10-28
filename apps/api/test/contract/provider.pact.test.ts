@@ -31,6 +31,7 @@ describe("verifikasi kontrak provider (testpulse-api)", () => {
         cookieSecure: false,
         port: 0,
         rateLimitMax: 1000,
+        ingestRateLimitMax: 1000,
       },
       { db: created.db, logLevel: "silent" },
     );

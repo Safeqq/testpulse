@@ -4,6 +4,8 @@ export interface AppConfig {
   cookieSecure: boolean;
   port: number;
   rateLimitMax: number;
+  /** Batas upload JUnit per jam per token CI (env `INGEST_RATE_LIMIT_MAX`, default 60; hanya dilonggarkan di stack test). */
+  ingestRateLimitMax: number;
   /**
    * Rahasia bersama dengan Pages Function (header `x-proxy-secret`). Jika diisi dan cocok, rate limit memakai
    * IP klien dari header `x-tp-client-ip` yang di-set Function; jika kosong, fitur mati. Lihat docs/deploy.md.
@@ -30,6 +32,16 @@ function parseIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): nu
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) {
     throw new Error(`Variabel lingkungan ${name} harus berupa bilangan bulat non-negatif`);
+  }
+  return value;
+}
+
+function parsePositiveIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+  const raw = env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Variabel lingkungan ${name} harus berupa bilangan bulat lebih dari 0`);
   }
   return value;
 }
@@ -64,6 +76,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     cookieSecure: env.COOKIE_SECURE?.trim() === "true",
     port: parseIntEnv(env, "PORT", 3000),
     rateLimitMax: parseIntEnv(env, "RATE_LIMIT_MAX", 10),
+    ingestRateLimitMax: parsePositiveIntEnv(env, "INGEST_RATE_LIMIT_MAX", 60),
     ...(proxySecret ? { proxySecret } : {}),
     ...(gitCommit ? { gitCommit } : {}),
   };

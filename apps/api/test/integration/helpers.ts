@@ -26,6 +26,7 @@ export async function createTestApp(
     cookieSecure: false,
     port: 0,
     rateLimitMax: 1000,
+    ingestRateLimitMax: 1000,
     ...overrides,
   };
   const app = await buildApp(config, { logLevel: "silent", ...appOpts });

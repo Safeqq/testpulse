@@ -11,6 +11,7 @@ describe("loadConfig", () => {
       cookieSecure: false,
       port: 3000,
       rateLimitMax: 10,
+      ingestRateLimitMax: 60,
     });
   });
 
@@ -26,6 +27,17 @@ describe("loadConfig", () => {
 
   it("melempar jika PORT bukan bilangan bulat", () => {
     expect(() => loadConfig({ ...base, PORT: "abc" })).toThrow("PORT");
+  });
+
+  describe("INGEST_RATE_LIMIT_MAX", () => {
+    it("default 60, dibaca dari env bila diisi", () => {
+      expect(loadConfig(base).ingestRateLimitMax).toBe(60);
+      expect(loadConfig({ ...base, INGEST_RATE_LIMIT_MAX: " 1000 " }).ingestRateLimitMax).toBe(1000);
+    });
+
+    it.each(["0", "-1", "1.5", "abc"])("melempar untuk nilai bukan bilangan bulat > 0 (%s)", (value) => {
+      expect(() => loadConfig({ ...base, INGEST_RATE_LIMIT_MAX: value })).toThrow("INGEST_RATE_LIMIT_MAX");
+    });
   });
 
   describe("APP_ORIGIN", () => {

@@ -12,6 +12,7 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
 import { memberRoutes } from "./modules/projects/members.routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
+import { ingestRoutes } from "./modules/results/ingest.routes.js";
 import { tokenRoutes } from "./modules/tokens/routes.js";
 
 declare module "fastify" {
@@ -76,6 +77,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await memberRoutes(api);
       await invitationRoutes(api, config);
       await tokenRoutes(api);
+      await ingestRoutes(api, config);
     },
     { prefix: "/api/v1" },
   );

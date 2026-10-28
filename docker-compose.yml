@@ -30,6 +30,8 @@ services:
       PORT: "3000"
       # Test stack only (ruling R3): production leaves this unset (default 10).
       RATE_LIMIT_MAX: "1000"
+      # Test stack only (ruling P3): production leaves this unset (default 60 uploads/hour/token).
+      INGEST_RATE_LIMIT_MAX: "1000"
     depends_on:
       postgres:
         condition: service_healthy

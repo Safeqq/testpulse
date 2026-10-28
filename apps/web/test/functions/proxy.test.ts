@@ -58,6 +58,26 @@ describe("Pages Function proxy /api/*", () => {
     expect(upstream.headers.get("host")).toBeNull();
   });
 
+  it("upload JUnit: Authorization, Content-Type XML, dan body 5 MB diteruskan tanpa diubah", async () => {
+    const stub = stubFetch();
+    const xml = `<testsuite name="s"><testcase name="a"/></testsuite><!--${"x".repeat(5 * 1024 * 1024 - 60)}-->`;
+    const token = `tp_${"A".repeat(43)}`;
+
+    await proxy(
+      new Request("https://app.example/api/v1/projects/demo/runs?branch=main&commit=abc1234", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/xml; charset=utf-8" },
+        body: xml,
+      }),
+    );
+
+    const upstream = upstreamRequest(stub);
+    expect(upstream.url).toBe("https://api.example/api/v1/projects/demo/runs?branch=main&commit=abc1234");
+    expect(upstream.headers.get("authorization")).toBe(`Bearer ${token}`);
+    expect(upstream.headers.get("content-type")).toBe("application/xml; charset=utf-8");
+    expect(await upstream.text()).toBe(xml);
+  });
+
   it("tidak me-rewrite path /api/health dan mengabaikan path pada API_ORIGIN", async () => {
     const stub = stubFetch();
     await proxy(new Request("https://app.example/api/health"), { API_ORIGIN: "https://api.example/" });

@@ -22,6 +22,7 @@ function buildTestServer() {
   app.get("/client-error", () => {
     throw Object.assign(new Error("Payload too large"), { statusCode: 413 });
   });
+  app.post("/small", { bodyLimit: 10 }, () => ({ ok: true }));
   app.get("/boom", () => {
     throw new Error("detail rahasia: password=hunter2");
   });
@@ -56,6 +57,12 @@ describe("error handler", () => {
     const res = await app.inject({ method: "GET", url: "/client-error" });
     expect(res.statusCode).toBe(400);
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("body melebihi bodyLimit rute (FST_ERR_CTP_BODY_TOO_LARGE) → 413 PAYLOAD_TOO_LARGE", async () => {
+    const res = await app.inject({ method: "POST", url: "/small", payload: { name: "lebih dari sepuluh byte" } });
+    expect(res.statusCode).toBe(413);
+    expect(res.json()).toEqual({ error: { code: "PAYLOAD_TOO_LARGE", message: expect.any(String) } });
   });
 
   it("error tak terduga → 500 INTERNAL_ERROR tanpa membocorkan detail", async () => {

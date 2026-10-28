@@ -166,6 +166,19 @@ describe("proteksi CSRF dan header", () => {
     expect(res.json().error.code).toBe("VALIDATION_ERROR");
   });
 
+  it("XML ke rute selain upload JUnit (register, buat token) → 400 VALIDATION_ERROR", async () => {
+    for (const url of [REGISTER, "/api/v1/projects/apa-saja/tokens"]) {
+      const res = await app.inject({
+        method: "POST",
+        url,
+        headers: { "content-type": "application/xml" },
+        payload: "<testsuite><testcase name='a'/></testsuite>",
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error.code).toBe("VALIDATION_ERROR");
+    }
+  });
+
   it("form-urlencoded dengan body → 400 VALIDATION_ERROR", async () => {
     const res = await app.inject({
       method: "POST",

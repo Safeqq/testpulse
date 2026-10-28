@@ -35,6 +35,10 @@ export function registerErrorHandlers(app: FastifyInstance): void {
       if (error.statusCode === 429) {
         return reply.status(429).send(body("RATE_LIMITED", "Terlalu banyak permintaan, coba lagi nanti"));
       }
+      // Body melebihi `bodyLimit` rute (mis. upload JUnit > 5 MB), ditolak Fastify sebelum parsing.
+      if (error.code === "FST_ERR_CTP_BODY_TOO_LARGE") {
+        return reply.status(413).send(body("PAYLOAD_TOO_LARGE", "Ukuran body melebihi batas yang diizinkan"));
+      }
       return reply.status(400).send(body("VALIDATION_ERROR", "Permintaan tidak valid"));
     }
     request.log.error({ err: error }, "unhandled error");

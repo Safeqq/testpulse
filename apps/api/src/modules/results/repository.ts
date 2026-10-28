@@ -2,6 +2,7 @@ import type { IngestQuery } from "@testpulse/shared";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { projects, runs, testCases, testResults } from "../../db/schema.js";
+import { touchToken } from "../tokens/auth.js";
 import type { ParsedReport, ParsedResult } from "./domain/junit.js";
 
 /** Jumlah run terbaru yang disimpan per project (spec Tahap 2 §4, retensi). */
@@ -49,7 +50,8 @@ function chunked<T>(items: readonly T[], size: number): T[][] {
  * Menyimpan satu run beserta hasilnya dalam satu transaksi:
  * 1. insert `runs` (dengan total);
  * 2. per potongan: upsert `test_cases` (`ON CONFLICT DO NOTHING`, lalu select id) dan insert `test_results`;
- * 3. hapus run di luar RUN_RETENTION terbaru project ini (cascade ke `test_results`).
+ * 3. hapus run di luar RUN_RETENTION terbaru project ini (cascade ke `test_results`);
+ * 4. catat pemakaian token (`last_used_at`), agar run yang tersimpan tidak pernah diikuti kegagalan terpisah.
  *
  * Upload paralel aman: insert `test_cases` yang bentrok menunggu transaksi lain lalu tidak melakukan apa-apa, dan
  * select berikutnya (READ COMMITTED) melihat barisnya. Hasil diurutkan menurut (suite, name) agar semua transaksi
@@ -122,6 +124,8 @@ export async function insertRun(
       .orderBy(desc(runs.createdAt), desc(runs.id))
       .offset(RUN_RETENTION);
     await tx.delete(runs).where(inArray(runs.id, beyondRetention));
+
+    await touchToken(tx, tokenId);
 
     return { runId: run.id, totals };
   });

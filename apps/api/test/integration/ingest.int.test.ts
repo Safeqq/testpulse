@@ -85,6 +85,27 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
     });
   }
 
+  /** Menyisipkan `n` run kosong langsung ke DB, `created_at` berurutan satu menit mulai sehari lalu. */
+  const seedRuns = (projectId: string, n: number) => {
+    const start = Date.now() - 1000 * 60 * 60 * 24;
+    return app.db
+      .insert(runs)
+      .values(
+        Array.from({ length: n }, (_, i) => ({
+          projectId,
+          branch: "main",
+          createdAt: new Date(start + i * 60_000),
+          durationMs: 0,
+          total: 0,
+          passed: 0,
+          failed: 0,
+          skipped: 0,
+          flaky: 0,
+        })),
+      )
+      .returning({ id: runs.id, createdAt: runs.createdAt });
+  };
+
   const countTestCases = async (projectId: string) => {
     const [row] = await app.db.select({ n: count() }).from(testCases).where(eq(testCases.projectId, projectId));
     return row?.n ?? 0;
@@ -155,7 +176,7 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
 
     it("commit/ciUrl/name opsional → NULL; Content-Type text/xml dan charset diterima", async () => {
       const { project, token } = await setup();
-      for (const contentType of ["text/xml", "application/xml; charset=utf-8", "text/xml;charset=UTF-8"]) {
+      for (const contentType of ["text/xml", "application/xml; charset=utf-8", "text/xml;charset=UTF-8", "application/xml; charset=\"utf-8\""]) {
         const res = await upload(project.slug, { token: token.token, contentType });
         expect(res.statusCode).toBe(201);
         const [run] = await app.db.select().from(runs).where(eq(runs.id, res.json().runId));
@@ -235,23 +256,7 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
 
     it("Review Focus 5: 200 run lama + 1 upload → tersisa tepat 200, run terlama hilang, run baru ada", async () => {
       const { project, token } = await setup();
-      const start = Date.now() - 1000 * 60 * 60 * 24;
-      const seeded = await app.db
-        .insert(runs)
-        .values(
-          Array.from({ length: 200 }, (_, i) => ({
-            projectId: project.id,
-            branch: "main",
-            createdAt: new Date(start + i * 60_000),
-            durationMs: 0,
-            total: 0,
-            passed: 0,
-            failed: 0,
-            skipped: 0,
-            flaky: 0,
-          })),
-        )
-        .returning({ id: runs.id, createdAt: runs.createdAt });
+      const seeded = await seedRuns(project.id, 200);
       const oldest = seeded.reduce((a, b) => (a.createdAt < b.createdAt ? a : b));
       const secondOldest = seeded.filter((r) => r.id !== oldest.id).reduce((a, b) => (a.createdAt < b.createdAt ? a : b));
 
@@ -270,6 +275,21 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
       expect(ids.has(res.json().runId)).toBe(true);
       const [otherRuns] = await app.db.select({ n: count() }).from(runs).where(eq(runs.projectId, other.project.id));
       expect(otherRuns?.n).toBe(1);
+    });
+
+    it("retensi serentak: 199 run lama + 4 upload paralel → tersisa tepat 200", async () => {
+      const { project, token } = await setup();
+      const seeded = await seedRuns(project.id, 199);
+
+      const responses = await Promise.all(Array.from({ length: 4 }, () => upload(project.slug, { token: token.token })));
+
+      expect(responses.map((r) => r.statusCode)).toEqual([201, 201, 201, 201]);
+      const remaining = await app.db.select({ id: runs.id }).from(runs).where(eq(runs.projectId, project.id));
+      const ids = new Set(remaining.map((r) => r.id));
+      expect(ids.size).toBe(200);
+      for (const res of responses) expect(ids.has(res.json().runId)).toBe(true);
+      const oldestThree = [...seeded].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()).slice(0, 3);
+      for (const run of oldestThree) expect(ids.has(run.id)).toBe(false);
     });
 
     it("body tepat 5 MB diterima", async () => {
@@ -353,6 +373,34 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
       expect(plain.statusCode).toBe(400);
     });
 
+    it("charset selain utf-8 → 400 VALIDATION_ERROR (juga tanpa token)", async () => {
+      const { project, token } = await setup();
+      for (const contentType of ["application/xml; charset=iso-8859-1", "text/xml; charset=utf-16", "text/xml; charset=utf8"]) {
+        for (const t of [token.token, undefined]) {
+          const res = await upload(project.slug, { token: t, contentType });
+          expect(res.statusCode).toBe(400);
+          expect(res.json().error.code).toBe("VALIDATION_ERROR");
+        }
+      }
+      const [run] = await app.db.select({ n: count() }).from(runs).where(eq(runs.projectId, project.id));
+      expect(run?.n).toBe(0);
+    });
+
+    it("karakter kontrol mentah (U+0000, U+0001) di nama/pesan → 422 INVALID_REPORT, bukan 500", async () => {
+      const { project, token } = await setup();
+      const bodies = [
+        junit([{ name: "a\u0000b" }]),
+        junit([{ name: "a", status: "failed", message: "boom\u0001" }]),
+      ];
+      for (const body of bodies) {
+        const res = await upload(project.slug, { token: token.token, body });
+        expect(res.statusCode).toBe(422);
+        expect(res.json()).toEqual({ error: { code: "INVALID_REPORT", message: expect.any(String) } });
+      }
+      const [run] = await app.db.select({ n: count() }).from(runs).where(eq(runs.projectId, project.id));
+      expect(run?.n).toBe(0);
+    });
+
     it("branch kosong / tidak ada / tidak valid → 400 dengan fields.branch", async () => {
       const { project, token } = await setup();
       for (const query of ["branch=", "", "branch=a%20b", "branch=main&branch=dev"]) {
@@ -430,7 +478,19 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
       expect(blocked.statusCode).toBe(429);
       expect(blocked.json()).toEqual({ error: { code: "RATE_LIMITED", message: expect.any(String) } });
 
-      expect((await upload(project.slug, { token: other.token, target: limited })).statusCode).toBe(201);
+      // Cek token dan query berjalan sebelum batas laju: bukan 429 meski bucket token habis.
+      expect((await upload(project.slug, { token: "abc", target: limited })).statusCode).toBe(401);
+      expect((await upload(project.slug, { token: token.token, query: "branch=", target: limited })).statusCode).toBe(400);
+
+      // Upload dengan query tidak valid tidak memakai jatah: 5 kali 400, lalu tetap 3 upload sukses sebelum 429.
+      for (let i = 0; i < 5; i++) {
+        expect((await upload(project.slug, { token: other.token, query: "", target: limited })).statusCode).toBe(400);
+      }
+      for (let i = 0; i < 3; i++) {
+        expect((await upload(project.slug, { token: other.token, target: limited })).statusCode).toBe(201);
+      }
+      expect((await upload(project.slug, { token: other.token, target: limited })).statusCode).toBe(429);
+
       const [stored] = await limited.db
         .select({ n: count() })
         .from(runs)

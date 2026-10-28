@@ -257,6 +257,24 @@ describe("parseJUnit - penolakan", () => {
     expect(() => parseJUnit("")).toThrow(InvalidReportError);
   });
 
+  it.each([
+    ["U+0000 di nama", '<testcase name="a\u0000b"/>'],
+    ["U+0001 di pesan", '<testcase name="a"><failure message="x\u0001"/></testcase>'],
+    ["U+001F di teks failure", '<testcase name="a"><failure>boom\u001F</failure></testcase>'],
+    ["U+000B di CDATA", '<testcase name="a"><error><![CDATA[x\u000By]]></error></testcase>'],
+    ["U+FFFE", '<testcase name="a￾"/>'],
+    ["U+FFFF", '<testcase name="a￿"/>'],
+    ["high surrogate tunggal", '<testcase name="a\uD800b"/>'],
+    ["low surrogate tunggal", '<testcase name="a\uDC00b"/>'],
+  ])("menolak karakter mentah di luar XML Char: %s", (_name, cases) => {
+    expect(() => parseJUnit(suite(cases))).toThrow(InvalidReportError);
+  });
+
+  it("menerima tab, LF, CR, dan karakter non-BMP mentah (pasangan surrogate sah)", () => {
+    const report = parseJUnit(`<testsuite name="S">\t\r\n<testcase name="a\u{1F600}\u{10FFFF}�"/></testsuite>`);
+    expect(report.results[0]?.name).toBe("a\u{1F600}\u{10FFFF}�");
+  });
+
   it("menolak root bukan testsuites/testsuite", () => {
     expect(() => parseJUnit("<html><body><testcase name='a'/></body></html>")).toThrow(InvalidReportError);
   });

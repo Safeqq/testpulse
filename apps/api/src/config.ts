@@ -26,22 +26,14 @@ function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
-function parseIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
+/** Bilangan bulat dari env (`fallback` bila kosong); harus >= `min` (default 0). */
+function parseIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number, { min = 0 }: { min?: number } = {}): number {
   const raw = env[name]?.trim();
   if (!raw) return fallback;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
-    throw new Error(`Variabel lingkungan ${name} harus berupa bilangan bulat non-negatif`);
-  }
-  return value;
-}
-
-function parsePositiveIntEnv(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
-  const raw = env[name]?.trim();
-  if (!raw) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`Variabel lingkungan ${name} harus berupa bilangan bulat lebih dari 0`);
+  if (!Number.isInteger(value) || value < min) {
+    const rule = min === 0 ? "non-negatif" : `minimal ${min}`;
+    throw new Error(`Variabel lingkungan ${name} harus berupa bilangan bulat ${rule}`);
   }
   return value;
 }
@@ -76,7 +68,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
     cookieSecure: env.COOKIE_SECURE?.trim() === "true",
     port: parseIntEnv(env, "PORT", 3000),
     rateLimitMax: parseIntEnv(env, "RATE_LIMIT_MAX", 10),
-    ingestRateLimitMax: parsePositiveIntEnv(env, "INGEST_RATE_LIMIT_MAX", 60),
+    ingestRateLimitMax: parseIntEnv(env, "INGEST_RATE_LIMIT_MAX", 60, { min: 1 }),
     ...(proxySecret ? { proxySecret } : {}),
     ...(gitCommit ? { gitCommit } : {}),
   };

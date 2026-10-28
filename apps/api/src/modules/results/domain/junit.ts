@@ -59,6 +59,12 @@ const parser = new XMLParser({
 });
 
 const DOCTYPE = /<!doctype/i;
+/**
+ * Karakter mentah di luar production `Char` XML 1.0 (mis. U+0000, U+0001, U+FFFE, surrogate tunggal). Dokumen yang
+ * memuatnya tidak well-formed; tanpa cek ini NUL lolos ke nama/pesan dan ditolak Postgres (500). Flag `u` membuat
+ * surrogate tunggal dinilai sebagai code point D800–DFFF (tidak ada di himpunan), sedangkan pasangan sah lolos.
+ */
+const NON_XML_CHAR = /[^\t\n\r -퟿-�\u{10000}-\u{10FFFF}]/u;
 const DURATION = /^(?:\d+\.?\d*|\.\d+)$/;
 const NAMED_ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
 
@@ -199,6 +205,7 @@ export function parseJUnit(xml: string): ParsedReport {
 
   // Cek pada string mentah sebelum parsing: tidak ada DOCTYPE/entity yang pernah sampai ke parser.
   if (DOCTYPE.test(source)) throw new InvalidReportError("DOCTYPE tidak diizinkan");
+  if (NON_XML_CHAR.test(source)) throw new InvalidReportError("XML memuat karakter yang tidak diizinkan");
 
   const validation = XMLValidator.validate(source);
   if (validation !== true) throw new InvalidReportError("XML tidak valid");

@@ -30,6 +30,21 @@ export function isXml(contentType: string | undefined): boolean {
   return mediaType !== undefined && XML_MEDIA_TYPES.has(mediaType);
 }
 
+/**
+ * Parameter `charset` tidak ada atau `utf-8` (huruf besar/kecil bebas, boleh dikutip). Laporan selalu didekode
+ * sebagai UTF-8, jadi charset lain (atau `charset` ganda) ditolak alih-alih didekode keliru.
+ */
+export function hasUtf8Charset(contentType: string | undefined): boolean {
+  const params = contentType?.split(";").slice(1) ?? [];
+  return params.every((param) => {
+    const eq = param.indexOf("=");
+    const key = (eq === -1 ? param : param.slice(0, eq)).trim().toLowerCase();
+    if (key !== "charset") return true;
+    const value = param.slice(eq + 1).trim().replace(/^"(.*)"$/, "$1").toLowerCase();
+    return eq !== -1 && value === "utf-8";
+  });
+}
+
 /** Upload JUnit: POST ke `/api/v1/projects/:slug/runs` (path persis, query boleh) dengan body XML. */
 function isIngestUpload(req: FastifyRequest): boolean {
   if (req.method !== "POST") return false;

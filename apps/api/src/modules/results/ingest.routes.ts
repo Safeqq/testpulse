@@ -3,11 +3,11 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { AppConfig } from "../../config.js";
 import { rateLimitKey } from "../../http/client-ip.js";
 import { AppError } from "../../http/errors.js";
-import { isXml } from "../../http/security.js";
+import { hasUtf8Charset, isXml } from "../../http/security.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { hashToken } from "../auth/domain/tokens.js";
 import { findBySlug } from "../projects/repository.js";
-import { authenticateIngestToken, touchToken, type IngestAuth } from "../tokens/auth.js";
+import { authenticateIngestToken, parseBearer, type IngestAuth } from "../tokens/auth.js";
 import { InvalidReportError, parseJUnit } from "./domain/junit.js";
 import { insertRun } from "./repository.js";
 
@@ -25,11 +25,6 @@ type IngestRequest = FastifyRequest<{ Params: { slug: string }; Body: unknown }>
 /** Hasil pemeriksaan hook `onRequest`, dibaca handler setelah body di-parse. */
 const contexts = new WeakMap<FastifyRequest, IngestContext>();
 
-function bearerToken(authorization: string | undefined): string | null {
-  const match = authorization === undefined ? null : /^(\S+) (\S+)$/.exec(authorization);
-  return match && match[1]!.toLowerCase() === "bearer" ? match[2]! : null;
-}
-
 /**
  * Kunci rate limit upload (Ruling P2): `ingest:` + SHA-256 token Bearer, jadi batasnya per token dan nilai mentah
  * token tidak pernah disimpan. Tanpa Bearer: kunci IP yang sama dengan rute lain (Ruling R11).
@@ -37,7 +32,9 @@ function bearerToken(authorization: string | undefined): string | null {
 function ingestRateLimitKey(config: AppConfig): (req: FastifyRequest) => string {
   const ipKey = rateLimitKey(config);
   return (req) => {
-    const token = bearerToken(req.headers.authorization);
+    const token = parseBearer(req.headers.authorization);
+    // Jaring pengaman: hook rate-limit berjalan setelah `checkUpload`, yang sudah mewajibkan Bearer token sah, jadi
+    // cabang IP ini hanya terpakai jika urutan hook berubah (mis. upgrade plugin).
     return token === null ? ipKey(req) : `ingest:${hashToken(token)}`;
   };
 }
@@ -46,14 +43,17 @@ function ingestRateLimitKey(config: AppConfig): (req: FastifyRequest) => string 
  * `POST /projects/:slug/runs` — upload laporan JUnit XML dari CI (spec Tahap 2 §4). Hanya Bearer token CI yang
  * diterima; cookie sesi tidak pernah dibaca di sini.
  *
- * Urutan cek (Ruling P1): Content-Type (hook global + hook rute) → token 401 → project 404 → query 400, semuanya di
- * `onRequest` sebelum body dibaca; lalu batas laju 429 (hook rate-limit dipasang setelah hook rute); lalu `bodyLimit`
- * 5 MB saat parsing (413); lalu parse JUnit (422) dan simpan.
+ * Urutan cek (Ruling P1): Content-Type + charset utf-8 (hook global + hook rute) → token 401 → project 404 →
+ * query 400, semuanya di `onRequest` sebelum body dibaca; lalu batas laju 429 (hook rate-limit dipasang setelah hook
+ * rute); lalu `bodyLimit` 5 MB saat parsing (413); lalu parse JUnit (422) dan simpan (run + `last_used_at` token dalam satu transaksi).
  */
 export async function ingestRoutes(app: FastifyInstance, config: AppConfig): Promise<void> {
   const checkUpload = async (req: IngestRequest) => {
     if (!isXml(req.headers["content-type"])) {
       throw new AppError(400, "VALIDATION_ERROR", "Content-Type harus application/xml atau text/xml");
+    }
+    if (!hasUtf8Charset(req.headers["content-type"])) {
+      throw new AppError(400, "VALIDATION_ERROR", "Charset laporan harus utf-8");
     }
 
     // Satu pesan untuk semua kegagalan token (tidak ada, format salah, tidak dikenal, dicabut).
@@ -101,7 +101,6 @@ export async function ingestRoutes(app: FastifyInstance, config: AppConfig): Pro
         query: ctx.query,
         report,
       });
-      await touchToken(app.db, ctx.auth.tokenId);
 
       const body: IngestResultDto = { runId, url: `${config.appOrigin}/p/${ctx.slug}/runs/${runId}`, totals };
       return reply.status(201).send(body);

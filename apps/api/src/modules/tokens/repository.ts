@@ -100,6 +100,6 @@ export async function findActiveTokenByHash(
   return row ?? null;
 }
 
-export async function markTokenUsed(db: Db, tokenId: string, now: Date): Promise<void> {
+export async function markTokenUsed(db: Pick<Db, "update">, tokenId: string, now: Date): Promise<void> {
   await db.update(projectTokens).set({ lastUsedAt: now }).where(eq(projectTokens.id, tokenId));
 }

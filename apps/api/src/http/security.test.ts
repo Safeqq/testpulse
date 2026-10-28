@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AppConfig } from "../config.js";
 import { registerErrorHandlers } from "./errors.js";
-import { registerSecurity } from "./security.js";
+import { hasUtf8Charset, registerSecurity } from "./security.js";
 
 const APP_ORIGIN = "http://localhost:5173";
 const XML = `<testsuite name="s"><testcase name="a"/></testsuite>`;
@@ -68,6 +68,22 @@ describe("registerSecurity: pengecualian body XML untuk upload JUnit", () => {
     const res = await send("POST", "/api/v1/projects/demo/runs", "application/xml", { origin: "https://evil.example" });
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe("FORBIDDEN");
+  });
+
+  it.each([
+    [undefined, true],
+    ["application/xml", true],
+    ["application/xml; charset=utf-8", true],
+    ["text/xml;charset=UTF-8", true],
+    ['application/xml; charset="utf-8"', true],
+    ["application/xml; foo=bar", true],
+    ["application/xml; charset=iso-8859-1", false],
+    ["application/xml; charset=utf8", false],
+    ["application/xml; charset=utf-16", false],
+    ["application/xml; charset=", false],
+    ["application/xml; charset=utf-8; charset=latin1", false],
+  ])("hasUtf8Charset(%j) → %s", (contentType, expected) => {
+    expect(hasUtf8Charset(contentType)).toBe(expected);
   });
 
   it("JSON ke rute lain tetap diproses seperti biasa", async () => {

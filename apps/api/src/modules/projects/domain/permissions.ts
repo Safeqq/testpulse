@@ -28,7 +28,7 @@ export function decideAccess(action: ProjectAction, ctx: AccessContext): AccessD
   // Anggota: izin ditentukan role.
   if (role !== null) {
     if (READ_ACTIONS.has(action)) return "allow";
-    if (TESTER_ACTIONS.has(action)) return role === "viewer" ? "forbidden" : "allow";
+    if (TESTER_ACTIONS.has(action)) return role === "tester" || role === "admin" ? "allow" : "forbidden";
     return role === "admin" ? "allow" : "forbidden";
   }
 

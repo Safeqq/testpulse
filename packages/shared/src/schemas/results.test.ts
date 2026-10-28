@@ -18,6 +18,12 @@ describe("ingestQuery", () => {
     });
   });
 
+  it("memetakan commit ke huruf kecil", () =>
+    expect(ingestQuery.parse({ branch: "main", commit: "ABCDEF1" })).toEqual({ branch: "main", commitSha: "abcdef1" }));
+
+  it("menerima URL https biasa", () =>
+    expect(ingestQuery.safeParse({ branch: "main", ciUrl: "https://ci.example.com/a/b?x=1" }).success).toBe(true));
+
   it("hanya branch yang wajib", () => expect(ingestQuery.parse({ branch: "main" })).toEqual({ branch: "main" }));
 
   it("menerima commit 40 hex dan http", () => {
@@ -35,6 +41,8 @@ describe("ingestQuery", () => {
     ["commit 5 karakter", { branch: "main", commit: "abc12" }],
     ["commit 41 karakter", { branch: "main", commit: "a".repeat(41) }],
     ["ciUrl javascript:", { branch: "main", ciUrl: "javascript:alert(1)" }],
+    ["ciUrl tanpa //", { branch: "main", ciUrl: "http:foo" }],
+    ["ciUrl dengan kredensial", { branch: "main", ciUrl: "https://user:pass@host/x" }],
     ["ciUrl 501 karakter", { branch: "main", ciUrl: `https://ci.example.com/${"a".repeat(501 - 23)}` }],
     ["name 121 karakter", { branch: "main", name: "a".repeat(121) }],
   ])("menolak %s", (_label, input) => expect(ingestQuery.safeParse(input).success).toBe(false));

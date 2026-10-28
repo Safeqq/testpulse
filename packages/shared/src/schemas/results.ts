@@ -19,17 +19,18 @@ export const ingestQuery = z
       .string()
       .max(500, "URL CI maksimal 500 karakter")
       .refine((v) => {
+        if (!/^https?:\/\//i.test(v)) return false;
         try {
-          const { protocol } = new URL(v);
-          return protocol === "http:" || protocol === "https:";
+          const { protocol, username, password } = new URL(v);
+          return (protocol === "http:" || protocol === "https:") && username === "" && password === "";
         } catch {
           return false;
         }
-      }, "URL CI harus berupa URL http atau https")
+      }, "URL CI harus berupa URL http atau https tanpa username/password")
       .optional(),
     name: z.string().max(120, "Nama maksimal 120 karakter").optional(),
   })
-  .transform(({ commit, ...rest }) => (commit === undefined ? rest : { ...rest, commitSha: commit }));
+  .transform(({ commit, ...rest }) => (commit === undefined ? rest : { ...rest, commitSha: commit.toLowerCase() }));
 export type IngestQuery = z.infer<typeof ingestQuery>;
 
 const totalsDto = z.object({

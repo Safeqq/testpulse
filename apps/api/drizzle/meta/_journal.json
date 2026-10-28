@@ -8,6 +8,13 @@
       "when": 1792825232636,
       "tag": "0000_lame_zeigeist",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793180451235,
+      "tag": "0001_moaning_rocket_racer",
+      "breakpoints": true
     }
   ]
 }

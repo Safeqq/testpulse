@@ -15,7 +15,13 @@ export type ErrorCode =
   | "LAST_ADMIN"
   | "ALREADY_MEMBER"
   | "INVITATION_USED"
-  | "INVITATION_EXPIRED";
+  | "INVITATION_EXPIRED"
+  | "RUN_NOT_FOUND"
+  | "TEST_NOT_FOUND"
+  | "TOKEN_NOT_FOUND"
+  | "TOKEN_LIMIT"
+  | "PAYLOAD_TOO_LARGE"
+  | "INVALID_REPORT";
 
 export interface ApiErrorBody {
   error: {

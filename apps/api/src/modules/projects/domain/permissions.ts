@@ -5,7 +5,9 @@ export type ProjectAction =
   | "members:read"
   | "project:manage"
   | "members:manage"
-  | "invitations:manage";
+  | "invitations:manage"
+  | "runs:delete"
+  | "tokens:manage";
 
 export type AccessDecision = "allow" | "unauthenticated" | "not_found" | "forbidden";
 
@@ -15,8 +17,10 @@ type AccessContext = {
   role: Role | null;
 };
 
-// Aksi yang boleh dilakukan viewer ke atas; sisanya khusus admin.
+// Aksi yang boleh dilakukan viewer ke atas.
 const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set(["project:read", "members:read"]);
+// Aksi yang boleh dilakukan tester ke atas; sisanya khusus admin.
+const TESTER_ACTIONS: ReadonlySet<ProjectAction> = new Set(["runs:delete"]);
 
 export function decideAccess(action: ProjectAction, ctx: AccessContext): AccessDecision {
   const { authenticated, visibility, role } = ctx;
@@ -24,6 +28,7 @@ export function decideAccess(action: ProjectAction, ctx: AccessContext): AccessD
   // Anggota: izin ditentukan role.
   if (role !== null) {
     if (READ_ACTIONS.has(action)) return "allow";
+    if (TESTER_ACTIONS.has(action)) return role === "viewer" ? "forbidden" : "allow";
     return role === "admin" ? "allow" : "forbidden";
   }
 

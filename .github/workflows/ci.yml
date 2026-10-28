@@ -49,6 +49,8 @@ jobs:
         run: pnpm --filter @testpulse/web test:unit
       - name: Reporter CLI unit tests (merge, upload, exit codes)
         run: pnpm --filter @testpulse/reporter test:unit
+      - name: E2E helper unit tests (JUnit builder)
+        run: pnpm --filter @testpulse/tests test:unit
       - name: ZAP report gate tests
         run: pnpm --filter @testpulse/tests test:security
       - uses: ./.github/actions/upload-allure

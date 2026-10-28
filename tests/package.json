@@ -8,6 +8,7 @@
     "test:e2e": "playwright test --project \"e2e-*\"",
     "test:api": "playwright test --project api",
     "screenshots": "node scripts/screenshots.ts",
+    "test:unit": "node --test \"unit/*.test.ts\"",
     "test:security": "node --test \"security/*.test.mjs\""
   },
   "dependencies": {

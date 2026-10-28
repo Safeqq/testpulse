@@ -1,9 +1,11 @@
 import type { RunSummaryDto } from "@testpulse/shared";
 import { History, Loader2 } from "lucide-react";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
+import { LIST_ITEM_LINK_CLASS } from "@/components/listItemLink";
 import { LoadError } from "@/components/LoadError";
+import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,19 +14,21 @@ import { formatDateTime, formatDuration } from "@/lib/format";
 import { useCursorList } from "@/lib/useCursorList";
 import { useLoad } from "@/lib/useLoad";
 import { BranchFilter } from "./BranchFilter";
-import { Loading, ProjectFrame } from "./ProjectFrame";
+import { preloadPages } from "./lazyPages";
+import { ProjectFrame } from "./ProjectFrame";
 
 /** `/p/:slug/runs`: semua run project, dapat difilter per branch (`?branch=`), dimuat 20 per halaman. */
 export function RunsPage() {
   const { slug = "" } = useParams();
   return (
-    <ProjectFrame slug={slug} title="Daftar run" returnTo={`/p/${slug}/runs`}>
+    <ProjectFrame slug={slug} title="Daftar run">
       {(project) => <RunsView slug={project.slug} />}
     </ProjectFrame>
   );
 }
 
 function RunsView({ slug }: { slug: string }) {
+  useEffect(() => preloadPages("run"), []);
   const [params, setParams] = useSearchParams();
   const branch = params.get("branch") ?? "";
   const fetchBranches = useCallback(() => api.results.branches(slug), [slug]);
@@ -111,7 +115,7 @@ function RunRow({ slug, run }: { slug: string; run: RunSummaryDto }) {
   return (
     <Link
       to={`/p/${slug}/runs/${run.id}`}
-      className="grid min-w-0 gap-1.5 px-4 py-3 text-foreground no-underline outline-hidden hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring"
+      className={LIST_ITEM_LINK_CLASS}
     >
       <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <RunStatus outcome={runOutcome(run)} className="text-sm" />

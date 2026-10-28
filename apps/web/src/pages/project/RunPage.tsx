@@ -1,10 +1,11 @@
 import type { ProjectDto, RunSummaryDto, TestResultDto } from "@testpulse/shared";
-import { ExternalLink, FileSearch, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileSearch, Loader2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { FormError } from "@/components/FormError";
 import { LoadError } from "@/components/LoadError";
+import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,8 +13,10 @@ import { Card } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api";
 import { errorMessage } from "@/lib/forms";
 import { formatDateTime, formatDuration } from "@/lib/format";
+import { withBranch } from "@/lib/navigation";
 import { useCursorList, type CursorList } from "@/lib/useCursorList";
-import { Loading, ProjectFrame } from "./ProjectFrame";
+import { preloadPages } from "./lazyPages";
+import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
 
 type Filter = "failed" | "flaky" | "all";
 
@@ -41,7 +44,7 @@ function safeExternalUrl(url: string | null): string | null {
 export function RunPage() {
   const { slug = "", runId = "" } = useParams();
   return (
-    <ProjectFrame slug={slug} title="Detail run" returnTo={`/p/${slug}/runs/${runId}`}>
+    <ProjectFrame slug={slug} title="Detail run">
       {(project) => <RunView key={runId} project={project} runId={runId} />}
     </ProjectFrame>
   );
@@ -49,6 +52,7 @@ export function RunPage() {
 
 function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
   const { slug } = project;
+  useEffect(() => preloadPages("test", "runs"), []);
   const [filter, setFilter] = useState<Filter>("failed");
   // Ringkasan run ikut di setiap halaman hasil; disimpan agar header tetap tampil saat filter diganti.
   const [run, setRun] = useState<RunSummaryDto | null>(null);
@@ -87,6 +91,12 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
       <h1 id="run-title" className="text-2xl font-semibold tracking-tight">
         Detail run
       </h1>
+      <div>
+        <Link to={withBranch(`/p/${slug}/runs`, run.branch)} className={BACK_LINK_CLASS} data-testid="run-back">
+          <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
+          Daftar run branch ini
+        </Link>
+      </div>
       <RunHeader run={run} />
       {canDelete ? <DeleteRun slug={slug} runId={runId} /> : null}
 
@@ -110,7 +120,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
             </Button>
           ))}
         </div>
-        <Results filter={filter} slug={slug} list={list} />
+        <Results filter={filter} slug={slug} branch={run.branch} list={list} />
       </div>
     </section>
   );
@@ -194,7 +204,7 @@ function DeleteRun({ slug, runId }: { slug: string; runId: string }) {
     setError(null);
     try {
       await api.results.deleteRun(slug, runId);
-      navigate(`/p/${slug}/runs`);
+      navigate(`/p/${slug}/runs`, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.code === "RUN_NOT_FOUND") {
         navigate(`/p/${slug}/runs`);
@@ -250,7 +260,17 @@ function DeleteRun({ slug, runId }: { slug: string; runId: string }) {
   );
 }
 
-function Results({ filter, slug, list }: { filter: Filter; slug: string; list: CursorList<TestResultDto> }) {
+function Results({
+  filter,
+  slug,
+  branch,
+  list,
+}: {
+  filter: Filter;
+  slug: string;
+  branch: string;
+  list: CursorList<TestResultDto>;
+}) {
   if (list.state === "loading") return <Loading label="Memuat hasil test…" />;
   if (list.state === "error") {
     return <LoadError error={list.error} fallback="Gagal memuat hasil test. Coba lagi." onRetry={list.reload} />;
@@ -266,7 +286,7 @@ function Results({ filter, slug, list }: { filter: Filter; slug: string; list: C
     <div className="grid min-w-0 grid-cols-1 gap-4">
       <ul className="m-0 grid list-none divide-y divide-border rounded-lg border bg-card p-0">
         {list.items.map((result) => (
-          <ResultRow key={result.testCaseId} slug={slug} result={result} />
+          <ResultRow key={result.testCaseId} slug={slug} branch={branch} result={result} />
         ))}
       </ul>
       {list.moreError ? (
@@ -284,11 +304,11 @@ function Results({ filter, slug, list }: { filter: Filter; slug: string; list: C
   );
 }
 
-function ResultRow({ slug, result }: { slug: string; result: TestResultDto }) {
+function ResultRow({ slug, branch, result }: { slug: string; branch: string; result: TestResultDto }) {
   return (
     <li className="grid min-w-0 gap-1.5 px-4 py-3" data-testid={`result-row-${result.testCaseId}`}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <Link to={`/p/${slug}/tests/${result.testCaseId}`} className={`${TEXT_LINK_CLASS} min-w-0 text-sm [overflow-wrap:anywhere]`}>
+        <Link to={withBranch(`/p/${slug}/tests/${result.testCaseId}`, branch)} className={`${TEXT_LINK_CLASS} min-w-0 text-sm [overflow-wrap:anywhere]`}>
           {result.name}
         </Link>
         <RunStatus outcome={result.status} className="text-sm" />

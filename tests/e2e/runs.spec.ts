@@ -171,7 +171,10 @@ test.describe("Detail run", () => {
     await expect(run.ciLink).toHaveAttribute("target", "_blank");
     await expect(run.ciLink).toHaveAttribute("rel", /noopener/);
     await expect(run.ciLink).toHaveAttribute("rel", /noreferrer/);
-    await expect(run.header).toContainText("4");
+    await expect(run.header).toContainText("4 (2 lulus, 1 gagal, 1 dilewati, 1 flaky)");
+    // Durasi = jumlah durasi test setelah penggabungan: 0,1 + 0,1 + (0,1 + 0,1) + 0,1 dtk.
+    await expect(run.header).toContainText("500 md");
+    await expect(run.back).toHaveAttribute("href", `/p/${project.slug}/runs?branch=main`);
 
     // Filter bawaan: Gagal -> hanya B.
     await expect(run.filter("failed")).toHaveAttribute("aria-pressed", "true");
@@ -266,6 +269,45 @@ test.describe("Detail run", () => {
     await expect(new TestHistoryPage(page).history).toBeVisible({ timeout: LAZY_NAVIGATION_TIMEOUT });
   });
 
+  test("nama test pada run di branch non-bawaan membuka riwayat untuk branch itu", async ({ api, signedInPage }) => {
+    const { owner, project, token } = await newProject(api);
+    // Run fitur diunggah lebih dulu: branch run terbaru (bawaan API untuk riwayat) adalah main, bukan feature/x.
+    const featureRunId = await upload(api, token, project.slug, [{ name: "F", status: "failed" }], { branch: "feature/x" });
+    await upload(api, token, project.slug, [{ name: "F" }], { branch: "main" });
+    await upload(api, token, project.slug, [{ name: "F" }], { branch: "main" });
+    const ids = await testCaseIds(owner, project.slug, featureRunId);
+    const { page } = await signedInPage(owner);
+    const run = new RunDetailPage(page);
+    const history = new TestHistoryPage(page);
+    await run.goto(project.slug, featureRunId);
+
+    await run.row(ids.F!).getByRole("link", { name: "F" }).click();
+
+    await expect(page).toHaveURL(`/p/${project.slug}/tests/${ids.F}?branch=feature%2Fx`);
+    await expect(history.history).toBeVisible({ timeout: LAZY_NAVIGATION_TIMEOUT });
+    await expect(history.branch).toHaveText("feature/x");
+    await expect(history.cells).toHaveCount(1);
+    await expect(history.cell(featureRunId)).toContainText("Gagal");
+  });
+
+  test("gagal mengunduh chunk halaman menampilkan pesan dengan tombol muat ulang, bukan layar kosong", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedDetailRun(api);
+    const { page } = await signedInPage(owner);
+    // Dev server melayani src/pages/project/RunsPage.tsx; build produksi melayani assets/RunsPage-<hash>.js.
+    await page.route(/\/RunsPage[.-]/, (route) => route.abort());
+
+    await page.goto(`/p/${project.slug}/runs`);
+
+    const error = page.getByTestId("chunk-error");
+    await expect(error).toContainText("Halaman gagal dimuat");
+    await expect(error.getByRole("button", { name: "Muat ulang halaman" })).toBeVisible();
+    // Kerangka aplikasi (header) tetap ada.
+    await expect(page.getByRole("banner")).toBeVisible();
+  });
+
   test("run yang tidak ada menampilkan 'Run tidak ditemukan'", async ({ api, signedInPage, expectNoA11yViolationsInBothThemes }) => {
     const { owner, project } = await seedDetailRun(api);
     const { page } = await signedInPage(owner);
@@ -356,11 +398,12 @@ test.describe("Test flaky dan riwayat test", () => {
 
     await expect(flaky.branchFilter).toHaveValue("main");
     await expect(flaky.items).toHaveCount(2);
-    await expect(flaky.items.nth(0)).toContainText("F");
-    await expect(flaky.items.nth(0)).toContainText("95");
-    await expect(flaky.items.nth(1)).toContainText("B");
-    await expect(flaky.items.nth(1)).toContainText("5");
-    await expect(flaky.items.nth(0).getByRole("img")).toHaveAttribute("aria-label", /95/);
+    await expect(flaky.items.nth(0).getByText("F", { exact: true })).toBeVisible();
+    await expect(flaky.items.nth(0).getByText("Skor 95", { exact: true })).toBeVisible();
+    await expect(flaky.items.nth(1).getByText("B", { exact: true })).toBeVisible();
+    await expect(flaky.items.nth(1).getByText("Skor 5", { exact: true })).toBeVisible();
+    // Bar skor dekoratif: angka sudah berupa teks.
+    await expect(flaky.items.nth(0).getByRole("img")).toHaveCount(0);
     await expect(flaky.items.nth(0).getByRole("link")).toHaveAttribute(
       "href",
       `/p/${project.slug}/tests/${ids.F}?branch=main`,
@@ -492,6 +535,19 @@ test.describe("Akses publik dan privat", () => {
       await history.goto(project.slug, ids.F!);
       await expect(history.notFound).toContainText("Project tidak ditemukan");
     }
+  });
+});
+
+test.describe("Masuk dari halaman privat", () => {
+  test("tautan Masuk mempertahankan query halaman tujuan", async ({ api, newContext }) => {
+    const { project } = await newProject(api);
+    const page = await (await newContext()).newPage();
+    const runs = new RunsPage(page);
+
+    await runs.goto(project.slug, "feature/x");
+
+    const next = encodeURIComponent(`/p/${project.slug}/runs?branch=feature%2Fx`);
+    await expect(runs.notFound.getByRole("link", { name: "Masuk" })).toHaveAttribute("href", `/login?next=${next}`);
   });
 });
 

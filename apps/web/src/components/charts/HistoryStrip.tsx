@@ -42,7 +42,8 @@ export function HistoryStrip({ results, runHref }: HistoryStripProps) {
               <Icon className="size-4 shrink-0" aria-hidden="true" />
               <span className="font-semibold">{label}</span>
               {result.flakyInRun ? <span className="font-semibold">Flaky</span> : null}
-              <span>{formatShortDate(result.createdAt)}</span>
+              <span aria-hidden="true">{formatShortDate(result.createdAt)}</span>
+              <span className="sr-only">, {formatDateTime(result.createdAt)}, </span>
               <span className="tabular-nums">{formatDuration(result.durationMs)}</span>
             </Link>
           </li>

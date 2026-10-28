@@ -12,7 +12,15 @@ interface BranchFilterProps {
   allLabel?: string;
 }
 
-/** Pemilih branch native. Branch dari URL yang tak lagi ada di daftar tetap ditampilkan agar pilihan tidak diam-diam berubah. */
+/**
+ * Pemilih branch native, satu-satunya markup untuk dashboard, daftar run, dan daftar flaky. Branch dari URL yang tak
+ * lagi ada di daftar tetap ditampilkan agar pilihan tidak diam-diam berubah.
+ *
+ * Catatan CSP/WebKit: WebKit melaporkan style-src-attr palsu untuk <select> (lihat tests/support/csp.ts). Penjaga E2E
+ * hanya memaklumi bila target event-nya <select>, yang tidak berlaku untuk select di dalam subtree Suspense yang
+ * sedang menunggu. Karena itu di dashboard (ProjectResults) komponen ini dirender DI LUAR Suspense yang membungkus
+ * chunk lazy; di halaman lazy (runs, flaky) select baru dibuat setelah chunk selesai dimuat dan lolos di tiga browser.
+ */
 export function BranchFilter({ id, testId, branches, value, onChange, allLabel }: BranchFilterProps) {
   const known = value === "" || branches.some((b) => b.branch === value);
   return (

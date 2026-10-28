@@ -1,21 +1,22 @@
 import type { FlakyTestDto, RunSummaryDto, StatsDto } from "@testpulse/shared";
-import { Loader2 } from "lucide-react";
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TrendChart } from "@/components/charts/TrendChart";
+import { FlakyTestItem } from "@/components/FlakyTestItem";
+import { LIST_ITEM_LINK_CLASS } from "@/components/listItemLink";
 import { LoadError } from "@/components/LoadError";
+import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDuration, formatPassRate } from "@/lib/format";
+import { FLAKY_API_LIMIT } from "@/lib/flaky";
 import { withBranch } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
+import { preloadPages } from "./lazyPages";
 
 const RECENT_RUNS = 5;
 const TOP_FLAKY = 5;
-/** Batas daftar flaky dari API; di titik ini jumlahnya "50 atau lebih". */
-const FLAKY_API_LIMIT = 50;
 
 const LINK_CLASS =
   "rounded-sm text-sm font-medium text-link underline underline-offset-4 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring";
@@ -27,6 +28,8 @@ interface DashboardProps {
 
 /** Ringkasan hasil test satu branch: kartu angka, tren, run terbaru, dan test paling flaky. */
 export function Dashboard({ slug, branch }: DashboardProps) {
+  // Tujuan "Lihat semua" dan tautan item: unduh chunk-nya selagi pengguna membaca dashboard.
+  useEffect(() => preloadPages("runs", "run", "flaky", "test"), []);
   // key: pindah branch memulai muat baru dengan status loading, bukan menampilkan angka branch sebelumnya.
   return <BranchSummary key={branch} slug={slug} branch={branch} />;
 }
@@ -49,12 +52,7 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
   const load = useLoad(fetchSummary);
 
   if (load.state === "loading") {
-    return (
-      <p role="status" className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-        Memuat hasil test…
-      </p>
-    );
+    return <Loading label="Memuat hasil test…" />;
   }
   if (load.state === "error") {
     return <LoadError error={load.error} fallback="Gagal memuat hasil test. Coba lagi." onRetry={load.reload} />;
@@ -154,9 +152,6 @@ function SectionCard({
   );
 }
 
-const ITEM_LINK_CLASS =
-  "grid min-w-0 gap-1 px-4 py-3 text-foreground no-underline outline-hidden hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring";
-
 function RecentRuns({ slug, branch, runs }: { slug: string; branch: string; runs: RunSummaryDto[] }) {
   return (
     <SectionCard testId="recent-runs" title="Run terbaru" viewAll={{ to: withBranch(`/p/${slug}/runs`, branch), label: "run" }}>
@@ -166,7 +161,7 @@ function RecentRuns({ slug, branch, runs }: { slug: string; branch: string; runs
         <ul className="m-0 grid list-none divide-y divide-border rounded-lg border p-0">
           {runs.map((run) => (
             <li key={run.id} data-testid={`run-item-${run.id}`}>
-              <Link to={`/p/${slug}/runs/${run.id}`} className={ITEM_LINK_CLASS}>
+              <Link to={`/p/${slug}/runs/${run.id}`} className={LIST_ITEM_LINK_CLASS}>
                 <span className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                   <RunStatus outcome={runOutcome(run)} className="text-sm" />
                   <span className="font-mono text-sm">{run.commitSha ? run.commitSha.slice(0, 7) : "tanpa commit"}</span>
@@ -184,8 +179,6 @@ function RecentRuns({ slug, branch, runs }: { slug: string; branch: string; runs
   );
 }
 
-const LAST_STATUS_LABEL = { passed: "lulus", failed: "gagal", skipped: "dilewati" } as const;
-
 function TopFlaky({ slug, branch, flaky }: { slug: string; branch: string; flaky: FlakyTestDto[] }) {
   return (
     <SectionCard testId="top-flaky" title="Test paling flaky" viewAll={{ to: withBranch(`/p/${slug}/flaky`, branch), label: "test flaky" }}>
@@ -194,18 +187,7 @@ function TopFlaky({ slug, branch, flaky }: { slug: string; branch: string; flaky
       ) : (
         <ul className="m-0 grid list-none divide-y divide-border rounded-lg border p-0">
           {flaky.map((test) => (
-            <li key={test.testCaseId} data-testid={`flaky-item-${test.testCaseId}`}>
-              <Link to={withBranch(`/p/${slug}/tests/${test.testCaseId}`, branch)} className={ITEM_LINK_CLASS}>
-                <span className="flex items-start justify-between gap-3">
-                  <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{test.name}</span>
-                  <Badge variant="secondary" className="font-mono tabular-nums">
-                    Skor {test.score}
-                  </Badge>
-                </span>
-                <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{test.suite}</span>
-                <span className="text-xs text-muted-foreground">Hasil terakhir: {LAST_STATUS_LABEL[test.lastStatus]}</span>
-              </Link>
-            </li>
+            <FlakyTestItem key={test.testCaseId} slug={slug} branch={branch} test={test} />
           ))}
         </ul>
       )}

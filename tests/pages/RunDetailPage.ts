@@ -7,6 +7,7 @@ export class RunDetailPage {
   readonly header: Locator;
   readonly ciLink: Locator;
   readonly commit: Locator;
+  readonly back: Locator;
   readonly rows: Locator;
   readonly loadMore: Locator;
   readonly emptyResults: Locator;
@@ -20,6 +21,7 @@ export class RunDetailPage {
   constructor(private readonly page: Page) {
     this.header = page.getByTestId("run-header");
     this.ciLink = this.header.getByRole("link", { name: /CI/ });
+    this.back = page.getByTestId("run-back");
     this.commit = this.header.getByTestId("run-commit");
     this.rows = page.locator('[data-testid^="result-row-"]');
     this.loadMore = page.getByTestId("results-load-more");

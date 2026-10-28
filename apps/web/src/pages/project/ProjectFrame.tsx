@@ -1,8 +1,9 @@
 import type { ProjectDto } from "@testpulse/shared";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useCallback, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { LoadError } from "@/components/LoadError";
+import { Loading } from "@/components/Loading";
 import { ProjectNotFound } from "@/components/ProjectNotFound";
 import { api, ApiError } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/forms";
@@ -11,21 +12,10 @@ import { useLoad } from "@/lib/useLoad";
 export const BACK_LINK_CLASS =
   "inline-flex max-w-full items-center gap-1.5 rounded-sm text-sm font-medium text-link underline-offset-4 outline-hidden hover:underline focus-visible:ring-[3px] focus-visible:ring-ring";
 
-export function Loading({ label }: { label: string }) {
-  return (
-    <p role="status" className="flex items-center gap-2 text-muted-foreground">
-      <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-      {label}
-    </p>
-  );
-}
-
 interface ProjectFrameProps {
   slug: string;
   /** Judul halaman (tab browser, `document.title`), tanpa nama project. */
   title: string;
-  /** Halaman saat ini, dipakai sebagai tujuan setelah masuk bila project privat. */
-  returnTo: string;
   children: (project: ProjectDto) => ReactNode;
 }
 
@@ -33,7 +23,9 @@ interface ProjectFrameProps {
  * Kerangka halaman hasil test: memuat project (untuk `myRole`), menangani project tidak ditemukan/privat dengan
  * tampilan yang sama seperti `/p/:slug`, dan menyediakan tautan kembali ke ringkasan project.
  */
-export function ProjectFrame({ slug, title, returnTo, children }: ProjectFrameProps) {
+export function ProjectFrame({ slug, title, children }: ProjectFrameProps) {
+  // Setelah masuk, pengguna kembali ke halaman ini lengkap dengan query-nya (mis. ?branch=).
+  const { pathname, search } = useLocation();
   const fetchProject = useCallback(() => api.projects.get(slug), [slug]);
   const load = useLoad(fetchProject);
   const notFound = load.state === "error" && load.error instanceof ApiError && load.error.status === 404;
@@ -43,7 +35,7 @@ export function ProjectFrame({ slug, title, returnTo, children }: ProjectFramePr
   );
 
   if (load.state === "loading") return <Loading label="Memuat project…" />;
-  if (notFound) return <ProjectNotFound returnTo={returnTo} />;
+  if (notFound) return <ProjectNotFound returnTo={`${pathname}${search}`} />;
   if (load.state === "error") {
     return <LoadError error={load.error} fallback="Gagal memuat project. Coba lagi." onRetry={load.reload} />;
   }

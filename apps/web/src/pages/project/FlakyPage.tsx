@@ -1,34 +1,31 @@
-import type { BranchDto, FlakyTestDto } from "@testpulse/shared";
+import type { BranchDto } from "@testpulse/shared";
 import { BarChart3, CheckCircle2 } from "lucide-react";
-import { useCallback } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { ScoreBar } from "@/components/charts/ScoreBar";
+import { useCallback, useEffect } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
+import { FlakyTestItem } from "@/components/FlakyTestItem";
 import { LoadError } from "@/components/LoadError";
-import { Badge } from "@/components/ui/badge";
+import { Loading } from "@/components/Loading";
 import { api } from "@/lib/api";
-import { withBranch } from "@/lib/navigation";
+import { FLAKY_API_LIMIT } from "@/lib/flaky";
 import { useLoad } from "@/lib/useLoad";
 import { BranchFilter } from "./BranchFilter";
-import { Loading, ProjectFrame } from "./ProjectFrame";
+import { preloadPages } from "./lazyPages";
+import { ProjectFrame } from "./ProjectFrame";
 import { defaultBranch } from "./ProjectResults";
-
-/** Batas daftar flaky dari API. */
-const FLAKY_API_LIMIT = 50;
-
-const LAST_STATUS_LABEL = { passed: "lulus", failed: "gagal", skipped: "dilewati" } as const;
 
 /** `/p/:slug/flaky`: test flaky satu branch (`?branch=`, bawaan sama dengan dashboard), terurut menurut skor. */
 export function FlakyPage() {
   const { slug = "" } = useParams();
   return (
-    <ProjectFrame slug={slug} title="Test flaky" returnTo={`/p/${slug}/flaky`}>
+    <ProjectFrame slug={slug} title="Test flaky">
       {(project) => <FlakyView slug={project.slug} />}
     </ProjectFrame>
   );
 }
 
 function FlakyView({ slug }: { slug: string }) {
+  useEffect(() => preloadPages("test"), []);
   const [params, setParams] = useSearchParams();
   const fetchBranches = useCallback(() => api.results.branches(slug), [slug]);
   const branches = useLoad(fetchBranches);
@@ -51,7 +48,7 @@ function FlakyView({ slug }: { slug: string }) {
         <FlakyBranch
           slug={slug}
           branches={branches.data}
-          branch={params.get("branch") ?? defaultBranch(branches.data)}
+          branch={params.get("branch") || defaultBranch(branches.data)}
           onBranchChange={(next) => setParams({ branch: next }, { replace: true })}
         />
       ) : null}
@@ -103,30 +100,9 @@ function FlakyList({ slug, branch }: { slug: string; branch: string }) {
       </p>
       <ul className="m-0 grid list-none divide-y divide-border rounded-lg border bg-card p-0" data-testid="flaky-list">
         {load.data.map((test) => (
-          <FlakyRow key={test.testCaseId} slug={slug} branch={branch} test={test} />
+          <FlakyTestItem key={test.testCaseId} slug={slug} branch={branch} test={test} showBar />
         ))}
       </ul>
     </div>
-  );
-}
-
-function FlakyRow({ slug, branch, test }: { slug: string; branch: string; test: FlakyTestDto }) {
-  return (
-    <li data-testid={`flaky-item-${test.testCaseId}`}>
-      <Link
-        to={withBranch(`/p/${slug}/tests/${test.testCaseId}`, branch)}
-        className="grid min-w-0 gap-2 px-4 py-3 text-foreground no-underline outline-hidden hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        <span className="flex items-start justify-between gap-3">
-          <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{test.name}</span>
-          <Badge variant="secondary" className="font-mono tabular-nums">
-            Skor {test.score}
-          </Badge>
-        </span>
-        <span className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">{test.suite}</span>
-        <ScoreBar score={test.score} />
-        <span className="text-xs text-muted-foreground">Hasil terakhir: {LAST_STATUS_LABEL[test.lastStatus]}</span>
-      </Link>
-    </li>
   );
 }

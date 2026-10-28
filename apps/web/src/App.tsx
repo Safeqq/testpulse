@@ -1,7 +1,8 @@
-import { Loader2 } from "lucide-react";
-import { lazy, Suspense } from "react";
-import { Outlet, Route, Routes } from "react-router-dom";
+import { Suspense } from "react";
+import { Outlet, Route, Routes, useLocation } from "react-router-dom";
+import { ChunkErrorBoundary } from "./components/ChunkErrorBoundary";
 import { Layout } from "./components/Layout";
+import { Loading } from "./components/Loading";
 import { RequireAuth } from "./components/RequireAuth";
 import { HomeRoute } from "./pages/HomeRoute";
 import { InvitePage } from "./pages/InvitePage";
@@ -10,30 +11,18 @@ import { NewProjectPage } from "./pages/NewProjectPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { FlakyPage, RunPage, RunsPage, TestHistoryPage } from "./pages/project/lazyPages";
 import { ProjectSettingsPage } from "./pages/settings/ProjectSettingsPage";
 
-// Halaman hasil test dipecah per halaman agar bundle utama tidak bertambah; kode bersama (kerangka project, daftar
-// berhalaman) otomatis masuk chunk bersama yang hanya diunduh bersama halaman-halaman ini.
-const RunsPage = lazy(() => import("./pages/project/RunsPage").then((m) => ({ default: m.RunsPage })));
-const RunPage = lazy(() => import("./pages/project/RunPage").then((m) => ({ default: m.RunPage })));
-const FlakyPage = lazy(() => import("./pages/project/FlakyPage").then((m) => ({ default: m.FlakyPage })));
-const TestHistoryPage = lazy(() =>
-  import("./pages/project/TestHistoryPage").then((m) => ({ default: m.TestHistoryPage })),
-);
-
-/** Kerangka netral selama chunk halaman diunduh. */
+/** Kerangka netral selama chunk halaman diunduh; kegagalan mengunduh ditangkap agar aplikasi tidak menjadi layar kosong. */
 function LazyBoundary() {
+  const { pathname, search } = useLocation();
   return (
-    <Suspense
-      fallback={
-        <p role="status" className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-          Memuat halaman…
-        </p>
-      }
-    >
-      <Outlet />
-    </Suspense>
+    <ChunkErrorBoundary resetKey={`${pathname}${search}`}>
+      <Suspense fallback={<Loading label="Memuat halaman…" />}>
+        <Outlet />
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 }
 

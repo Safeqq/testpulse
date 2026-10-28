@@ -1,28 +1,20 @@
 import type { BranchDto, ProjectDto } from "@testpulse/shared";
-import { BarChart3, Loader2, Terminal } from "lucide-react";
+import { BarChart3, Terminal } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadError } from "@/components/LoadError";
-import { NativeSelect } from "@/components/NativeSelect";
-import { Label } from "@/components/ui/label";
+import { Loading } from "@/components/Loading";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { curlExample } from "@/lib/ingest";
 import { useLoad } from "@/lib/useLoad";
+import { BranchFilter } from "./BranchFilter";
 
 // Dashboard (grafik + kartu) dipecah ke chunk sendiri agar bundle utama tidak bertambah; baru diunduh bila project punya run.
 const loadDashboard = () => import("./Dashboard").then((m) => ({ default: m.Dashboard }));
 const Dashboard = lazy(loadDashboard);
-
-function Loading({ label }: { label: string }) {
-  return (
-    <p role="status" className="flex items-center gap-2 text-muted-foreground">
-      <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-      {label}
-    </p>
-  );
-}
 
 /** Hasil test project: dashboard bila sudah ada run; jika belum, panduan setup (anggota) atau keadaan kosong (pengunjung). */
 export function ProjectResults({ project }: { project: ProjectDto }) {
@@ -67,25 +59,18 @@ function BranchDashboard({ slug, branches }: { slug: string; branches: BranchDto
   const [branch, setBranch] = useState(() => defaultBranch(branches));
   return (
     <div className="grid min-w-0 grid-cols-1 gap-6">
-      <div className="grid w-full grid-cols-1 gap-1.5 sm:w-72 [&>span]:w-full">
-        <Label htmlFor="dashboard-branch">Branch</Label>
-        <NativeSelect
-          id="dashboard-branch"
-          data-testid="dashboard-branch"
-          value={branch}
-          onChange={(e) => setBranch(e.target.value)}
-          className="w-full"
-        >
-          {branches.map((b) => (
-            <option key={b.branch} value={b.branch}>
-              {b.branch}
-            </option>
-          ))}
-        </NativeSelect>
-      </div>
-      <Suspense fallback={<Loading label="Memuat dashboard…" />}>
-        <Dashboard slug={slug} branch={branch} />
-      </Suspense>
+      <BranchFilter
+        id="dashboard-branch"
+        testId="dashboard-branch"
+        branches={branches}
+        value={branch}
+        onChange={setBranch}
+      />
+      <ChunkErrorBoundary>
+        <Suspense fallback={<Loading label="Memuat dashboard…" />}>
+          <Dashboard slug={slug} branch={branch} />
+        </Suspense>
+      </ChunkErrorBoundary>
     </div>
   );
 }

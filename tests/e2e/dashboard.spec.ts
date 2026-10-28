@@ -114,6 +114,15 @@ test.describe("Dashboard project", () => {
     await dashboard.dashboardBranch.selectOption(FEATURE_BRANCH);
 
     await expect(dashboard.statPassRate).toContainText("33,3%");
+    // Nama branch dengan "/" di-encode pada tautan menuju halaman lain.
+    await expect(dashboard.recentRuns.getByRole("link", { name: /Lihat semua/ })).toHaveAttribute(
+      "href",
+      `/p/${project.slug}/runs?branch=feature%2Flogin-v2`,
+    );
+    await expect(dashboard.topFlaky.getByRole("link", { name: /Lihat semua/ })).toHaveAttribute(
+      "href",
+      `/p/${project.slug}/flaky?branch=feature%2Flogin-v2`,
+    );
     await expect(dashboard.statLastStatus).toContainText("Gagal");
     await expect(dashboard.statTotal).toContainText("3");
     await expect(dashboard.statFlaky).toHaveText(/^Test flaky0Test dengan/);

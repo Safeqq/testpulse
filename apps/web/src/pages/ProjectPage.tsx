@@ -1,6 +1,7 @@
-import { Globe, Loader2, Settings } from "lucide-react";
+import { Globe, Settings } from "lucide-react";
 import { useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
+import { Loading } from "@/components/Loading";
 import { ProjectNotFound } from "@/components/ProjectNotFound";
 import { RoleBadge, VisibilityBadge } from "@/components/ProjectBadges";
 import { Badge } from "@/components/ui/badge";
@@ -24,12 +25,7 @@ export function ProjectPage() {
   useDocumentTitle(load.state === "ready" ? load.data.name : notFound ? "Project tidak ditemukan" : "Project");
 
   if (load.state === "loading") {
-    return (
-      <p role="status" className="flex items-center gap-2 text-muted-foreground">
-        <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-        Memuat project…
-      </p>
-    );
+    return <Loading label="Memuat project…" />;
   }
 
   if (notFound) return <ProjectNotFound returnTo={`/p/${slug}`} />;

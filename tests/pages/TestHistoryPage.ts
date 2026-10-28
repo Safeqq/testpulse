@@ -4,6 +4,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export class TestHistoryPage {
   readonly title: Locator;
   readonly history: Locator;
+  readonly branch: Locator;
   readonly cells: Locator;
   readonly testNotFound: Locator;
   readonly notFound: Locator;
@@ -11,6 +12,7 @@ export class TestHistoryPage {
   constructor(private readonly page: Page) {
     this.title = page.getByTestId("test-title");
     this.history = page.getByTestId("test-history");
+    this.branch = page.getByTestId("test-branch");
     this.cells = this.history.locator('[data-testid^="history-cell-"]');
     this.testNotFound = page.getByTestId("test-not-found");
     this.notFound = page.getByTestId("project-not-found");

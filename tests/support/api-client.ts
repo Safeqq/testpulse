@@ -3,6 +3,7 @@ import type {
   AcceptInvitationDto,
   CreateProjectBody,
   CreatedInvitationDto,
+  CreatedTokenDto,
   InvitableRole,
   ProjectDto,
   RegisterBody,
@@ -70,6 +71,31 @@ export class TestApi {
       200,
       "acceptInvitation",
     );
+  }
+
+  async createToken(owner: TestUser, slug: string, name = "CI e2e"): Promise<CreatedTokenDto> {
+    return expectStatus<CreatedTokenDto>(
+      await owner.request.post(`${API}/projects/${slug}/tokens`, { data: { name } }),
+      201,
+      "createToken",
+    );
+  }
+
+  /** Unggah laporan JUnit XML dengan token CI (tanpa cookie sesi); mengembalikan respons mentah agar test bisa memeriksa status. */
+  async uploadRun(
+    token: string,
+    slug: string,
+    xml: string,
+    query: { branch: string; commit?: string; ciUrl?: string; name?: string },
+  ): Promise<APIResponse> {
+    const params = new URLSearchParams({ branch: query.branch });
+    if (query.commit !== undefined) params.set("commit", query.commit);
+    if (query.ciUrl !== undefined) params.set("ciUrl", query.ciUrl);
+    if (query.name !== undefined) params.set("name", query.name);
+    return (await this.anonymous()).post(`${API}/projects/${slug}/runs?${params.toString()}`, {
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/xml" },
+      data: xml,
+    });
   }
 
   /** Daftarkan user baru, undang, terima; role `admin` dicapai dengan mengubah role setelah bergabung. */

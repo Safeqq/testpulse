@@ -1,17 +1,25 @@
 import type {
   AcceptInvitationDto,
   ApiErrorBody,
+  BranchDto,
   CreateInvitationBody,
   CreateProjectBody,
   CreatedInvitationDto,
+  CreatedTokenDto,
   DeleteProjectBody,
   ErrorCode,
+  FlakyTestDto,
   InvitationDto,
   InvitationPreviewDto,
   LoginBody,
   MemberDto,
   ProjectDto,
   RegisterBody,
+  RunDetailDto,
+  RunsPageDto,
+  StatsDto,
+  TestHistoryDto,
+  TokenDto,
   UpdateMemberBody,
   UpdateProjectBody,
   UserDto,
@@ -53,6 +61,16 @@ async function parseBody(res: Response): Promise<unknown> {
   } catch {
     return undefined;
   }
+}
+
+/** Menambahkan query string yang di-encode; nilai undefined atau kosong dibuang (server menolak `?branch=` kosong dengan 400). */
+function withQuery(path: string, params: Record<string, string | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== "") query.set(key, value);
+  }
+  const text = query.toString();
+  return text === "" ? path : `${path}?${text}`;
 }
 
 export function createApiClient(baseUrl: string, fetchFn: typeof fetch = fetch) {
@@ -112,6 +130,26 @@ export function createApiClient(baseUrl: string, fetchFn: typeof fetch = fetch) 
       revoke: (slug: string, id: string) => request<void>("DELETE", `/projects/${seg(slug)}/invitations/${seg(id)}`),
       preview: (token: string) => request<InvitationPreviewDto>("GET", `/invitations/${seg(token)}`),
       accept: (token: string) => request<AcceptInvitationDto>("POST", `/invitations/${seg(token)}/accept`),
+    },
+    results: {
+      branches: (slug: string) => request<BranchDto[]>("GET", `/projects/${seg(slug)}/branches`),
+      runs: (slug: string, query: { branch?: string; cursor?: string } = {}) =>
+        request<RunsPageDto>("GET", withQuery(`/projects/${seg(slug)}/runs`, query)),
+      run: (slug: string, runId: string, query: { status?: "failed" | "flaky" | "all"; cursor?: string } = {}) =>
+        request<RunDetailDto>("GET", withQuery(`/projects/${seg(slug)}/runs/${seg(runId)}`, query)),
+      deleteRun: (slug: string, runId: string) => request<void>("DELETE", `/projects/${seg(slug)}/runs/${seg(runId)}`),
+      stats: (slug: string, branch?: string) =>
+        request<StatsDto>("GET", withQuery(`/projects/${seg(slug)}/stats`, { branch })),
+      flaky: (slug: string, branch?: string) =>
+        request<FlakyTestDto[]>("GET", withQuery(`/projects/${seg(slug)}/flaky`, { branch })),
+      history: (slug: string, testCaseId: string, branch?: string) =>
+        request<TestHistoryDto>("GET", withQuery(`/projects/${seg(slug)}/tests/${seg(testCaseId)}/history`, { branch })),
+    },
+    tokens: {
+      list: (slug: string) => request<TokenDto[]>("GET", `/projects/${seg(slug)}/tokens`),
+      create: (slug: string, name: string) =>
+        request<CreatedTokenDto>("POST", `/projects/${seg(slug)}/tokens`, { name }),
+      revoke: (slug: string, id: string) => request<void>("DELETE", `/projects/${seg(slug)}/tokens/${seg(id)}`),
     },
   };
 }

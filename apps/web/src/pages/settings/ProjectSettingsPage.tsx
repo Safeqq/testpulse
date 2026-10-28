@@ -14,6 +14,7 @@ import { DangerZone } from "./DangerZone";
 import { GeneralSection } from "./GeneralSection";
 import { InvitationsSection } from "./InvitationsSection";
 import { MembersSection } from "./MembersSection";
+import { TokensSection } from "./TokensSection";
 import { VisibilitySection } from "./VisibilitySection";
 
 /** `/p/:slug/settings` (dibungkus RequireAuth di App). Bagian admin hanya dirender untuk admin; server tetap memeriksa hak akses. */
@@ -126,6 +127,7 @@ function SettingsContent({ initial }: { initial: ProjectDto }) {
       {isAdmin ? (
         <>
           <InvitationsSection slug={project.slug} meId={user.id} meName={user.name} notify={setToast} />
+          <TokensSection slug={project.slug} meId={user.id} meName={user.name} notify={setToast} />
           <DangerZone project={project} />
         </>
       ) : null}

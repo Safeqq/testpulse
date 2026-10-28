@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import type { InvitableRole, Role } from "@testpulse/shared";
 
-/** `/p/:slug/settings`: nama, visibilitas, anggota, undangan, dan zona berbahaya. */
+/** `/p/:slug/settings`: nama, visibilitas, anggota, undangan, token CI, dan zona berbahaya. */
 export class SettingsPage {
   readonly title: Locator;
   readonly name: Locator;
@@ -13,6 +13,11 @@ export class SettingsPage {
   readonly inviteCreate: Locator;
   readonly inviteUrl: Locator;
   readonly inviteCopy: Locator;
+  readonly tokenName: Locator;
+  readonly tokenCreate: Locator;
+  readonly tokenValue: Locator;
+  readonly tokenCopy: Locator;
+  readonly tokenCurl: Locator;
   readonly deleteConfirm: Locator;
   readonly deleteProject: Locator;
   readonly toast: Locator;
@@ -30,6 +35,11 @@ export class SettingsPage {
     this.inviteCreate = page.getByTestId("invite-create");
     this.inviteUrl = page.getByTestId("invite-url");
     this.inviteCopy = page.getByTestId("invite-copy");
+    this.tokenName = page.getByTestId("token-name");
+    this.tokenCreate = page.getByTestId("token-create");
+    this.tokenValue = page.getByTestId("token-value");
+    this.tokenCopy = page.getByTestId("token-copy");
+    this.tokenCurl = page.getByTestId("token-curl");
     this.deleteConfirm = page.getByTestId("delete-confirm");
     this.deleteProject = page.getByTestId("delete-project");
     this.toast = page.getByTestId("toast");
@@ -64,8 +74,24 @@ export class SettingsPage {
     return this.page.getByTestId(`invite-revoke-${id}`);
   }
 
+  tokenRow(id: string): Locator {
+    return this.page.getByTestId(`token-row-${id}`);
+  }
+
+  tokenRevoke(id: string): Locator {
+    return this.page.getByTestId(`token-revoke-${id}`);
+  }
+
   async setMemberRole(userId: string, role: Role): Promise<void> {
     await this.memberRole(userId).selectOption(role);
+  }
+
+  /** Membuat token CI dan mengembalikan nilai yang ditampilkan sekali. */
+  async createToken(name: string): Promise<string> {
+    await this.tokenName.fill(name);
+    await this.tokenCreate.click();
+    await expect(this.tokenValue).toContainText("tp_");
+    return (await this.tokenValue.textContent()) ?? "";
   }
 
   /** Membuat undangan dan mengembalikan URL yang ditampilkan. */

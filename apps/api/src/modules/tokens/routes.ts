@@ -43,6 +43,9 @@ export async function tokenRoutes(app: FastifyInstance): Promise<void> {
       tokenHash: hashToken(token),
       createdBy: req.user!.id,
     });
+    if (result.kind === "project_not_found") {
+      throw new AppError(404, "PROJECT_NOT_FOUND", "Project tidak ditemukan");
+    }
     if (result.kind === "limit_reached") {
       throw new AppError(409, "TOKEN_LIMIT", `Maksimal ${MAX_ACTIVE_TOKENS} token aktif per project`);
     }

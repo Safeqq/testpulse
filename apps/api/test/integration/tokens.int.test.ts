@@ -95,6 +95,23 @@ describe("CI tokens", () => {
       expect(res.json().error.code).toBe("PROJECT_NOT_FOUND");
     });
 
+    it("403 (bukan 404) untuk non-anggota project publik", async () => {
+      const { admin, project } = await setup();
+      const patch = await app.inject({
+        method: "PATCH",
+        url: `/api/v1/projects/${project.slug}`,
+        headers: { cookie: admin.cookie },
+        payload: { visibility: "public" },
+      });
+      expect(patch.statusCode).toBe(200);
+
+      const outsider = await registerUser(app);
+      const res = await create(project.slug, outsider.cookie);
+      expect(res.statusCode).toBe(403);
+      expect(res.json().error.code).toBe("FORBIDDEN");
+      expect((await list(project.slug, outsider.cookie)).statusCode).toBe(403);
+    });
+
     it("409 TOKEN_LIMIT pada token aktif ke-11; setelah mencabut satu bisa membuat lagi", async () => {
       const { admin, project } = await setup();
       const created = [];

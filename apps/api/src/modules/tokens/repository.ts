@@ -15,19 +15,26 @@ export interface ActiveTokenRecord {
 
 export type InsertTokenResult =
   | { kind: "created"; id: string; name: string; createdAt: Date }
-  | { kind: "limit_reached" };
+  | { kind: "limit_reached" }
+  | { kind: "project_not_found" };
 
 /**
  * Menyimpan token baru jika project masih punya kurang dari MAX_ACTIVE_TOKENS token aktif.
- * Baris project dikunci (`FOR UPDATE`) selama hitung + insert, sehingga pembuatan serentak
+ * Baris project dikunci (`FOR NO KEY UPDATE`) selama hitung + insert, sehingga pembuatan serentak
  * untuk project yang sama berjalan berurutan dan tidak pernah menghasilkan token aktif ke-11.
+ * Kunci ini tidak memblokir insert FK ke tabel anak. Project yang terhapus di sela-sela → project_not_found.
  */
 export async function insertTokenWithinLimit(
   db: Db,
   input: { projectId: string; name: string; tokenHash: string; createdBy: string },
 ): Promise<InsertTokenResult> {
   return db.transaction(async (tx) => {
-    await tx.select({ id: projects.id }).from(projects).where(eq(projects.id, input.projectId)).for("update");
+    const [locked] = await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, input.projectId))
+      .for("no key update");
+    if (!locked) return { kind: "project_not_found" };
 
     const [active] = await tx
       .select({ n: count() })

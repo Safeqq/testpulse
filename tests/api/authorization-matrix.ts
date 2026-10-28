@@ -1,5 +1,6 @@
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 import type { ErrorCode } from "@testpulse/shared";
+import { buildJUnit } from "../support/junit.js";
 
 /**
  * Matriks otorisasi dari spec §7 ("Matriks otorisasi"), sebagai data.
@@ -19,6 +20,12 @@ export interface MatrixContext {
   targetMemberId(): Promise<string>;
   /** Undangan aktif di project yang sama, dibuat saat pertama diminta. */
   invitationId(): Promise<string>;
+  /** Run di project yang sama (diunggah dengan token CI), dibuat saat pertama diminta. */
+  runId(): Promise<string>;
+  /** Test case dari run tersebut, dibuat saat pertama diminta. */
+  testCaseId(): Promise<string>;
+  /** Token CI aktif di project yang sama, dibuat saat pertama diminta. */
+  tokenId(): Promise<string>;
 }
 
 export interface MatrixRow {
@@ -33,6 +40,11 @@ export interface MatrixRow {
   anonymousOnPublic?: number;
   /** Kode error yang diharapkan jika menyimpang dari kode bawaan status (401, 403, 404, 409). */
   errorCodes?: Partial<Record<Actor, ErrorCode>>;
+  /**
+   * Token CI yang valid hanya diterima di endpoint upload; di semua endpoint lain Bearer diabaikan sehingga
+   * pembawanya diperlakukan anonim (spec §7.1). Default `true`; `false` hanya untuk endpoint upload itu sendiri.
+   */
+  bearerIgnored?: boolean;
 }
 
 /** Kode error bawaan untuk status non-2xx pada matriks. */
@@ -44,6 +56,9 @@ export const DEFAULT_ERROR_CODE: Record<number, ErrorCode> = {
 };
 
 const P = "/api/v1/projects";
+
+/** Laporan JUnit sah minimal untuk baris upload. */
+const SAMPLE_REPORT = buildJUnit([{ name: "lulus" }]);
 
 /** Aturan yang sama untuk semua endpoint yang hanya boleh dikelola admin. */
 function adminOnly(adminStatus: number): Record<Actor, number> {
@@ -128,4 +143,68 @@ export const MATRIX: MatrixRow[] = [
     request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/invitations/${await ctx.invitationId()}`),
     expected: adminOnly(204),
   },
+  // Tahap 2, §7.1 baris 1: baca hasil mengikuti aturan Tahap 1 (publik → siapa saja; privat → minimal viewer, selain itu 404).
+  ...readRows(),
+  // Tahap 2, §7.1 baris 2: hapus run = tester+.
+  {
+    name: "DELETE run",
+    specRow: "DELETE run",
+    request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/runs/${await ctx.runId()}`),
+    expected: { anonymous: 401, nonMemberPrivate: 404, nonMemberPublic: 403, viewer: 403, tester: 204, admin: 204 },
+  },
+  // Tahap 2, §7.1 baris 3: CRUD token = admin.
+  {
+    name: "GET tokens",
+    specRow: "GET/POST/DELETE tokens",
+    request: ({ http, slug }) => http.get(`${P}/${slug}/tokens`),
+    expected: adminOnly(200),
+  },
+  {
+    name: "POST tokens",
+    specRow: "GET/POST/DELETE tokens",
+    request: ({ http, slug }) => http.post(`${P}/${slug}/tokens`, { data: { name: "Token baru" } }),
+    expected: adminOnly(201),
+  },
+  {
+    name: "DELETE tokens",
+    specRow: "GET/POST/DELETE tokens",
+    request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/tokens/${await ctx.tokenId()}`),
+    expected: adminOnly(204),
+  },
+  // Tahap 2, §7.1 baris 4: cookie sesi tanpa token tidak berlaku di endpoint upload, apa pun role-nya.
+  {
+    name: "POST runs dengan cookie sesi (tanpa token)",
+    specRow: "POST runs dengan cookie sesi (tanpa token)",
+    request: ({ http, slug }) =>
+      http.post(`${P}/${slug}/runs?branch=main`, { headers: { "content-type": "application/xml" }, data: SAMPLE_REPORT }),
+    expected: { anonymous: 401, nonMemberPrivate: 401, nonMemberPublic: 401, viewer: 401, tester: 401, admin: 401 },
+    bearerIgnored: false,
+  },
 ];
+
+/** Endpoint baca hasil: sama untuk semua, jadi dibangkitkan dari daftar path. */
+function readRows(): MatrixRow[] {
+  const read: Record<Actor, number> = {
+    anonymous: 404,
+    nonMemberPrivate: 404,
+    nonMemberPublic: 200,
+    viewer: 200,
+    tester: 200,
+    admin: 200,
+  };
+  const endpoints: Array<{ name: string; path: (ctx: MatrixContext) => Promise<string> | string }> = [
+    { name: "GET branches", path: ({ slug }) => `${P}/${slug}/branches` },
+    { name: "GET runs", path: ({ slug }) => `${P}/${slug}/runs` },
+    { name: "GET run", path: async (ctx) => `${P}/${ctx.slug}/runs/${await ctx.runId()}?status=all` },
+    { name: "GET stats", path: ({ slug }) => `${P}/${slug}/stats` },
+    { name: "GET flaky", path: ({ slug }) => `${P}/${slug}/flaky` },
+    { name: "GET test history", path: async (ctx) => `${P}/${ctx.slug}/tests/${await ctx.testCaseId()}/history` },
+  ];
+  return endpoints.map(({ name, path }) => ({
+    name,
+    specRow: "GET branches/runs/run/stats/flaky/history",
+    request: async (ctx) => ctx.http.get(await path(ctx)),
+    expected: read,
+    anonymousOnPublic: 200,
+  }));
+}

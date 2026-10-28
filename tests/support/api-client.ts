@@ -35,8 +35,12 @@ export class TestApi {
 
   constructor(private readonly baseURL: string) {}
 
-  async anonymous(): Promise<APIRequestContext> {
-    const ctx = await playwrightRequest.newContext({ baseURL: this.baseURL });
+  /** Context tanpa cookie sesi; `extraHTTPHeaders` (mis. `Authorization`) ikut di setiap request. */
+  async anonymous(extraHTTPHeaders?: Record<string, string>): Promise<APIRequestContext> {
+    const ctx = await playwrightRequest.newContext({
+      baseURL: this.baseURL,
+      ...(extraHTTPHeaders ? { extraHTTPHeaders } : {}),
+    });
     this.contexts.push(ctx);
     return ctx;
   }

@@ -2,7 +2,17 @@ import type { IncomingHttpHeaders } from "node:http";
 import type { VerifierOptions } from "@pact-foundation/pact";
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "../../src/db/client.js";
-import { invitations, memberships, projectTokens, projects, sessions, users } from "../../src/db/schema.js";
+import {
+  invitations,
+  memberships,
+  projectTokens,
+  projects,
+  runs,
+  sessions,
+  testCases,
+  testResults,
+  users,
+} from "../../src/db/schema.js";
 import { hashPassword } from "../../src/modules/auth/domain/passwords.js";
 import { generateToken, hashToken, SESSION_TTL_DAYS } from "../../src/modules/auth/domain/tokens.js";
 
@@ -18,6 +28,10 @@ const BUDI = { id: "11111111-1111-4111-8111-111111111111", email: "budi@pact.dev
 const SARI = { id: "22222222-2222-4222-8222-222222222222", email: "sari@pact.dev", name: "Sari" };
 const OWNER = { id: "55555555-5555-4555-8555-555555555555", email: "owner@pact.dev", name: "Pemilik" };
 const INVITATION_ID = "33333333-3333-4333-8333-333333333333";
+const RUN_ID = "66666666-6666-4666-8666-666666666666";
+const TEST_CASE_ID = "88888888-8888-4888-8888-888888888888";
+const TOKEN_ID = "99999999-9999-4999-8999-999999999999";
+const MAX_ACTIVE_TOKENS = 10;
 const PROJECT_SLUG = "pact-project";
 const PUBLIC_SLUG = "pact-public";
 const INGEST_PROJECT_SLUG = "testpulse";
@@ -110,6 +124,51 @@ export function createContractStates(db: Db): ContractStates {
     });
   }
 
+  /**
+   * Run `main` dengan dua test: `gagal` (failed) dan `goyang` (lulus setelah satu percobaan ulang, flaky).
+   * Angka di sini harus cocok dengan total & skor yang diharapkan consumer (apps/web/test/contract/results.pact.test.ts).
+   */
+  async function ensureRun(project: { id: string }) {
+    const [existing] = await db.select({ id: runs.id }).from(runs).where(eq(runs.id, RUN_ID));
+    if (existing) return;
+    await db.insert(runs).values({
+      id: RUN_ID,
+      projectId: project.id,
+      branch: "main",
+      commitSha: "abcdef1",
+      durationMs: 1500,
+      total: 2,
+      passed: 1,
+      failed: 1,
+      skipped: 0,
+      flaky: 1,
+    });
+    const [gagal, goyang] = await db
+      .insert(testCases)
+      .values([
+        { projectId: project.id, suite: "login", name: "gagal" },
+        { id: TEST_CASE_ID, projectId: project.id, suite: "login", name: "goyang" },
+      ])
+      .returning({ id: testCases.id });
+    if (!gagal || !goyang) throw new Error("gagal membuat test case");
+    await db.insert(testResults).values([
+      { runId: RUN_ID, testCaseId: gagal.id, status: "failed", flakyInRun: false, retries: 0, durationMs: 500, message: "Assertion gagal" },
+      { runId: RUN_ID, testCaseId: goyang.id, status: "passed", flakyInRun: true, retries: 1, durationMs: 1000, message: null },
+    ]);
+  }
+
+  async function insertTokens(project: { id: string; createdBy: string }, count: number, firstId?: string) {
+    await db.insert(projectTokens).values(
+      Array.from({ length: count }, (_, i) => ({
+        ...(i === 0 && firstId ? { id: firstId } : {}),
+        projectId: project.id,
+        name: i === 0 ? "Pact CI" : `Pact CI ${i + 1}`,
+        tokenHash: hashToken(`tp_pact-seeded-token-${i}`),
+        createdBy: project.createdBy,
+      })),
+    );
+  }
+
   const stateHandlers: StateHandlers = {
     "tidak ada user": async () => {},
 
@@ -147,6 +206,21 @@ export function createContractStates(db: Db): ContractStates {
         .insert(projectTokens)
         .values({ projectId: project.id, name: "Pact ingest", tokenHash: hashToken(INGEST_TOKEN), createdBy: OWNER.id })
         .onConflictDoNothing();
+    },
+
+    "pact-project punya run pact-run di branch main dengan satu test gagal dan satu flaky": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureRun(project);
+    },
+
+    "pact-project punya token CI aktif Pact CI": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await insertTokens(project, 1, TOKEN_ID);
+    },
+
+    "pact-project sudah punya 10 token CI aktif": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await insertTokens(project, MAX_ACTIVE_TOKENS);
     },
 
     "sari anggota tester di pact-project": async () => {

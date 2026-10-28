@@ -16,6 +16,12 @@ export const SESSION_COOKIE = "tp_session=pact-token";
 export const BUDI_ID = "11111111-1111-4111-8111-111111111111";
 export const SARI_ID = "22222222-2222-4222-8222-222222222222";
 export const INVITATION_ID = "33333333-3333-4333-8333-333333333333";
+// Run, test case, dan token CI yang dibuat provider state (hasil/Token CI Tahap 2).
+export const RUN_ID = "66666666-6666-4666-8666-666666666666";
+export const MISSING_RUN_ID = "77777777-7777-4777-8777-777777777777";
+export const TEST_CASE_ID = "88888888-8888-4888-8888-888888888888";
+export const TOKEN_ID = "99999999-9999-4999-8999-999999999999";
+export const BRANCH = "main";
 export const INVITE_TOKEN = "pact-invite-token";
 export const EXPIRED_INVITE_TOKEN = "pact-expired-token";
 
@@ -31,6 +37,9 @@ export const STATE = {
   invitation: "undangan pact-invite-token aktif untuk pact-project",
   expiredInvitation: "undangan pact-expired-token kedaluwarsa untuk pact-project",
   sariTester: "sari anggota tester di pact-project",
+  runSeeded: "pact-project punya run pact-run di branch main dengan satu test gagal dan satu flaky",
+  tokenActive: "pact-project punya token CI aktif Pact CI",
+  tokenLimit: "pact-project sudah punya 10 token CI aktif",
 } as const;
 
 const { like, uuid, regex, iso8601DateTimeWithMillis } = MatchersV3;

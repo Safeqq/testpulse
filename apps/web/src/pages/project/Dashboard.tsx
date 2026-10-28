@@ -8,7 +8,7 @@ import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { formatDateTime, formatDuration, formatPassRate, passRateOf } from "@/lib/format";
+import { formatDateTime, formatDuration, formatPassRate } from "@/lib/format";
 import { useLoad } from "@/lib/useLoad";
 
 const RECENT_RUNS = 5;
@@ -76,12 +76,12 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
           label="Pass rate"
           hint={`${latest.passed} lulus · ${latest.failed} gagal`}
         >
-          <span className="font-mono tabular-nums">{formatPassRate(passRateOf(latest.passed, latest.failed))}</span>
+          <span className="font-mono tabular-nums">{formatPassRate(stats.points.at(-1)?.passRate ?? null)}</span>
         </StatCard>
         <StatCard testId="stat-total" label="Jumlah test" hint="Lulus, gagal, dan dilewati">
           <span className="font-mono tabular-nums">{latest.total}</span>
         </StatCard>
-        <StatCard testId="stat-flaky" label="Test flaky" hint="Hasilnya naik-turun di run terakhir">
+        <StatCard testId="stat-flaky" label="Test flaky" hint="Test dengan hasil naik-turun di 20 run terakhir">
           <span className="font-mono tabular-nums">
             {flaky.length >= FLAKY_API_LIMIT ? `${FLAKY_API_LIMIT}+` : flaky.length}
           </span>

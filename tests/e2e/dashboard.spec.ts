@@ -72,7 +72,7 @@ test.describe("Dashboard project", () => {
     await expect(dashboard.statLastStatus).toContainText("Gagal");
     await expect(dashboard.statPassRate).toContainText("75%");
     await expect(dashboard.statTotal).toContainText("5");
-    await expect(dashboard.statFlaky).toContainText("2");
+    await expect(dashboard.statFlaky).toHaveText(/^Test flaky2Test dengan/);
 
     // Satu titik per run (enam run), dengan alternatif teks untuk pembaca layar.
     await expect(dashboard.trendPoints).toHaveCount(6);
@@ -116,7 +116,7 @@ test.describe("Dashboard project", () => {
     await expect(dashboard.statPassRate).toContainText("33,3%");
     await expect(dashboard.statLastStatus).toContainText("Gagal");
     await expect(dashboard.statTotal).toContainText("3");
-    await expect(dashboard.statFlaky).toContainText("0");
+    await expect(dashboard.statFlaky).toHaveText(/^Test flaky0Test dengan/);
     await expect(dashboard.trendPoints).toHaveCount(1);
     await expect(dashboard.runItems).toHaveCount(1);
     await expect(dashboard.flakyItems).toHaveCount(0);

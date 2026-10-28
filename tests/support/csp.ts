@@ -93,6 +93,8 @@ export async function attachCspGuard(context: BrowserContext): Promise<CspGuard>
         (event) => {
           // WebKit melaporkan style-src-attr setiap kali <select> dibuat (document.createElement("select")), padahal
           // tidak ada atribut style sama sekali. Itu bug mesin, bukan kode aplikasi; atribut style asli tetap terdeteksi.
+          // Catatan: untuk <select> yang dibuat di dalam subtree Suspense, WebKit mengarahkan event ke document (bukan ke
+          // select) sehingga tidak termaklumi di sini; letakkan <select> di luar Suspense (lihat ProjectResults).
           const target = event.target;
           if (
             event.effectiveDirective === "style-src-attr" &&

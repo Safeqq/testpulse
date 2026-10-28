@@ -1,6 +1,6 @@
 import type { BranchDto, ProjectDto } from "@testpulse/shared";
 import { BarChart3, Loader2, Terminal } from "lucide-react";
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadError } from "@/components/LoadError";
@@ -12,7 +12,8 @@ import { curlExample } from "@/lib/ingest";
 import { useLoad } from "@/lib/useLoad";
 
 // Dashboard (grafik + kartu) dipecah ke chunk sendiri agar bundle utama tidak bertambah; baru diunduh bila project punya run.
-const Dashboard = lazy(() => import("./Dashboard").then((m) => ({ default: m.Dashboard })));
+const loadDashboard = () => import("./Dashboard").then((m) => ({ default: m.Dashboard }));
+const Dashboard = lazy(loadDashboard);
 
 function Loading({ label }: { label: string }) {
   return (
@@ -28,6 +29,11 @@ export function ProjectResults({ project }: { project: ProjectDto }) {
   const { slug } = project;
   const fetchBranches = useCallback(() => api.results.branches(slug), [slug]);
   const load = useLoad(fetchBranches);
+
+  // Unduh chunk dashboard bersamaan dengan daftar branch, bukan menunggu sampai branch selesai dimuat.
+  useEffect(() => {
+    void loadDashboard();
+  }, []);
 
   if (load.state === "loading") return <Loading label="Memuat hasil test…" />;
   if (load.state === "error") {

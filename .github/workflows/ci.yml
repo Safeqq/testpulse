@@ -115,10 +115,25 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-      # Bounded so a stalled apt mirror fails fast (re-run the job) instead of hanging until the job timeout.
+      # The Ubuntu apt mirror on hosted runners occasionally stalls mid-download. Make apt retry slow connections itself,
+      # then bound each install attempt and retry, so one stalled download no longer fails the whole job.
+      - name: Configure apt retries
+        run: |
+          printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\n' \
+            | sudo tee /etc/apt/apt.conf.d/80-retries > /dev/null
       - name: Install Playwright browsers
-        timeout-minutes: 8
-        run: pnpm --filter @testpulse/tests exec playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 14
+        run: |
+          for attempt in 1 2 3; do
+            if timeout 240 pnpm --filter @testpulse/tests exec playwright install --with-deps chromium firefox webkit; then
+              exit 0
+            fi
+            echo "::warning::Playwright install attempt ${attempt} failed or timed out; retrying"
+            sudo pkill -f apt-get || true
+            sudo dpkg --configure -a || true
+            sleep 10
+          done
+          exit 1
 
       # API tests do not depend on the browser, so they run once (shard 1 only).
       - name: API tests

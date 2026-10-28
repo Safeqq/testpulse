@@ -23,3 +23,8 @@ export function loginPathFor(target: string): string {
 export function registerPathFor(target: string): string {
   return pathWithNext("/register", target);
 }
+
+/** Menambahkan `?branch=` (ter-encode) ke jalur internal agar halaman tujuan membuka branch yang sama. */
+export function withBranch(path: string, branch: string | null | undefined): string {
+  return branch ? `${path}?${new URLSearchParams({ branch }).toString()}` : path;
+}

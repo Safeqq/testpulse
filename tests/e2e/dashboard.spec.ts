@@ -85,7 +85,7 @@ test.describe("Dashboard project", () => {
     await expect(dashboard.recentRuns.getByTestId(`run-item-${mainRunIds[0]}`)).toHaveCount(0);
     await expect(dashboard.recentRuns.getByRole("link", { name: /Lihat semua/ })).toHaveAttribute(
       "href",
-      `/p/${project.slug}/runs`,
+      `/p/${project.slug}/runs?branch=main`,
     );
 
     // Test flaky terurut menurut skor: F (50) lalu B (33).
@@ -96,7 +96,7 @@ test.describe("Dashboard project", () => {
     await expect(dashboard.flakyItems.nth(1)).toContainText("33");
     await expect(dashboard.topFlaky.getByRole("link", { name: /Lihat semua/ })).toHaveAttribute(
       "href",
-      `/p/${project.slug}/flaky`,
+      `/p/${project.slug}/flaky?branch=main`,
     );
 
     await expectNoA11yViolationsInBothThemes(page);

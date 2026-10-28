@@ -1,7 +1,7 @@
-import { FolderSearch, Globe, Loader2, Settings } from "lucide-react";
+import { Globe, Loader2, Settings } from "lucide-react";
 import { useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
-import { EmptyState } from "@/components/EmptyState";
+import { ProjectNotFound } from "@/components/ProjectNotFound";
 import { RoleBadge, VisibilityBadge } from "@/components/ProjectBadges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,31 +32,7 @@ export function ProjectPage() {
     );
   }
 
-  if (notFound) {
-    return (
-      <section className="mx-auto w-full max-w-lg py-4 md:py-10">
-        <EmptyState
-          icon={FolderSearch}
-          title="Project tidak ditemukan"
-          headingLevel="h1"
-          data-testid="project-not-found"
-          action={
-            status === "anonymous" ? (
-              <Button asChild>
-                <Link to={loginPathFor(`/p/${slug}`)}>Masuk</Link>
-              </Button>
-            ) : (
-              <Button asChild variant="outline">
-                <Link to="/">Ke project saya</Link>
-              </Button>
-            )
-          }
-        >
-          <p>Project tidak ditemukan. Jika ini project privat, silakan masuk.</p>
-        </EmptyState>
-      </section>
-    );
-  }
+  if (notFound) return <ProjectNotFound returnTo={`/p/${slug}`} />;
 
   if (load.state === "error") {
     return <LoadError error={load.error} fallback="Gagal memuat project. Coba lagi." onRetry={load.reload} />;

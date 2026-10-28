@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 import { formatDateTime, formatDuration, formatPassRate } from "@/lib/format";
+import { withBranch } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
 
 const RECENT_RUNS = 5;
@@ -100,8 +101,8 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
       </Card>
 
       <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-2">
-        <RecentRuns slug={slug} runs={runs} />
-        <TopFlaky slug={slug} flaky={flaky.slice(0, TOP_FLAKY)} />
+        <RecentRuns slug={slug} branch={branch} runs={runs} />
+        <TopFlaky slug={slug} branch={branch} flaky={flaky.slice(0, TOP_FLAKY)} />
       </div>
     </>
   );
@@ -156,9 +157,9 @@ function SectionCard({
 const ITEM_LINK_CLASS =
   "grid min-w-0 gap-1 px-4 py-3 text-foreground no-underline outline-hidden hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring";
 
-function RecentRuns({ slug, runs }: { slug: string; runs: RunSummaryDto[] }) {
+function RecentRuns({ slug, branch, runs }: { slug: string; branch: string; runs: RunSummaryDto[] }) {
   return (
-    <SectionCard testId="recent-runs" title="Run terbaru" viewAll={{ to: `/p/${slug}/runs`, label: "run" }}>
+    <SectionCard testId="recent-runs" title="Run terbaru" viewAll={{ to: withBranch(`/p/${slug}/runs`, branch), label: "run" }}>
       {runs.length === 0 ? (
         <p className="text-sm text-muted-foreground">Belum ada run.</p>
       ) : (
@@ -185,16 +186,16 @@ function RecentRuns({ slug, runs }: { slug: string; runs: RunSummaryDto[] }) {
 
 const LAST_STATUS_LABEL = { passed: "lulus", failed: "gagal", skipped: "dilewati" } as const;
 
-function TopFlaky({ slug, flaky }: { slug: string; flaky: FlakyTestDto[] }) {
+function TopFlaky({ slug, branch, flaky }: { slug: string; branch: string; flaky: FlakyTestDto[] }) {
   return (
-    <SectionCard testId="top-flaky" title="Test paling flaky" viewAll={{ to: `/p/${slug}/flaky`, label: "test flaky" }}>
+    <SectionCard testId="top-flaky" title="Test paling flaky" viewAll={{ to: withBranch(`/p/${slug}/flaky`, branch), label: "test flaky" }}>
       {flaky.length === 0 ? (
         <p className="text-sm text-muted-foreground">Tidak ada test flaky pada branch ini.</p>
       ) : (
         <ul className="m-0 grid list-none divide-y divide-border rounded-lg border p-0">
           {flaky.map((test) => (
             <li key={test.testCaseId} data-testid={`flaky-item-${test.testCaseId}`}>
-              <Link to={`/p/${slug}/tests/${test.testCaseId}`} className={ITEM_LINK_CLASS}>
+              <Link to={withBranch(`/p/${slug}/tests/${test.testCaseId}`, branch)} className={ITEM_LINK_CLASS}>
                 <span className="flex items-start justify-between gap-3">
                   <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{test.name}</span>
                   <Badge variant="secondary" className="font-mono tabular-nums">

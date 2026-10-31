@@ -24,7 +24,9 @@ export function ProjectResults({ project }: { project: ProjectDto }) {
 
   // Unduh chunk dashboard bersamaan dengan daftar branch, bukan menunggu sampai branch selesai dimuat.
   useEffect(() => {
-    void loadDashboard();
+    // Kegagalan unduh awal ini diabaikan (tanpa unhandled rejection): `lazy` memuat chunk lagi saat Dashboard dirender,
+    // dan kegagalan di sana ditangani ChunkErrorBoundary.
+    loadDashboard().catch(() => undefined);
   }, []);
 
   if (load.state === "loading") return <Loading label="Memuat hasil test…" />;

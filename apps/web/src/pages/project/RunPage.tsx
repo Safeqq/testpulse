@@ -207,7 +207,8 @@ function DeleteRun({ slug, runId }: { slug: string; runId: string }) {
       navigate(`/p/${slug}/runs`, { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.code === "RUN_NOT_FOUND") {
-        navigate(`/p/${slug}/runs`);
+        // Sudah terhapus (mis. di tab lain): hasil akhirnya sama dengan hapus yang berhasil.
+        navigate(`/p/${slug}/runs`, { replace: true });
         return;
       }
       setError(errorMessage(err, "Gagal menghapus run. Coba lagi."));

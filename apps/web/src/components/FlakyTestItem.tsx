@@ -1,12 +1,10 @@
 import type { FlakyTestDto } from "@testpulse/shared";
 import { Link } from "react-router-dom";
 import { ScoreBar } from "@/components/charts/ScoreBar";
+import { LIST_ITEM_LINK_CLASS } from "@/components/listItemLink";
 import { Badge } from "@/components/ui/badge";
 import { LAST_STATUS_LABEL } from "@/lib/flaky";
 import { withBranch } from "@/lib/navigation";
-
-const ITEM_LINK_CLASS =
-  "grid min-w-0 gap-1 px-4 py-3 text-foreground no-underline outline-hidden hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring";
 
 /** Satu baris test flaky (dashboard dan halaman flaky): nama, skor, suite, hasil terakhir; `showBar` menambah bar skor. */
 export function FlakyTestItem({
@@ -22,7 +20,7 @@ export function FlakyTestItem({
 }) {
   return (
     <li data-testid={`flaky-item-${test.testCaseId}`}>
-      <Link to={withBranch(`/p/${slug}/tests/${test.testCaseId}`, branch)} className={ITEM_LINK_CLASS}>
+      <Link to={withBranch(`/p/${slug}/tests/${test.testCaseId}`, branch)} className={LIST_ITEM_LINK_CLASS}>
         <span className="flex items-start justify-between gap-3">
           <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{test.name}</span>
           <Badge variant="secondary" className="font-mono tabular-nums">

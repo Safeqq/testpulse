@@ -48,18 +48,20 @@ Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/script
 ### Mengunggah dengan curl
 
 ```bash
-curl -X POST "https://testpulse-d2p.pages.dev/api/v1/projects/<slug>/runs?branch=main&commit=<sha>&ciUrl=<url-run-ci>&name=<nama-run>" \
+curl -X POST "https://testpulse-d2p.pages.dev/api/v1/projects/<slug>/runs" \
+  --url-query "branch=main" --url-query "commit=<sha>" \
+  --url-query "ciUrl=<url-run-ci>" --url-query "name=<nama-run>" \
   -H "Authorization: Bearer $TESTPULSE_TOKEN" \
   -H "Content-Type: application/xml" \
   --data-binary @junit.xml
 # 201 {"runId":"...","url":"https://.../p/<slug>/runs/<runId>","totals":{"total":..,"passed":..,"failed":..,"skipped":..,"flaky":..}}
 ```
 
-`branch` wajib (1 sampai 200 karakter `A-Za-z0-9._/-`); `commit` (hex 7 sampai 40), `ciUrl` (http/https), dan `name` opsional. Batas: body 5 MB, 20.000 testcase per laporan, 60 unggahan per jam per token, dan 200 run terbaru per project disimpan. Hanya token Bearer yang diterima di endpoint ini (cookie sesi tidak), dan laporan dengan `<!DOCTYPE` ditolak.
+`branch` wajib (1 sampai 200 karakter `A-Za-z0-9._/-`); `commit` (hex 7 sampai 40), `ciUrl` (http/https), dan `name` opsional. Nilai query harus di-URL-encode (`ciUrl` sendiri memuat `:`, `/`, dan sering `?`/`&`; `name` bisa berspasi): `--url-query` (curl 7.87 ke atas) melakukannya otomatis; pada curl yang lebih lama, encode sendiri, mis. `ciUrl=https%3A%2F%2Fci.example.com%2Frun%2F42`. Batas: body 5 MB, 20.000 testcase per laporan, 60 unggahan per jam per token, dan 200 run terbaru per project disimpan. Hanya token Bearer yang diterima di endpoint ini (cookie sesi tidak), dan laporan dengan `<!DOCTYPE` ditolak.
 
 ### Mengunggah dengan reporter CLI
 
-[`packages/reporter`](packages/reporter) menggabungkan beberapa file JUnit (path atau glob) menjadi satu laporan, memeriksa ukurannya, lalu mengunggahnya. Token dibaca dari environment `TESTPULSE_TOKEN` (tidak ada flag token) dan tidak pernah dicetak. Exit code: `0` berhasil, `1` unggah gagal, `2` argumen atau berkas salah.
+[`packages/reporter`](packages/reporter) menggabungkan beberapa file JUnit (path atau glob) menjadi satu laporan, memeriksa ukurannya, lalu mengunggahnya. Token dibaca dari environment `TESTPULSE_TOKEN` (tidak ada flag token) dan tidak pernah dicetak. Exit code: `0` berhasil, `1` unggah gagal, `2` argumen atau berkas salah (termasuk argumen yang ditolak server dengan `400 VALIDATION_ERROR`; pesan server dicetak).
 
 ```bash
 pnpm --filter @testpulse/reporter build

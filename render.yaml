@@ -28,3 +28,4 @@ services:
       - key: PROXY_SECRET
         sync: false
       # RATE_LIMIT_MAX is intentionally unset: production uses the default of 10 per minute per IP.
+      # INGEST_RATE_LIMIT_MAX is intentionally unset too: the default is 60 JUnit uploads per hour per CI token.

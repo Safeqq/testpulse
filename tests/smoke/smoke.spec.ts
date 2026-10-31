@@ -82,6 +82,11 @@ test.describe("Smoke production", { tag: "@smoke" }, () => {
   });
 
   test("dashboard project testpulse menampilkan hasil run dari CI", async ({ page }) => {
+    // Tanpa BASE_URL, baseURL jatuh ke dev server lokal yang tidak punya project ini; konsisten dengan requireSmokeEnv.
+    if (!process.env.BASE_URL?.trim()) {
+      if (process.env.CI) throw new Error("BASE_URL belum diisi");
+      test.skip(true, "BASE_URL belum diisi (test dilewati di lokal)");
+    }
     const project = new ProjectPage(page);
     await project.goto(DOGFOOD_SLUG);
     await expect(project.notFound).toHaveCount(0);

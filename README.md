@@ -63,12 +63,15 @@ curl -X POST "https://testpulse-d2p.pages.dev/api/v1/projects/<slug>/runs?branch
 
 ```bash
 pnpm --filter @testpulse/reporter build
-TESTPULSE_TOKEN=tp_... node packages/reporter/dist/cli.js \
+read -rs TESTPULSE_TOKEN && export TESTPULSE_TOKEN   # ketik atau tempel token: tidak tampil dan tidak masuk riwayat shell
+node packages/reporter/dist/cli.js \
   --url https://testpulse-d2p.pages.dev --project <slug> --branch main \
   --commit "$(git rev-parse HEAD)" --ci-url "$RUN_URL" --name "CI #42" \
   'allure-results/junit-*.xml'
 # Laporan terkirim (N berkas): 1171 test, 1170 lulus, 0 gagal, 1 dilewati, 0 flaky
 ```
+
+Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `node packages/reporter/dist/cli.js ...` dalam satu baris. Jangan menaruh token langsung di baris perintah.
 
 Dogfooding memakai perintah yang sama di [deploy.yml](.github/workflows/deploy.yml).
 
@@ -259,4 +262,4 @@ Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy
 - Render free tier tidur saat idle; request pertama bisa lambat sekitar 30 sampai 60 detik.
 - Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, perbandingan dua run, atau mute test flaky; hanya 200 run terbaru per project yang disimpan.
 - Unggahan diproses sinkron (ADR 0004): laporan sangat besar (mendekati 5 MB) memegang request lebih lama, terutama setelah cold start Render.
-- Hal yang sengaja tidak diuji (performa, visual regression, mutation testing, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).
+- Hal yang sengaja tidak diuji (performa free tier, visual regression, mutation testing, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).

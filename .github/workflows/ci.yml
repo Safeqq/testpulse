@@ -294,6 +294,10 @@ jobs:
             echo "No Allure results were produced by earlier jobs." >&2
             exit 1
           fi
+          # Playwright tests are already reported by allure-playwright (JSON). Their JUnit twins exist only for the
+          # dogfooding upload to TestPulse (deploy.yml reads the artifacts, not this report); Allure's junitXml reader
+          # would count every Playwright test a second time. Vitest JUnit files stay: they are the only source for those tests.
+          rm -f allure-results/junit-api.xml allure-results/junit-e2e-*.xml
           pnpm exec allure generate allure-results -o allure-report
 
       - name: Upload report artifact

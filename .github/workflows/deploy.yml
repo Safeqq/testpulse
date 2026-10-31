@@ -155,17 +155,21 @@ jobs:
           TESTPULSE_TOKEN: ${{ secrets.TESTPULSE_TOKEN }}
           CI_RUN_URL: ${{ github.event.workflow_run.html_url }}
           CI_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+          CI_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
         run: |
-          pnpm --filter @testpulse/reporter build
-          node packages/reporter/dist/cli.js \
-            --url "$PRODUCTION_URL" \
-            --project testpulse \
-            --branch main \
-            --commit "$DEPLOY_SHA" \
-            --ci-url "$CI_RUN_URL" \
-            --name "CI #${CI_RUN_NUMBER}" \
-            'ci-results/junit-*.xml' \
-            || { code=$?; echo "::warning::Uploading CI results to TestPulse failed (reporter exit code ${code}); the deploy itself is unaffected"; exit "$code"; }
+          run_name="CI #${CI_RUN_NUMBER}"
+          if [ "${CI_RUN_ATTEMPT:-1}" -gt 1 ]; then run_name="${run_name} (attempt ${CI_RUN_ATTEMPT})"; fi
+          {
+            pnpm --filter @testpulse/reporter build &&
+            node packages/reporter/dist/cli.js \
+              --url "$PRODUCTION_URL" \
+              --project testpulse \
+              --branch main \
+              --commit "$DEPLOY_SHA" \
+              --ci-url "$CI_RUN_URL" \
+              --name "$run_name" \
+              'ci-results/junit-*.xml'
+          } || { code=$?; echo "::warning::Building the reporter or uploading CI results to TestPulse failed (exit code ${code}); the deploy itself is unaffected"; exit "$code"; }
 
       - name: Upload Playwright report and traces
         if: ${{ failure() }}

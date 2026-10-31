@@ -13,3 +13,6 @@ pacts/
 .superpowers/
 zap/
 .wrangler/
+
+tests/perf/.state/
+perf-results/

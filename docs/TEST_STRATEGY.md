@@ -93,6 +93,7 @@ Setiap job CI menulis hasil ke `allure-results`; job `report` menggabungkan semu
 | Coverage domain | >= 80% (lines, branches, functions, statements) | Vitest coverage `thresholds` di `apps/api/vitest.config.ts` |
 | Unit, integration, contract, API, E2E | semua lulus | job `unit`, `integration`, `contract`, `stack-tests` |
 | ZAP baseline | 0 temuan High | `tests/security/check-zap-report.mjs` (dites di `check-zap-report.test.mjs`) |
+| Performa stack Docker | p95 upload < 1500 ms, p95 baca < 300 ms, error < 1% | job `perf` (k6), bagian 5.1 |
 | Smoke production | semua lulus setelah deploy | `deploy.yml` |
 
 ### Jumlah test (snapshot per commit `ad6b30d`, 2026-10-27)
@@ -111,11 +112,23 @@ Angka ini adalah **snapshot**: hasil menjalankan suite secara lokal pada commit 
 | E2E (Playwright) | 77 skenario per browser, dijalankan di 3 browser (a11y-helper 1, auth 12, csp-guard 13, landing 12, projects 16, team 10, theme 13) |
 | Smoke production (`@smoke`) | 4 |
 
+### 5.1 Performa (k6)
+
+Job CI `perf` (setelah `stack-tests`) menjalankan dua skenario k6 terhadap stack Docker Compose, bukan production. Image dipin (`grafana/k6:1.3.0`) agar versi baru tidak mengubah gate diam-diam. Data disiapkan oleh [`tests/perf/setup.mjs`](../tests/perf/setup.mjs) lewat API: satu pengguna, satu project publik berisi 55 run (500 test per run) untuk skenario baca, dan satu project untuk skenario upload dengan beberapa token yang dipakai bergiliran per VU, sehingga batas upload per token tidak tercapai dan tidak ada 429.
+
+| Skenario | Beban | Threshold (gate) |
+|---|---|---|
+| `ingest` ([`ingest.js`](../tests/perf/ingest.js)) | 5 VU x 30 detik, upload laporan JUnit 500 test | p95 durasi < 1500 ms |
+| `read` ([`read.js`](../tests/perf/read.js)) | 10 VU x 30 detik, `stats`, `runs`, `flaky` | p95 durasi < 300 ms |
+| keduanya | | `http_req_failed` < 1% |
+
+Ringkasan JSON k6 diunggah sebagai artifact `k6-summary`. Threshold mengikuti spec Tahap 2 bagian 11; produksi tetap memakai batas upload default 60/jam/token (compose menaikkannya hanya untuk stack test).
+
 ## 6. Sengaja tidak diuji (dan alasannya)
 
 | Hal | Alasan | Rencana |
 |---|---|---|
-| Performa dan beban | Tahap 1 tidak punya endpoint berat; angka performa dari free tier (Render cold start) tidak bermakna | k6 di tahap 2 |
+| Performa free tier (Render cold start, Neon) | Angka dari free tier tidak bermakna; k6 sengaja hanya menyasar stack Docker (bagian 5.1) | Dicatat sebagai keterbatasan |
 | Visual regression | UI masih berubah cepat; screenshot baseline sekarang akan terus rusak tanpa nilai | Tahap 3 |
 | Mutation testing | Perlu suite yang sudah stabil dan domain yang lebih besar | Tahap 4 |
 | Alur email (reset password, verifikasi) | Fiturnya sengaja tidak ada di tahap 1; undangan berupa link yang disalin manual | Tidak direncanakan |

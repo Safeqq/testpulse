@@ -210,9 +210,63 @@ jobs:
         if: ${{ failure() }}
         run: docker compose logs --no-color --tail=200
 
+  perf:
+    name: Performance (k6 ingest and read)
+    needs: stack-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Pinned: a new k6 release must not change the gate silently. Compose network and service names come from docker-compose.yml.
+      K6_IMAGE: grafana/k6:1.3.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Start stack (docker compose)
+        run: docker compose up -d --build --wait
+
+      # Creates the user, the projects, several ingest tokens (round-robin per VU, so the per-token upload limit is not hit)
+      # and >= 50 seeded runs. Writes tests/perf/.state/state.json (gitignored, holds the tokens, never printed).
+      - name: Prepare perf data
+        id: setup
+        env:
+          BASE_URL: http://localhost:8080
+        run: node tests/perf/setup.mjs
+
+      # --user: the k6 image runs as an unprivileged user, which must read the 0600 state file and write the summaries.
+      - name: k6 ingest (5 VUs, 30 s)
+        run: |
+          mkdir -p perf-results
+          docker run --rm --network testpulse_default --user "$(id -u):$(id -g)" \
+            -v "$PWD/tests/perf:/scripts:ro" -v "$PWD/perf-results:/results" \
+            "$K6_IMAGE" run /scripts/ingest.js -e BASE_URL=http://web:8080 --summary-export /results/ingest-summary.json
+
+      - name: k6 read (10 VUs, 30 s)
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
+        run: |
+          mkdir -p perf-results
+          docker run --rm --network testpulse_default --user "$(id -u):$(id -g)" \
+            -v "$PWD/tests/perf:/scripts:ro" -v "$PWD/perf-results:/results" \
+            "$K6_IMAGE" run /scripts/read.js -e BASE_URL=http://web:8080 --summary-export /results/read-summary.json
+
+      - name: Upload k6 summaries
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: perf-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Stack logs
+        if: ${{ failure() }}
+        run: docker compose logs --no-color --tail=200
+
   report:
     name: Allure report
-    needs: [unit, integration, contract, stack-tests, zap]
+    needs: [unit, integration, contract, stack-tests, zap, perf]
     # Build the report even when an earlier job failed: that is when it is most useful.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest

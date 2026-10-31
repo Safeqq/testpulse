@@ -54,6 +54,14 @@ describe("parseArgs", () => {
     expect(opts.url).toBe("https://host.example.com/pulse");
   });
 
+  it("membuang garis miring akhir dalam waktu linear (100.000 '/' di tengah path)", () => {
+    const url = `https://host.example.com/${"/".repeat(100_000)}pulse///`;
+    const started = performance.now();
+    const opts = parseArgs(["--url", url, ...BASE.slice(2)], ENV);
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(opts.url).toBe(`https://host.example.com/${"/".repeat(100_000)}pulse`);
+  });
+
   it.each([
     ["--url", "--url wajib diisi"],
     ["--project", "--project wajib diisi"],

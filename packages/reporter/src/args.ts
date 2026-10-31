@@ -68,7 +68,17 @@ function parseBaseUrl(raw: string): string {
     throw new UsageError("--url tidak boleh memuat username/password; gunakan TESTPULSE_TOKEN untuk token");
   }
   // Query/fragment tidak bermakna untuk URL dasar; path dasar (mis. di belakang reverse proxy) dipertahankan.
-  return `${parsed.origin}${parsed.pathname}`.replace(/\/+$/, "");
+  return trimTrailingSlashes(`${parsed.origin}${parsed.pathname}`);
+}
+
+/**
+ * Membuang garis miring di akhir. Sengaja tanpa `/\/+$/`: pola itu dicoba ulang dari setiap '/' dan menjadi
+ * kuadratik pada path dengan banyak '/' yang tidak berada di akhir.
+ */
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end--;
+  return value.slice(0, end);
 }
 
 /**

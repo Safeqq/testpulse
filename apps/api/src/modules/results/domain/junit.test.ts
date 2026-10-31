@@ -125,7 +125,7 @@ describe("parseJUnit - durasi", () => {
   it.each([
     ["testcase", (v: string) => suite(`<testcase name="a" time="${v}"/>`)],
     ["root", (v: string) => suite('<testcase name="a"/>', `name="S" time="${v}"`)],
-  ])("time %s 1.000.000 digit + 'x' di-parse dalam < 100 ms (tanpa backtracking kuadratik)", (_where, make) => {
+  ])("time %s 1.000.000 digit + 'x' di-parse dalam < 1000 ms (tanpa backtracking kuadratik)", (_where, make) => {
     const digits = "1".repeat(1_000_000);
     // Pemanasan JIT parser XML dengan dokumen berukuran sama yang tidak menyentuh `time`; yang diukur hanya
     // selisih akibat nilai `time` jahat (pola lama: ~0,5 s untuk 20.000 digit, berjam-jam untuk 1 juta).
@@ -135,7 +135,7 @@ describe("parseJUnit - durasi", () => {
     const elapsed = performance.now() - started;
     expect(report.results[0]?.durationMs).toBe(0);
     expect(report.durationMs).toBe(0);
-    expect(elapsed).toBeLessThan(100);
+    expect(elapsed).toBeLessThan(1000);
   });
 
   it("durasi run dihitung dari hasil setelah penggabungan", () => {

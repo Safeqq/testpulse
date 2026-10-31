@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Lint
         run: pnpm lint
@@ -37,7 +37,7 @@ jobs:
     env:
       ALLURE_JOB: unit
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Shared unit tests
         run: >-
@@ -67,7 +67,7 @@ jobs:
     env:
       ALLURE_JOB: integration
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Integration tests
         run: pnpm --filter @testpulse/api test:int
@@ -85,7 +85,7 @@ jobs:
     env:
       ALLURE_JOB: contract
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       # Consumers (web, reporter) write pacts/, the provider verifies both: all must run in this same job.
       - name: Contract tests
@@ -108,14 +108,14 @@ jobs:
     env:
       BASE_URL: http://localhost:8080
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Start stack (docker compose)
         run: docker compose up -d --build --wait
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -161,7 +161,7 @@ jobs:
 
       - name: Upload Playwright report and traces
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ strategy.job-index }}
           path: |
@@ -180,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           build-shared: "false"
@@ -203,7 +203,7 @@ jobs:
 
       - name: Upload ZAP report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zap-report
           path: zap
@@ -223,8 +223,8 @@ jobs:
       # Pinned: a new k6 release must not change the gate silently. Compose network and service names come from docker-compose.yml.
       K6_IMAGE: grafana/k6:1.3.0
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
 
@@ -257,7 +257,7 @@ jobs:
 
       - name: Upload k6 summaries
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: k6-summary
           path: perf-results
@@ -276,13 +276,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
         with:
           build-shared: "false"
 
       - name: Download all Allure results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: allure-results-*
           merge-multiple: true
@@ -301,7 +301,7 @@ jobs:
           pnpm exec allure generate allure-results -o allure-report
 
       - name: Upload report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: allure-report
           path: allure-report
@@ -309,7 +309,7 @@ jobs:
 
       - name: Upload Pages artifact
         if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: allure-report
           # Unique per attempt: re-running a run would otherwise leave two "github-pages" artifacts and deploy-pages fails.
@@ -333,6 +333,6 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
         with:
           artifact_name: github-pages-${{ github.run_attempt }}

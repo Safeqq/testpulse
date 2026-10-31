@@ -54,7 +54,7 @@ jobs:
           done
           exit "$missing"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
@@ -135,7 +135,7 @@ jobs:
         id: dogfood-download
         if: ${{ steps.dogfood.outputs.enabled == 'true' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: allure-results-*
           merge-multiple: true
@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload Playwright report and traces
         if: ${{ failure() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-report
           path: |

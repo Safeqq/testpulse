@@ -77,7 +77,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
 /**
  * Titik masuk CLI. Mengembalikan exit code: 0 sukses, 1 upload gagal (HTTP/jaringan) atau galat tak terduga,
- * 2 argumen atau berkas salah. Semua keluaran lewat `io` dan disaring dari token CI serta karakter kontrol;
+ * 2 argumen atau berkas salah (termasuk argumen yang ditolak server dengan 400 VALIDATION_ERROR). Semua keluaran lewat `io` dan disaring dari token CI serta karakter kontrol;
  * galat tak terduga hanya mencetak pesannya yang sudah disaring, tidak pernah stack trace mentah.
  */
 export async function main(argv: string[], env: NodeJS.ProcessEnv, io: ReporterIO): Promise<number> {
@@ -151,9 +151,12 @@ async function run(
   } catch (e) {
     if (!(e instanceof UploadError)) throw e;
     const detail = [e.status !== null ? `HTTP ${e.status}` : null, e.code].filter(Boolean).join(" ");
+    const fields = Object.entries(e.fields).map(([name, message]) => `${name}: ${message}`);
+    const message = [e.message, ...fields].join("; ");
     // Pesan dari server dijadikan satu baris agar tidak dapat menyisipkan baris log palsu.
-    err(`Upload gagal${detail ? ` (${detail})` : ""}: ${e.message.replace(/\s+/g, " ")}`);
-    return EXIT_UPLOAD_FAILED;
+    err(`Upload gagal${detail ? ` (${detail})` : ""}: ${message.replace(/\s+/g, " ")}`);
+    // Server menolak argumen (mis. --branch/--commit/--ci-url tidak valid): kesalahan pemakaian, bukan kegagalan upload.
+    return e.status === 400 && e.code === "VALIDATION_ERROR" ? EXIT_USAGE : EXIT_UPLOAD_FAILED;
   }
 }
 

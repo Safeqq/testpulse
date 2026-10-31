@@ -11,6 +11,8 @@ export class UploadError extends Error {
     message: string,
     readonly status: number | null,
     readonly code: string | null,
+    /** `fields` dari `VALIDATION_ERROR` API (nama parameter query -> pesan), bila ada. */
+    readonly fields: Readonly<Record<string, string>> = {},
   ) {
     super(message);
     this.name = "UploadError";
@@ -44,13 +46,18 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
-/** `{ error: { code, message } }` dari API, atau null bila bentuknya lain (mis. halaman error gateway). */
-function apiError(body: unknown): { code: string; message: string } | null {
+/** `{ error: { code, message, fields? } }` dari API, atau null bila bentuknya lain (mis. halaman error gateway). */
+function apiError(body: unknown): { code: string; message: string; fields: Record<string, string> } | null {
   if (typeof body !== "object" || body === null) return null;
   const error = (body as { error?: unknown }).error;
   if (typeof error !== "object" || error === null) return null;
-  const { code, message } = error as { code?: unknown; message?: unknown };
-  return typeof code === "string" && typeof message === "string" ? { code, message } : null;
+  const { code, message, fields } = error as { code?: unknown; message?: unknown; fields?: unknown };
+  if (typeof code !== "string" || typeof message !== "string") return null;
+  const validFields =
+    typeof fields === "object" && fields !== null
+      ? Object.fromEntries(Object.entries(fields).filter((entry): entry is [string, string] => typeof entry[1] === "string"))
+      : {};
+  return { code, message, fields: validFields };
 }
 
 /** Penyebab jaringan yang aman ditampilkan (kode seperti ECONNREFUSED), tanpa pesan mentah yang mungkin memuat header. */
@@ -92,7 +99,7 @@ export async function uploadReport(
   }
 
   const error = apiError(body);
-  if (error) throw new UploadError(error.message, res.status, error.code);
+  if (error) throw new UploadError(error.message, res.status, error.code, error.fields);
   if (res.status >= 300 && res.status < 400) {
     throw new UploadError(`Server mengalihkan permintaan (HTTP ${res.status}); periksa kembali nilai --url`, res.status, null);
   }

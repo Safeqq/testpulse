@@ -234,6 +234,33 @@ describe("main: upload", () => {
     expectNoToken(h);
   });
 
+  it("400 VALIDATION_ERROR -> exit 2 (argumen ditolak server) dengan pesan dan field dari API", async () => {
+    const h = harness(() =>
+      json(400, {
+        error: {
+          code: "VALIDATION_ERROR",
+          message: "Data tidak valid",
+          fields: { ciUrl: "URL CI harus berupa URL http atau https tanpa username/password" },
+        },
+      }),
+    );
+    expect(await run(h, ["single.xml"])).toBe(2);
+    const err = h.err.join("\n");
+    expect(err).toContain("400");
+    expect(err).toContain("VALIDATION_ERROR");
+    expect(err).toContain("Data tidak valid");
+    expect(err).toContain("ciUrl: URL CI harus berupa URL http atau https tanpa username/password");
+    expect(h.out).toEqual([]);
+    expectNoToken(h);
+  });
+
+  it("400 dengan kode lain atau tanpa body API tetap exit 1", async () => {
+    const other = harness(() => json(400, { error: { code: "INVALID_REPORT", message: "x" } }));
+    expect(await run(other, ["single.xml"])).toBe(1);
+    const bare = harness(() => new Response("Bad Request", { status: 400 }));
+    expect(await run(bare, ["single.xml"])).toBe(1);
+  });
+
   it("401 -> exit 1 tanpa token di keluaran, bahkan bila server memantulkannya", async () => {
     const h = harness(() => json(401, { error: { code: "UNAUTHENTICATED", message: `Token CI tidak valid: ${TOKEN}` } }));
     expect(await run(h, ["single.xml"])).toBe(1);
@@ -251,8 +278,12 @@ describe("main: upload", () => {
   });
 
   it("karakter kontrol dari server tidak diteruskan ke terminal", async () => {
-    const h = harness(() => json(400, { error: { code: "VALIDATION_ERROR", message: "a\u001b[31mmerah\u0007\nbaris palsu" } }));
-    expect(await run(h, ["single.xml"])).toBe(1);
+    const h = harness(() =>
+      json(400, {
+        error: { code: "VALIDATION_ERROR", message: "a\u001b[31mmerah\u0007\nbaris palsu", fields: { branch: "x\u001b[0m\ny" } },
+      }),
+    );
+    expect(await run(h, ["single.xml"])).toBe(2);
     expect(h.err).toHaveLength(1);
     expect(h.err[0]).not.toContain("\n");
     expect(h.err.join("\n")).not.toMatch(/[\u0000-\u0008\u000b-\u001f]/);

@@ -18,7 +18,7 @@
     "@axe-core/playwright": "^4.10.0",
     "@faker-js/faker": "^10.6.0",
     "@playwright/test": "^1.55.0",
-    "@types/node": "^24.19.2",
+    "@types/node": "^26.6.5",
     "allure-playwright": "^3.4.0",
     "typescript": "^6.0.3"
   }

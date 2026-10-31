@@ -347,6 +347,8 @@ describe("CI tokens", () => {
       expect(defs.some((d) => /ON public\.runs .*\(project_id, branch, created_at DESC\)/.test(d))).toBe(true);
       expect(defs.some((d) => /ON public\.runs .*\(project_id, created_at DESC\)/.test(d))).toBe(true);
       expect(defs.some((d) => /ON public\.test_results .*\(test_case_id, run_id\)/.test(d))).toBe(true);
+      // Detail run berhalaman (`run_id = ? and id > cursor order by id`), migrasi 0002.
+      expect(defs.some((d) => /ON public\.test_results .*\(run_id, id\)/.test(d))).toBe(true);
     });
 
     it("aturan cascade: menghapus project menghapus token; menghapus token membuat runs.token_id NULL", async () => {

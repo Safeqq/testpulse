@@ -160,6 +160,9 @@ export const testResults = pgTable(
   (t) => [
     unique("test_results_run_test_case_unique").on(t.runId, t.testCaseId),
     index("test_results_test_case_run_idx").on(t.testCaseId, t.runId),
+    // Detail run: `where run_id = ? and id > cursor order by id limit 101` dibaca langsung berurutan dari indeks,
+    // tanpa mengurutkan hingga 20.000 hasil per halaman.
+    index("test_results_run_id_idx").on(t.runId, t.id),
     check("test_results_status_check", sql`${t.status} in ('passed', 'failed', 'skipped')`),
   ],
 );

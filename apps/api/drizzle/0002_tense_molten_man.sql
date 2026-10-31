@@ -1,0 +1,1 @@
+CREATE INDEX "test_results_run_id_idx" ON "test_results" USING btree ("run_id","id");

@@ -11,16 +11,19 @@ import {
 } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { withStatementTimeout, type Queryable } from "../../db/client.js";
 import { AppError } from "../../http/errors.js";
 import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser, requireUser } from "../auth/service.js";
 import { resolveProject } from "../projects/access.js";
 import { decodeCursor, decodeResultCursor, encodeCursor, encodeResultCursor } from "./cursor.js";
+import { LruCache } from "./lru-cache.js";
 import {
   deleteRun,
   findRun,
   findTestCase,
+  flakyFingerprint,
   latestBranch,
   listBranchHeads,
   listFlakyTests,
@@ -37,6 +40,15 @@ export const RESULTS_PAGE_SIZE = 100;
 export const TREND_POINTS = 30;
 export const MAX_FLAKY_TESTS = 50;
 export const HISTORY_LENGTH = 20;
+/** Batas waktu tiap statement pada query baca berat (flaky, stats, riwayat, detail run). */
+export const READ_STATEMENT_TIMEOUT_MS = 5000;
+/** Jumlah daftar flaky (per project + branch) yang disimpan di cache memori (Ruling F-I1). */
+export const FLAKY_CACHE_SIZE = 500;
+
+export interface ReadRoutesOptions {
+  /** `statement_timeout` (ms) untuk query baca berat; default `READ_STATEMENT_TIMEOUT_MS`. */
+  statementTimeoutMs?: number;
+}
 
 /** Aturan `branch` sama persis dengan query upload (1–200 karakter `[A-Za-z0-9._/-]`). */
 const branchParam = ingestQuery.in.shape.branch.optional();
@@ -82,18 +94,37 @@ function passRate(run: RunRecord): number | null {
   return executed === 0 ? null : Math.round((run.passed * 1000) / executed) / 10;
 }
 
+interface CachedFlaky {
+  /** `flakyFingerprint` saat daftar dihitung; daftar hanya dipakai ulang bila sidik branch masih sama. */
+  fingerprint: string;
+  tests: FlakyTestDto[];
+}
+
 /**
  * Rute baca hasil test (spec Tahap 2 §7) dan hapus run. Hanya sesi cookie yang dibaca (`loadUser`); token CI tidak
  * berlaku di sini sehingga pembawa token diperlakukan seperti anonim. Akses project diputuskan sebelum query
  * divalidasi agar non-anggota project privat selalu mendapat 404.
  */
-export async function readRoutes(app: FastifyInstance): Promise<void> {
+export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions = {}): Promise<void> {
   const readAccess = { preHandler: [loadUser] };
   const loginRequired = { preHandler: [loadUser, requireUser] };
+  const statementTimeoutMs = opts.statementTimeoutMs ?? READ_STATEMENT_TIMEOUT_MS;
 
-  /** Branch dari query, atau branch run terbaru project bila tidak diisi. */
-  const branchOrLatest = async (projectId: string, query: unknown) =>
-    parseOrThrow(branchQuery, query).branch ?? (await latestBranch(app.db, projectId));
+  /**
+   * Query baca berat dijalankan dalam satu transaksi baca-saja dengan `statement_timeout`; bila terlampaui,
+   * error handler menjawab 503. Otorisasi (`resolveProject`) dan validasi query tetap di luar, sebelumnya.
+   */
+  const heavyRead = <T>(fn: (db: Queryable) => Promise<T>) => withStatementTimeout(app.db, statementTimeoutMs, fn);
+
+  /**
+   * Cache daftar flaky per (project, branch), divalidasi dengan sidik (run terbaru, jumlah run) branch itu: upload
+   * dan hapus run mengubah sidik sehingga daftar dihitung ulang tanpa invalidasi eksplisit (Ruling F-I1).
+   */
+  const flakyCache = new LruCache<string, CachedFlaky>(FLAKY_CACHE_SIZE);
+
+  /** Branch dari query (sudah divalidasi), atau branch run terbaru project bila tidak diisi. */
+  const branchOrLatest = async (db: Queryable, projectId: string, branch: string | undefined) =>
+    branch ?? (await latestBranch(db, projectId));
 
   app.get<{ Params: { slug: string } }>("/projects/:slug/branches", readAccess, async (req) => {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
@@ -130,13 +161,16 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
       if (afterId === null) throw invalidCursor();
 
       if (!isUuid(req.params.runId)) throw runNotFound();
-      const run = await findRun(app.db, project.id, req.params.runId);
-      if (!run) throw runNotFound();
-
-      const rows = await listRunResults(app.db, run.id, {
-        filter: query.status,
-        ...(afterId !== undefined ? { afterId } : {}),
-        limit: RESULTS_PAGE_SIZE + 1,
+      const runId = req.params.runId;
+      const { run, rows } = await heavyRead(async (db) => {
+        const found = await findRun(db, project.id, runId);
+        if (!found) throw runNotFound();
+        const results = await listRunResults(db, found.id, {
+          filter: query.status,
+          ...(afterId !== undefined ? { afterId } : {}),
+          limit: RESULTS_PAGE_SIZE + 1,
+        });
+        return { run: found, rows: results };
       });
       const page = rows.slice(0, RESULTS_PAGE_SIZE);
       const last = page.at(-1);
@@ -170,10 +204,16 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { slug: string } }>("/projects/:slug/stats", readAccess, async (req): Promise<StatsDto> => {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
-    const branch = await branchOrLatest(project.id, req.query);
+    const requested = parseOrThrow(branchQuery, req.query).branch;
+    const { branch, recent } = await heavyRead(async (db) => {
+      const resolved = await branchOrLatest(db, project.id, requested);
+      return {
+        branch: resolved,
+        recent: resolved === null ? [] : await listRecentRuns(db, project.id, resolved, TREND_POINTS),
+      };
+    });
     if (branch === null) return { branch: null, points: [], latest: null };
 
-    const recent = await listRecentRuns(app.db, project.id, branch, TREND_POINTS);
     const latest = recent[0];
     return {
       branch,
@@ -189,9 +229,20 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
 
   app.get<{ Params: { slug: string } }>("/projects/:slug/flaky", readAccess, async (req): Promise<FlakyTestDto[]> => {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
-    const branch = await branchOrLatest(project.id, req.query);
-    if (branch === null) return [];
-    return listFlakyTests(app.db, project.id, branch, MAX_FLAKY_TESTS);
+    const requested = parseOrThrow(branchQuery, req.query).branch;
+    return heavyRead(async (db) => {
+      const branch = await branchOrLatest(db, project.id, requested);
+      if (branch === null) return [];
+      const fingerprint = await flakyFingerprint(db, project.id, branch);
+      if (fingerprint === null) return [];
+
+      const key = `${project.id}:${branch}`;
+      const cached = flakyCache.get(key);
+      if (cached?.fingerprint === fingerprint) return cached.tests;
+      const tests = await listFlakyTests(db, project.id, branch, MAX_FLAKY_TESTS);
+      flakyCache.set(key, { fingerprint, tests });
+      return tests;
+    });
   });
 
   app.get<{ Params: { slug: string; testCaseId: string } }>(
@@ -201,13 +252,19 @@ export async function readRoutes(app: FastifyInstance): Promise<void> {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
       const query = parseOrThrow(branchQuery, req.query);
       if (!isUuid(req.params.testCaseId)) throw testNotFound();
-      const testCase = await findTestCase(app.db, project.id, req.params.testCaseId);
-      if (!testCase) throw testNotFound();
-
-      const branch = query.branch ?? (await latestBranch(app.db, project.id));
+      const testCaseId = req.params.testCaseId;
+      const { testCase, branch, history } = await heavyRead(async (db) => {
+        const found = await findTestCase(db, project.id, testCaseId);
+        if (!found) throw testNotFound();
+        const resolved = await branchOrLatest(db, project.id, query.branch);
+        return {
+          testCase: found,
+          branch: resolved,
+          history: resolved === null ? [] : await listTestHistory(db, project.id, found.id, resolved, HISTORY_LENGTH),
+        };
+      });
       if (branch === null) return { testCase, branch: null, results: [] };
 
-      const history = await listTestHistory(app.db, project.id, testCase.id, branch, HISTORY_LENGTH);
       return {
         testCase,
         branch,

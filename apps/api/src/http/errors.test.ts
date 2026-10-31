@@ -23,6 +23,14 @@ function buildTestServer() {
     throw Object.assign(new Error("Payload too large"), { statusCode: 413 });
   });
   app.post("/small", { bodyLimit: 10 }, () => ({ ok: true }));
+  // Postgres membatalkan statement karena statement_timeout (SQLSTATE 57014); drizzle membungkusnya sebagai `cause`.
+  app.get("/statement-timeout", () => {
+    throw Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+  });
+  app.get("/statement-timeout-wrapped", () => {
+    const cause = Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    throw new Error("Failed query: select 1", { cause });
+  });
   app.get("/boom", () => {
     throw new Error("detail rahasia: password=hunter2");
   });
@@ -64,6 +72,17 @@ describe("error handler", () => {
     expect(res.statusCode).toBe(413);
     expect(res.json()).toEqual({ error: { code: "PAYLOAD_TOO_LARGE", message: expect.any(String) } });
   });
+
+  it.each(["/statement-timeout", "/statement-timeout-wrapped"])(
+    "statement_timeout Postgres (57014) di %s → 503 INTERNAL_ERROR dengan pesan coba lagi",
+    async (url) => {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "Server sedang sibuk memproses data ini, coba lagi sebentar lagi" },
+      });
+    },
+  );
 
   it("error tak terduga → 500 INTERNAL_ERROR tanpa membocorkan detail", async () => {
     const res = await app.inject({ method: "GET", url: "/boom" });

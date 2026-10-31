@@ -1,6 +1,6 @@
 import type { IngestQuery, ResultStatus } from "@testpulse/shared";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import type { Db } from "../../db/client.js";
+import type { Db, Queryable } from "../../db/client.js";
 import { projects, runs, testCases, testResults } from "../../db/schema.js";
 import { touchToken } from "../tokens/auth.js";
 import { FLAKY_WINDOW } from "./domain/flaky.js";
@@ -153,7 +153,7 @@ export async function listBranchHeads(db: Db, projectId: string): Promise<RunRec
 }
 
 /** Branch dari run terbaru project, atau `null` bila belum ada run. */
-export async function latestBranch(db: Db, projectId: string): Promise<string | null> {
+export async function latestBranch(db: Queryable, projectId: string): Promise<string | null> {
   const [row] = await db
     .select({ branch: runs.branch })
     .from(runs)
@@ -197,7 +197,7 @@ export async function listRuns(
     .limit(opts.limit);
 }
 
-export async function findRun(db: Db, projectId: string, runId: string): Promise<RunRecord | undefined> {
+export async function findRun(db: Queryable, projectId: string, runId: string): Promise<RunRecord | undefined> {
   const [run] = await db
     .select()
     .from(runs)
@@ -207,7 +207,7 @@ export async function findRun(db: Db, projectId: string, runId: string): Promise
 
 /** Hasil test satu run, urut `id` (= urutan suite/nama saat disimpan), mulai setelah hasil ber-id `afterId`. */
 export async function listRunResults(
-  db: Db,
+  db: Queryable,
   runId: string,
   opts: { filter: ResultFilter; afterId?: number; limit: number },
 ) {
@@ -244,13 +244,30 @@ export async function deleteRun(db: Db, projectId: string, runId: string): Promi
 }
 
 /** `limit` run terbaru di branch, urut dari yang terbaru. */
-export async function listRecentRuns(db: Db, projectId: string, branch: string, limit: number): Promise<RunRecord[]> {
+export async function listRecentRuns(db: Queryable, projectId: string, branch: string, limit: number): Promise<RunRecord[]> {
   return db
     .select()
     .from(runs)
     .where(and(eq(runs.projectId, projectId), eq(runs.branch, branch)))
     .orderBy(...newestFirst)
     .limit(limit);
+}
+
+/**
+ * Sidik data flaky satu branch: run terbaru dan jumlah run. Hasil test sebuah run tidak pernah berubah setelah
+ * disimpan, dan run baru selalu menjadi run terbaru; jadi upload (termasuk retensi), hapus run, maupun hapus project
+ * mengubah sidik ini. Dihitung dari indeks `(project_id, branch, created_at desc)` (maks. 200 run per project).
+ * `null` bila branch belum punya run.
+ */
+export async function flakyFingerprint(db: Queryable, projectId: string, branch: string): Promise<string | null> {
+  const result = await db.execute<{ newest_id: string | null; run_count: number }>(sql`
+    select
+      (select r.id from runs r where r.project_id = ${projectId} and r.branch = ${branch}
+        order by r.created_at desc, r.id desc limit 1) as newest_id,
+      (select count(*)::int from runs r where r.project_id = ${projectId} and r.branch = ${branch}) as run_count
+  `);
+  const row = result.rows[0];
+  return row?.newest_id ? `${row.newest_id}:${row.run_count}` : null;
 }
 
 export interface FlakyRow {
@@ -268,7 +285,7 @@ export interface FlakyRow {
  * menjauhi nol, sama dengan `Math.round` untuk bilangan positif (Ruling T2-c). Skor 0 dibuang; urut skor turun lalu
  * nama (suite dan id sebagai pemutus seri). `lastStatus` = hasil terbaru di jendela, termasuk `skipped`.
  */
-export async function listFlakyTests(db: Db, projectId: string, branch: string, limit: number): Promise<FlakyRow[]> {
+export async function listFlakyTests(db: Queryable, projectId: string, branch: string, limit: number): Promise<FlakyRow[]> {
   const result = await db.execute<{
     test_case_id: string;
     suite: string;
@@ -318,7 +335,7 @@ export async function listFlakyTests(db: Db, projectId: string, branch: string, 
   }));
 }
 
-export async function findTestCase(db: Db, projectId: string, testCaseId: string) {
+export async function findTestCase(db: Queryable, projectId: string, testCaseId: string) {
   const [testCase] = await db
     .select({ id: testCases.id, suite: testCases.suite, name: testCases.name })
     .from(testCases)
@@ -328,7 +345,7 @@ export async function findTestCase(db: Db, projectId: string, testCaseId: string
 
 /** `limit` hasil terbaru satu test di branch, urut dari yang terbaru. */
 export async function listTestHistory(
-  db: Db,
+  db: Queryable,
   projectId: string,
   testCaseId: string,
   branch: string,

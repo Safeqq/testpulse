@@ -29,6 +29,8 @@ export interface BuildAppOptions {
   logLevel?: string;
   /** Tujuan log pino (untuk test yang menangkap log); default stdout. */
   logStream?: { write(msg: string): void };
+  /** `statement_timeout` (ms) query baca berat; default `READ_STATEMENT_TIMEOUT_MS` (test memakai nilai kecil). */
+  readStatementTimeoutMs?: number;
 }
 
 export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -79,7 +81,10 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await invitationRoutes(api, config);
       await tokenRoutes(api);
       await ingestRoutes(api, config);
-      await readRoutes(api);
+      await readRoutes(
+        api,
+        opts.readStatementTimeoutMs !== undefined ? { statementTimeoutMs: opts.readStatementTimeoutMs } : {},
+      );
     },
     { prefix: "/api/v1" },
   );

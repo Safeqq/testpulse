@@ -2,6 +2,7 @@ import {
   branchDto,
   createdTokenDto,
   flakyTestDto,
+  ingestResultDto,
   runDetailDto,
   runsPageDto,
   statsDto,
@@ -9,9 +10,10 @@ import {
   type ProjectDto,
   type ResultStatus,
 } from "@testpulse/shared";
-import { and, count, desc, eq, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import { beforeAll, describe, expect, it } from "vitest";
+import pg from "pg";
+import { beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { runs, testCases, testResults } from "../../src/db/schema.js";
 import { flakyScore, FLAKY_WINDOW } from "../../src/modules/results/domain/flaky.js";
@@ -570,6 +572,122 @@ describe("API baca hasil test & hapus run", () => {
       await seedMatrix(fx, { b: [G, L] }, { branch: "dev", start: 10 });
       expect((await fetchFlaky(fx)).map((t) => t.name)).toEqual(["b"]);
       expect((await fetchFlaky(fx, "?branch=main")).map((t) => t.name)).toEqual(["a"]);
+    });
+
+    describe("cache (Ruling F-I1)", () => {
+      /**
+       * Mengubah status hasil test langsung di DB tanpa menyentuh `runs`: kunci cache (run terbaru, jumlah run) tetap
+       * sama, jadi respons berikutnya hanya berubah bila daftar flaky benar-benar dihitung ulang.
+       */
+      const setStatus = (runIds: string[], status: ResultStatus) =>
+        app.db.update(testResults).set({ status }).where(inArray(testResults.runId, runIds));
+
+      it("cache hit tanpa hitung ulang; upload baru dan hapus run membatalkan cache; otorisasi tetap dicek", async () => {
+        const fx = await setup();
+        const failing: string[] = [];
+        for (let i = 0; i < 4; i += 1) {
+          const runId = await seedRun(fx, { createdAt: minutes(i), results: [result("x", i % 2 === 1 ? "failed" : "passed")] });
+          if (i % 2 === 1) failing.push(runId);
+        }
+        const first = await fetchFlaky(fx);
+        expect(first.map((t) => [t.name, t.score])).toEqual([["x", 75]]);
+
+        // Cache hit: data hasil berubah tetapi kunci tidak → body identik (tidak dihitung ulang).
+        await setStatus(failing, "passed");
+        expect(await fetchFlaky(fx)).toEqual(first);
+        expect(await fetchFlaky(fx, "?branch=main")).toEqual(first);
+
+        // Cache tidak pernah melewati otorisasi: anonim tetap 404 pada project privat.
+        const anon = await get(`/projects/${fx.project.slug}/flaky`);
+        expect(anon.statusCode).toBe(404);
+
+        // Upload baru lewat endpoint ingest (run terbaru berubah) → dihitung ulang: semua lulus, tidak ada flaky.
+        const tokenRes = await app.inject({
+          method: "POST",
+          url: `/api/v1/projects/${fx.project.slug}/tokens`,
+          headers: { cookie: fx.admin.cookie },
+          payload: { name: "cache" },
+        });
+        const { token } = createdTokenDto.parse(tokenRes.json());
+        const upload = await app.inject({
+          method: "POST",
+          url: `/api/v1/projects/${fx.project.slug}/runs?branch=main`,
+          headers: { authorization: `Bearer ${token}`, "content-type": "application/xml" },
+          payload: '<testsuite name="suite"><testcase name="x"/></testsuite>',
+        });
+        expect(upload.statusCode).toBe(201);
+        const uploadedRunId = ingestResultDto.parse(upload.json()).runId;
+        expect(await fetchFlaky(fx)).toEqual([]);
+
+        // Kembalikan pola gagal: kunci tetap → masih hasil cache (kosong).
+        await setStatus(failing, "failed");
+        expect(await fetchFlaky(fx)).toEqual([]);
+
+        // Hapus run (jumlah run dan run terbaru berubah) → dihitung ulang: pola L G L G kembali.
+        const removed = await del(`/projects/${fx.project.slug}/runs/${uploadedRunId}`, fx.admin.cookie);
+        expect(removed.statusCode).toBe(204);
+        expect(await fetchFlaky(fx)).toEqual(first);
+      });
+
+      it("menghapus run lama (bukan yang terbaru) juga membatalkan cache", async () => {
+        const fx = await setup();
+        const runIds: string[] = [];
+        for (let i = 0; i < 4; i += 1) {
+          runIds.push(await seedRun(fx, { createdAt: minutes(i), results: [result("x", i % 2 === 1 ? "failed" : "passed")] }));
+        }
+        expect((await fetchFlaky(fx)).map((t) => t.score)).toEqual([75]);
+        const [oldest] = runIds;
+        if (!oldest) throw new Error("run tidak ada");
+        expect((await del(`/projects/${fx.project.slug}/runs/${oldest}`, fx.admin.cookie)).statusCode).toBe(204);
+        // Sisa G L G: dua pergantian dari tiga hasil → round(100 × 2 / 3) = 67.
+        expect((await fetchFlaky(fx)).map((t) => t.score)).toEqual([67]);
+      });
+
+      it("cache terpisah per branch", async () => {
+        const fx = await setup();
+        await seedMatrix(fx, { a: [L, G, L, G] }, { branch: "main", start: 0 });
+        await seedMatrix(fx, { b: [G, L] }, { branch: "dev", start: 10 });
+        expect((await fetchFlaky(fx, "?branch=main")).map((t) => t.name)).toEqual(["a"]);
+        expect((await fetchFlaky(fx, "?branch=dev")).map((t) => t.name)).toEqual(["b"]);
+        expect((await fetchFlaky(fx, "?branch=main")).map((t) => t.name)).toEqual(["a"]);
+      });
+    });
+  });
+
+  describe("batas waktu query baca (statement_timeout)", () => {
+    it("query melewati batas → 503 INTERNAL_ERROR pada flaky, stats, detail run, riwayat; tanpa hambatan → 200", async () => {
+      const slowApp = await createTestApp({}, { readStatementTimeoutMs: 200 });
+      const fx = await setup();
+      const runId = await seedRun(fx, { createdAt: minutes(0) });
+      const caseId = await testCaseId(fx.project.id, "a");
+      const base = `/api/v1/projects/${fx.project.slug}`;
+      const urls = [
+        `${base}/flaky`,
+        `${base}/stats?branch=main`,
+        `${base}/runs/${runId}`,
+        `${base}/tests/${caseId}/history?branch=main`,
+      ];
+      const request = (url: string) => slowApp.inject({ method: "GET", url, headers: { cookie: fx.admin.cookie } });
+
+      // Koneksi lain mengunci tabel `runs` sehingga query baca menunggu sampai statement_timeout membatalkannya.
+      const locker = new pg.Client({ connectionString: inject("databaseUrl") });
+      await locker.connect();
+      try {
+        await locker.query("begin");
+        await locker.query("lock table runs in access exclusive mode");
+        for (const url of urls) {
+          const res = await request(url);
+          expect({ url, status: res.statusCode }).toEqual({ url, status: 503 });
+          expect(res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: expect.any(String) } });
+        }
+      } finally {
+        await locker.query("rollback");
+        await locker.end();
+      }
+
+      for (const url of urls) {
+        expect({ url, status: (await request(url)).statusCode }).toEqual({ url, status: 200 });
+      }
     });
   });
 

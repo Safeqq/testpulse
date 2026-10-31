@@ -1,5 +1,6 @@
 import type { ApiErrorBody, ErrorCode } from "@testpulse/shared";
 import type { FastifyError, FastifyInstance } from "fastify";
+import { isStatementTimeout } from "../db/client.js";
 
 export class AppError extends Error {
   constructor(
@@ -40,6 +41,13 @@ export function registerErrorHandlers(app: FastifyInstance): void {
         return reply.status(413).send(body("PAYLOAD_TOO_LARGE", "Ukuran body melebihi batas yang diizinkan"));
       }
       return reply.status(400).send(body("VALIDATION_ERROR", "Permintaan tidak valid"));
+    }
+    // Query baca dibatalkan `statement_timeout` (withStatementTimeout): beban sementara, bukan bug → 503, boleh dicoba lagi.
+    if (isStatementTimeout(error)) {
+      request.log.warn({ err: error }, "query dibatalkan statement_timeout");
+      return reply
+        .status(503)
+        .send(body("INTERNAL_ERROR", "Server sedang sibuk memproses data ini, coba lagi sebentar lagi"));
     }
     request.log.error({ err: error }, "unhandled error");
     return reply.status(500).send(body("INTERNAL_ERROR", "Terjadi kesalahan pada server"));

@@ -112,6 +112,32 @@ describe("parseJUnit - durasi", () => {
     expect(report.durationMs).toBe(1000);
   });
 
+  it.each(["1.", ".5", "0012.500", "1".repeat(32)])("time valid %j diterima", (time) => {
+    expect(parseJUnit(suite(`<testcase name="a" time="${time}"/>`)).results[0]?.durationMs).toBe(
+      Math.min(2_147_483_647, Math.round(Number(time) * 1000)),
+    );
+  });
+
+  it.each(["1".repeat(33), "1.5.5", "..5", "."])("time invalid %j (termasuk > 32 karakter) -> 0", (time) => {
+    expect(parseJUnit(suite(`<testcase name="a" time="${time}"/>`)).results[0]?.durationMs).toBe(0);
+  });
+
+  it.each([
+    ["testcase", (v: string) => suite(`<testcase name="a" time="${v}"/>`)],
+    ["root", (v: string) => suite('<testcase name="a"/>', `name="S" time="${v}"`)],
+  ])("time %s 1.000.000 digit + 'x' di-parse dalam < 100 ms (tanpa backtracking kuadratik)", (_where, make) => {
+    const digits = "1".repeat(1_000_000);
+    // Pemanasan JIT parser XML dengan dokumen berukuran sama yang tidak menyentuh `time`; yang diukur hanya
+    // selisih akibat nilai `time` jahat (pola lama: ~0,5 s untuk 20.000 digit, berjam-jam untuk 1 juta).
+    parseJUnit(make(digits).replace("time=", "data="));
+    const started = performance.now();
+    const report = parseJUnit(make(`${digits}x`));
+    const elapsed = performance.now() - started;
+    expect(report.results[0]?.durationMs).toBe(0);
+    expect(report.durationMs).toBe(0);
+    expect(elapsed).toBeLessThan(100);
+  });
+
   it("durasi run dihitung dari hasil setelah penggabungan", () => {
     const report = parseJUnit(suite('<testcase name="a" time="1"><failure/></testcase><testcase name="a" time="2"/>'));
     expect(report.durationMs).toBe(3000);
@@ -275,6 +301,16 @@ describe("parseJUnit - penolakan", () => {
     expect(report.results[0]?.name).toBe("a\u{1F600}\u{10FFFF}�");
   });
 
+  it.each([
+    ["tanpa atribut name", '<testcase classname="C"/>'],
+    ["name kosong", '<testcase name=""/>'],
+    ["name hanya spasi", '<testcase name="   "/>'],
+    ["elemen kosong tanpa atribut", "<testcase/>"],
+    ["salah satu dari beberapa testcase", '<testcase name="ok"/><testcase name=" "/>'],
+  ])("menolak testcase tanpa name yang tidak kosong: %s", (_name, cases) => {
+    expect(() => parseJUnit(suite(cases))).toThrow(InvalidReportError);
+  });
+
   it("menolak root bukan testsuites/testsuite", () => {
     expect(() => parseJUnit("<html><body><testcase name='a'/></body></html>")).toThrow(InvalidReportError);
   });
@@ -370,8 +406,9 @@ describe("parseJUnit - fix round 1", () => {
     expect(report.durationMs).toBe(2147483647);
   });
 
-  it("time sangat besar (Infinity setelah Number) tetap dijepit", () => {
-    expect(parseJUnit(suite(`<testcase name="a" time="${"9".repeat(400)}"/>`)).results[0]?.durationMs).toBe(2147483647);
+  it("time sangat besar (32 digit, masih valid) tetap dijepit; lebih dari 32 karakter -> 0", () => {
+    expect(parseJUnit(suite(`<testcase name="a" time="${"9".repeat(32)}"/>`)).results[0]?.durationMs).toBe(2147483647);
+    expect(parseJUnit(suite(`<testcase name="a" time="${"9".repeat(400)}"/>`)).results[0]?.durationMs).toBe(0);
   });
 
   it("jumlah durasi gabungan dan durasi run dijepit", () => {

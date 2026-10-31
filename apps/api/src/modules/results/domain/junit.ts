@@ -65,7 +65,14 @@ const DOCTYPE = /<!doctype/i;
  * surrogate tunggal dinilai sebagai code point D800–DFFF (tidak ada di himpunan), sedangkan pasangan sah lolos.
  */
 const NON_XML_CHAR = /[^\t\n\r -퟿-�\u{10000}-\u{10FFFF}]/u;
-const DURATION = /^(?:\d+\.?\d*|\.\d+)$/;
+/**
+ * Angka desimal non-negatif (`1`, `1.`, `1.5`, `.5`). Bagian pecahan dibungkus grup opsional agar tiap digit hanya
+ * bisa dicocokkan dengan satu cara (linear); pola lama `\d+\.?\d*` membagi deret digit di antara dua kuantifier dan
+ * backtracking kuadratik pada nilai panjang yang tidak cocok (ReDoS). Panjang juga dibatasi lebih dulu.
+ */
+const DURATION = /^(?:\d+(?:\.\d*)?|\.\d+)$/;
+/** Nilai `time` yang lebih panjang dari ini tidak masuk akal sebagai durasi dan langsung dianggap tidak valid. */
+const MAX_DURATION_LENGTH = 32;
 const NAMED_ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'" };
 
 /** Production `Char` XML 1.0: referensi karakter di luar himpunan ini dibiarkan literal. */
@@ -147,8 +154,12 @@ function clampMs(ms: number): number {
   return Math.min(MAX_DURATION_MS, ms);
 }
 
+function isDuration(raw: string | null): raw is string {
+  return raw !== null && raw.length <= MAX_DURATION_LENGTH && DURATION.test(raw);
+}
+
 function parseDurationMs(raw: string | null): number {
-  if (raw === null || !DURATION.test(raw)) return 0;
+  if (!isDuration(raw)) return 0;
   return clampMs(Math.round(Number(raw) * 1000));
 }
 
@@ -229,8 +240,10 @@ export function parseJUnit(xml: string): ParsedReport {
       testcaseCount += 1;
       if (testcaseCount > MAX_TESTCASES) throw new InvalidReportError(`Laporan memuat lebih dari ${MAX_TESTCASES} testcase`);
 
+      const rawName = attr(testcase, "name");
+      if (rawName === null) throw new InvalidReportError("Setiap testcase wajib memiliki atribut name yang tidak kosong");
       const suite = truncateChars(attr(testcase, "classname") ?? suiteName, MAX_NAME_LENGTH);
-      const name = truncateChars(attr(testcase, "name") ?? "", MAX_NAME_LENGTH);
+      const name = truncateChars(rawName, MAX_NAME_LENGTH);
       const key = `${suite}\u0000${name}`;
       const group = groups.get(key) ?? { suite, name, occurrences: [] };
       group.occurrences.push(readOccurrence(testcase));
@@ -247,7 +260,7 @@ export function parseJUnit(xml: string): ParsedReport {
   const results = [...groups.values()].map((g) => merge(g.suite, g.name, g.occurrences));
   const summedMs = clampMs(results.reduce((sum, r) => sum + r.durationMs, 0));
   const rootTime = attr(root, "time");
-  const durationMs = rootTime !== null && DURATION.test(rootTime) ? parseDurationMs(rootTime) : summedMs;
+  const durationMs = isDuration(rootTime) ? parseDurationMs(rootTime) : summedMs;
 
   return { durationMs, results };
 }

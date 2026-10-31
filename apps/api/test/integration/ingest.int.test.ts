@@ -401,6 +401,37 @@ describe("POST /api/v1/projects/:slug/runs (ingest)", () => {
       expect(run?.n).toBe(0);
     });
 
+    it("testcase tanpa name / name kosong → 422 INVALID_REPORT, tidak ada run tersimpan", async () => {
+      const { project, token } = await setup();
+      const bodies = [junit([{ name: "" }]), junit([{ name: "ok" }, { name: "   " }]), `<testsuite name="s"><testcase/></testsuite>`];
+      for (const body of bodies) {
+        const res = await upload(project.slug, { token: token.token, body });
+        expect(res.statusCode).toBe(422);
+        expect(res.json()).toEqual({ error: { code: "INVALID_REPORT", message: expect.any(String) } });
+      }
+      const [run] = await app.db.select({ n: count() }).from(runs).where(eq(runs.projectId, project.id));
+      expect(run?.n).toBe(0);
+    });
+
+    it("time 1.000.000 digit + 'x' (testcase dan root) → cepat 201 dengan durasi 0 (bukan ReDoS)", async () => {
+      const { project, token } = await setup();
+      const evil = `${"1".repeat(1_000_000)}x`;
+      const body = `<testsuite name="s" time="${evil}"><testcase name="a" time="${evil}"/></testsuite>`;
+      const started = performance.now();
+      const res = await upload(project.slug, { token: token.token, body });
+      const elapsed = performance.now() - started;
+      expect(res.statusCode).toBe(201);
+      expect(elapsed).toBeLessThan(2000);
+      const { runId } = ingestResultDto.parse(res.json());
+      const [run] = await app.db.select({ durationMs: runs.durationMs }).from(runs).where(eq(runs.id, runId));
+      expect(run?.durationMs).toBe(0);
+      const [result] = await app.db
+        .select({ durationMs: testResults.durationMs })
+        .from(testResults)
+        .where(eq(testResults.runId, runId));
+      expect(result?.durationMs).toBe(0);
+    });
+
     it("branch kosong / tidak ada / tidak valid → 400 dengan fields.branch", async () => {
       const { project, token } = await setup();
       for (const query of ["branch=", "", "branch=a%20b", "branch=main&branch=dev"]) {

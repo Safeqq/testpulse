@@ -3,6 +3,7 @@ packages:
   - "packages/*"
   - "tests"
 
-# allure CLI (dev tool) pulls a dompurify with high/critical advisories; force the patched release.
+# allure CLI (dev tool) pulls a dompurify and a follow-redirects (via axios) with high/critical advisories; force the patched releases.
 overrides:
   dompurify: ">=3.4.17"
+  follow-redirects: ">=1.16.2"

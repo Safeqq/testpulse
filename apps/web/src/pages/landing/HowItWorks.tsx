@@ -8,7 +8,6 @@ const STEPS = [
   {
     title: "Hubungkan CI dengan reporter",
     description: "Pasang reporter di pipeline CI agar hasil automated test terkirim otomatis setiap run.",
-    note: "Tahap 2",
   },
   {
     title: "Pantau tren & perbaiki test flaky",
@@ -29,10 +28,7 @@ export function HowItWorks() {
             >
               {index + 1}
             </span>
-            <h3 className="mt-4 text-base font-semibold tracking-tight">
-              {step.title}
-              {"note" in step ? <span className="ml-2 text-sm font-normal text-muted-foreground">({step.note})</span> : null}
-            </h3>
+            <h3 className="mt-4 text-base font-semibold tracking-tight">{step.title}</h3>
             <p className="mt-2 text-sm text-muted-foreground">{step.description}</p>
           </li>
         ))}

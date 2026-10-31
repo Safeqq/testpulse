@@ -27,6 +27,10 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # actions: read lets the dogfooding step download the artifacts of the CI run that triggered this deploy.
+    permissions:
+      contents: read
+      actions: read
     env:
       DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       PRODUCTION_URL: ${{ secrets.PRODUCTION_URL }}
@@ -106,6 +110,62 @@ jobs:
           SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
           SMOKE_PUBLIC_SLUG: ${{ secrets.SMOKE_PUBLIC_SLUG }}
         run: pnpm exec playwright test --project smoke
+
+      # Dogfooding (spec Tahap 2 section 10): after the smoke test passed, the JUnit reports of the CI run that triggered
+      # this deploy are uploaded to the public production project "testpulse". It never fails the deploy: the secret is
+      # optional (see docs/deploy.md) and every dogfooding step has continue-on-error. The token only ever reaches the
+      # reporter through the environment; it is not part of the required-secrets check above.
+      - name: Check dogfooding prerequisites
+        id: dogfood
+        env:
+          TESTPULSE_TOKEN: ${{ secrets.TESTPULSE_TOKEN }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ -z "$TESTPULSE_TOKEN" ]; then
+            echo "::warning::GitHub secret TESTPULSE_TOKEN is not set; skipping the upload of CI results to TestPulse (see docs/deploy.md)"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$CI_RUN_ID" ]; then
+            echo "::warning::No triggering CI run (manual dispatch); skipping the upload of CI results to TestPulse"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download CI test results
+        id: dogfood-download
+        if: ${{ steps.dogfood.outputs.enabled == 'true' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: allure-results-*
+          merge-multiple: true
+          path: ci-results
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Warn when CI test results could not be downloaded
+        if: ${{ steps.dogfood-download.outcome == 'failure' }}
+        run: echo "::warning::Could not download the artifacts of the triggering CI run (expired after 7 days, or missing); skipping the upload of CI results to TestPulse"
+
+      # Only the JUnit XML files go up (junit-*.xml); the rest of allure-results is Allure's own JSON.
+      - name: Upload CI test results to TestPulse
+        if: ${{ steps.dogfood.outputs.enabled == 'true' && steps.dogfood-download.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          TESTPULSE_TOKEN: ${{ secrets.TESTPULSE_TOKEN }}
+          CI_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          CI_RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
+        run: |
+          pnpm --filter @testpulse/reporter build
+          node packages/reporter/dist/cli.js \
+            --url "$PRODUCTION_URL" \
+            --project testpulse \
+            --branch main \
+            --commit "$DEPLOY_SHA" \
+            --ci-url "$CI_RUN_URL" \
+            --name "CI #${CI_RUN_NUMBER}" \
+            'ci-results/junit-*.xml' \
+            || { code=$?; echo "::warning::Uploading CI results to TestPulse failed (reporter exit code ${code}); the deploy itself is unaffected"; exit "$code"; }
 
       - name: Upload Playwright report and traces
         if: ${{ failure() }}

@@ -14,9 +14,8 @@ const QUALITY_LINKS: Record<QualityLink, string> = {
   strategy: "https://github.com/Safeqq/testpulse/blob/main/docs/TEST_STRATEGY.md",
 };
 
-const AVAILABLE: FeatureSlug[] = ["projects", "team", "invitations"];
+const AVAILABLE: FeatureSlug[] = ["projects", "team", "invitations", "dashboard"];
 const SOON: Array<{ slug: FeatureSlug; stage: string }> = [
-  { slug: "dashboard", stage: "Tahap 2" },
   { slug: "bug-tracker", stage: "Tahap 3" },
   { slug: "manual-tests", stage: "Tahap 4" },
   { slug: "crowdtesting", stage: "Tahap 5" },
@@ -65,11 +64,11 @@ test.describe("Landing page", () => {
     }
   });
 
-  test("badge Segera hanya pada fitur Tahap 2 sampai 5", async ({ page }) => {
+  test("badge Segera hanya pada fitur Tahap 3 sampai 5; dashboard Tahap 2 sudah tersedia", async ({ page }) => {
     const landing = new LandingPage(page);
     await landing.goto();
 
-    await expect(landing.soonBadges).toHaveCount(4);
+    await expect(landing.soonBadges).toHaveCount(3);
     for (const { slug, stage } of SOON) {
       const card = landing.feature(slug);
       await expect(card.getByTestId("feature-soon-badge")).toHaveText("Segera");
@@ -78,6 +77,7 @@ test.describe("Landing page", () => {
     for (const slug of AVAILABLE) {
       await expect(landing.feature(slug)).toBeVisible();
       await expect(landing.feature(slug).getByTestId("feature-soon-badge")).toHaveCount(0);
+      await expect(landing.feature(slug)).toContainText("Tersedia");
     }
   });
 
@@ -88,6 +88,8 @@ test.describe("Landing page", () => {
     for (const stage of ["Tahap 1", "Tahap 2", "Tahap 3", "Tahap 4", "Tahap 5", "Tahap 6"]) {
       await expect(landing.roadmap).toContainText(stage);
     }
+    await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 2" })).toContainText("Live");
+    await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 3" })).toContainText("Berikutnya");
     await expect(landing.footer).toContainText("TestPulse");
     await expect(landing.footer).not.toContainText("Dibuat oleh");
     await expect(landing.footer.getByRole("link", { name: "GitHub" })).toHaveAttribute(

@@ -11,8 +11,24 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["allure-playwright", { resultsDir: "allure-results" }],
-    // CI uploads this (with traces) as an artifact when a job fails.
-    ...(process.env.CI ? ([["html", { open: "never" }]] as const) : []),
+    ...(process.env.CI
+      ? ([
+          // CI uploads this (with traces) as an artifact when a job fails.
+          ["html", { open: "never" }],
+          // JUnit for dogfooding (deploy.yml uploads allure-results/junit-*.xml to TestPulse itself). Each CI step names its
+          // file through JUNIT_NAME so the API step and the E2E shards do not overwrite each other. includeRetries emits the
+          // Surefire flakyFailure/rerunFailure elements (retry => flaky); includeProjectInTestName keeps the three browsers
+          // apart, otherwise the same test in chromium and firefox would merge into one result with "retries".
+          [
+            "junit",
+            {
+              outputFile: `allure-results/junit-${process.env.JUNIT_NAME ?? "playwright"}.xml`,
+              includeProjectInTestName: true,
+              includeRetries: true,
+            },
+          ],
+        ] as const)
+      : []),
   ],
   use: {
     baseURL,

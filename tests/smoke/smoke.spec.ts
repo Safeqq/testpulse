@@ -10,11 +10,15 @@ import { expect, test } from "../support/fixtures.js";
  * Variabel lingkungan (GitHub Secrets pada deploy.yml):
  *   SMOKE_EMAIL, SMOKE_PASSWORD  akun khusus smoke yang sudah didaftarkan di production
  *   SMOKE_PUBLIC_SLUG            slug project publik yang sudah ada di production
+ * Dashboard dogfooding selalu dibaca dari project `testpulse` (DOGFOOD_SLUG): itu project tujuan upload deploy.yml.
  * Di CI variabel yang kurang membuat test GAGAL (konfigurasi deploy rusak); di lokal test di-skip.
  *
  * `test`/`expect` berasal dari fixtures bersama agar guard CSP ikut terpasang: smoke production ikut gagal bila
  * CSP Cloudflare sungguhan diblokir. Fixture `api` (pendaftaran user) sengaja TIDAK dipakai: production hanya dibaca.
  */
+
+/** Project publik tujuan dogfooding: `deploy.yml` mengunggah hasil CI TestPulse sendiri ke sini. */
+const DOGFOOD_SLUG = "testpulse";
 
 interface SmokeEnv {
   email: string;
@@ -75,5 +79,22 @@ test.describe("Smoke production", { tag: "@smoke" }, () => {
 
     await expect(project.publicBadge).toBeVisible();
     await expect(new AppShell(page).currentUser).toHaveCount(0);
+  });
+
+  test("dashboard project testpulse menampilkan hasil run dari CI", async ({ page }) => {
+    const project = new ProjectPage(page);
+    await project.goto(DOGFOOD_SLUG);
+    await expect(project.notFound).toHaveCount(0);
+
+    // Menunggu dashboard atau keadaan kosong; keduanya hanya tampil setelah hasil dimuat.
+    await expect(project.dashboardBranch.or(project.emptyResults)).toBeVisible();
+    test.skip(
+      await project.emptyResults.isVisible(),
+      `Project ${DOGFOOD_SLUG} belum punya run: dogfooding belum berjalan (secret TESTPULSE_TOKEN belum diisi atau belum ada deploy sesudahnya)`,
+    );
+
+    await project.expectDashboard();
+    expect(await project.runItems.count()).toBeGreaterThanOrEqual(1);
+    await expect(project.statTotal).toBeVisible();
   });
 });

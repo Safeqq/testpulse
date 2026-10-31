@@ -1,6 +1,6 @@
-# Strategi Testing TestPulse (Tahap 1)
+# Strategi Testing TestPulse (Tahap 1 dan 2)
 
-Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**, termasuk apa yang sengaja tidak diuji. Daftar skenario per fitur ada di [test-plans/tahap-1.md](./test-plans/tahap-1.md); keputusan arsitektur yang memengaruhi strategi ini ada di [adr/](./adr/).
+Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**, termasuk apa yang sengaja tidak diuji. Daftar skenario per fitur ada di [test-plans/tahap-1.md](./test-plans/tahap-1.md) dan [test-plans/tahap-2.md](./test-plans/tahap-2.md); keputusan arsitektur yang memengaruhi strategi ini ada di [adr/](./adr/).
 
 ## 1. Prinsip
 
@@ -14,16 +14,17 @@ Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**,
 
 | Lapisan | Tool | Lokasi | Yang dibuktikan |
 |---|---|---|---|
-| Unit | Vitest | `packages/shared/src`, `apps/api/src`, `apps/web/src` (`*.test.ts`) | Aturan domain murni, schema Zod, hashing, penyensoran log, pemilihan kunci rate limit, logika tema dan `theme-init.js` di web. Gate coverage >= 80% untuk `src/modules/**/domain` |
-| Integration | Vitest + Testcontainers (Postgres asli) | `apps/api/test/integration` | Migrasi, repository, dan seluruh rute lewat `fastify.inject` dengan DB asli, termasuk uji paralel terkunci untuk aturan admin terakhir |
-| API | Playwright `request` | `tests/api` | Kontrak HTTP dari luar proses: alur auth, validasi negatif dan boundary, dan **matriks otorisasi yang dibangkitkan dari tabel data** (`tests/api/authorization-matrix.ts`) |
-| Contract | Pact JS | `apps/web/test/contract` (consumer), `apps/api/test/contract` (provider) | Web dan API sepakat soal bentuk request/response di setiap endpoint tahap 1; perubahan sepihak membuat verifikasi provider gagal |
-| E2E | Playwright (POM, custom fixtures; Chromium, Firefox, WebKit) | `tests/e2e`, `tests/pages` | Alur pengguna lintas halaman: daftar, buat project, undang, terima, hak akses per role, admin terakhir, ubah visibilitas; landing page, tema, dan responsif HP (lihat bagian 2.1) |
-| Accessibility | `@axe-core/playwright` | dipanggil dari `tests/e2e` lewat `tests/support/a11y.ts` | Landing dan halaman utama (masuk/daftar, daftar dan buat project, ringkasan project, pengaturan, pratinjau undangan) bebas pelanggaran `serious`/`critical` **di tema terang dan gelap** (bagian 2.1) |
+| Unit | Vitest, `node --test` | `packages/shared/src`, `apps/api/src`, `apps/web/src`, `packages/reporter/src` (`*.test.ts`), `tests/unit` | Aturan domain murni, schema Zod, hashing, penyensoran log, pemilihan kunci rate limit, logika tema dan `theme-init.js` di web; **Tahap 2:** parser JUnit, `flakyScore`, cursor pagination, reporter CLI (argumen, glob, penggabungan, batas ukuran, exit code), format dan daftar bercursor di web, dan helper `buildJUnit` untuk test. Gate coverage >= 80% untuk `src/modules/**/domain` |
+| Integration | Vitest + Testcontainers (Postgres asli) | `apps/api/test/integration` | Migrasi, repository, dan seluruh rute lewat `fastify.inject` dengan DB asli, termasuk uji paralel terkunci untuk aturan admin terakhir; **Tahap 2:** upload (token, 400/413/422/429, upload paralel, retensi 200 run), API baca, CRUD token, hapus run, dan paritas SQL flaky dengan `flakyScore` |
+| API | Playwright `request` | `tests/api` | Kontrak HTTP dari luar proses: alur auth, validasi negatif dan boundary, dan **matriks otorisasi yang dibangkitkan dari tabel data** (`tests/api/authorization-matrix.ts`, diperluas Tahap 2 dengan baris hasil test dan token); **Tahap 2:** upload end-to-end lewat proxy nginx, pagination, dan token CI yang tidak berlaku di endpoint lain |
+| Contract | Pact JS | `apps/web/test/contract` dan `packages/reporter/test/contract` (consumer), `apps/api/test/contract` (provider) | Web dan API sepakat soal bentuk request/response di setiap endpoint; **reporter adalah consumer kedua** untuk `POST runs`; perubahan sepihak membuat verifikasi provider gagal |
+| E2E | Playwright (POM, custom fixtures; Chromium, Firefox, WebKit) | `tests/e2e`, `tests/pages` | Alur pengguna lintas halaman: daftar, buat project, undang, terima, hak akses per role, admin terakhir, ubah visibilitas; landing page, tema, dan responsif HP (lihat bagian 2.1); **Tahap 2:** token CI, dashboard, daftar run, detail run, flaky, dan riwayat test (lihat bagian 2.2) |
+| Accessibility | `@axe-core/playwright` | dipanggil dari `tests/e2e` lewat `tests/support/a11y.ts` | Landing dan halaman utama (masuk/daftar, daftar dan buat project, ringkasan project dan dashboard, daftar run, detail run, flaky, riwayat test, pengaturan termasuk Token CI, pratinjau undangan) bebas pelanggaran `serious`/`critical` **di tema terang dan gelap** (bagian 2.1) |
 | Gate CSP | listener `securitypolicyviolation` + pesan console, dipasang di fixture Playwright | `tests/support/csp.ts`, `tests/support/fixtures.ts` | Tidak ada satu pun pelanggaran Content Security Policy selama test E2E (bagian 2.1) |
 | Proxy dan header | Vitest | `apps/web/test/functions` | Pages Function meneruskan request dengan benar; header keamanan nginx dan Cloudflare `_headers` identik |
-| Security | OWASP ZAP baseline, `pnpm audit`, Dependabot | job `zap` dan `lint-typecheck` di [`ci.yml`](../.github/workflows/ci.yml); gate di `tests/security/check-zap-report.mjs` | 0 temuan High dari ZAP, 0 dependensi high/critical |
-| Smoke production | Playwright, tag `@smoke` | `tests/smoke` | Setelah deploy: health, halaman masuk, login akun smoke, project publik terbuka tanpa login. Hanya membaca |
+| Performa | k6 (image `grafana/k6`, dipin) | `tests/perf`, job `perf` di [`ci.yml`](../.github/workflows/ci.yml) | Gate p95 upload dan baca, dan error < 1%, terhadap stack Docker (bagian 5.1) |
+| Security | OWASP ZAP baseline, `pnpm audit`, Dependabot | job `zap` dan `lint-typecheck` di [`ci.yml`](../.github/workflows/ci.yml); gate di `tests/security/check-zap-report.mjs` | 0 temuan High dari ZAP, 0 dependensi high/critical; penolakan `<!DOCTYPE` (XXE) diuji di unit dan integration |
+| Smoke production | Playwright, tag `@smoke` | `tests/smoke` | Setelah deploy: health, halaman masuk, login akun smoke, project publik terbuka tanpa login, dan dashboard `/p/testpulse` menampilkan run dari dogfooding (dilewati dengan pesan bila belum ada run). Hanya membaca |
 
 ### Kenapa tiap lapisan ada
 
@@ -35,6 +36,7 @@ Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**,
 - **Accessibility:** semua form punya label terhubung dan bisa dioperasikan keyboard; axe menjaga hal itu tidak mundur.
 - **Proxy dan header:** dua komponen yang tidak bisa dijalankan sama persis di CI (Cloudflare) tetap bisa diuji sebagai unit: logika proxy sebagai fungsi, dan kesetaraan header sebagai perbandingan berkas.
 - **Security:** pemindaian otomatis murah, menangkap kelas masalah umum (header, kerentanan dependensi). Ini baseline, bukan pengganti pemodelan ancaman.
+- **Performa (k6):** ingest sinkron (ADR 0004) memegang request dan transaksi selama parsing; tanpa gate, laporan besar bisa pelan-pelan merusak latensi tanpa ada test fungsional yang gagal. Dijalankan terhadap stack Docker supaya angkanya milik kode kita, bukan free tier.
 - **Smoke:** satu-satunya lapisan yang menyentuh production sungguhan, sengaja kecil dan read-only supaya tidak mengotori data.
 
 ### 2.1 Tema, gate CSP, dan landing page
@@ -55,7 +57,37 @@ Tampilan baru (Tailwind CSS v4 + shadcn/ui, dua tema, dan landing page; lihat [A
 
 **Test tema** ([`theme.spec.ts`](../tests/e2e/theme.spec.ts)): `"system"` mengikuti `colorScheme` yang diemulasikan, termasuk saat emulasi berubah tanpa reload; pilihan Terang/Gelap lewat `ThemeToggle` tersimpan setelah reload dan menang atas sistem; tanpa kedip (kelas `dark` sudah terpasang sebelum bundle React dimuat, karena `theme-init.js` dimuat sinkron); `localStorage` yang melempar error atau nilai `tp-theme` tak dikenal diperlakukan sebagai sistem; `<meta name="theme-color">` mengikuti tema; pemilih tema dapat dioperasikan dengan keyboard; dan perilaku menu mobile pada viewport 375x812 (tanpa scroll horizontal).
 
-**Test landing** ([`landing.spec.ts`](../tests/e2e/landing.spec.ts)): semua bagian tampil untuk anonim di `/` tanpa dialihkan; tombol Daftar dan Lihat demo mengarah ke `/register` dan `/p/testpulse`; link Allure/CI/Source/Strategi memiliki `href` persis dan `target="_blank"` dengan `rel` aman; badge "Segera" hanya pada fitur Tahap 2 sampai 5; pengguna yang masuk melihat "Project saya" (bukan landing); status auth memuat dan galat sesi (503) tidak merender landing dan tidak mengalihkan; logout dari `/` berakhir di `/login`; tanpa scroll horizontal di 375 px.
+**Test landing** ([`landing.spec.ts`](../tests/e2e/landing.spec.ts)): semua bagian tampil untuk anonim di `/` tanpa dialihkan; tombol Daftar dan Lihat demo mengarah ke `/register` dan `/p/testpulse`; link Allure/CI/Source/Strategi memiliki `href` persis dan `target="_blank"` dengan `rel` aman; kartu dashboard Tahap 2 "Tersedia" dan badge "Segera" hanya pada fitur Tahap 3 sampai 5 (roadmap: Tahap 2 Live, Tahap 3 Berikutnya); pengguna yang masuk melihat "Project saya" (bukan landing); status auth memuat dan galat sesi (503) tidak merender landing dan tidak mengalihkan; logout dari `/` berakhir di `/login`; tanpa scroll horizontal di 375 px.
+
+### 2.2 Tahap 2: hasil test, reporter, dan dogfooding
+
+Tahap 2 menambah fitur yang datanya berasal dari luar aplikasi (laporan JUnit dari CI). Skenario lengkap ada di [test-plans/tahap-2.md](./test-plans/tahap-2.md); keputusan di [ADR 0004](./adr/0004-ingest-sinkron-dan-definisi-flaky.md).
+
+**Data uji.** Test API dan E2E tidak memakai fixture XML statis. Helper `buildJUnit` ([`tests/support/junit.ts`](../tests/support/junit.ts), diuji di [`tests/unit`](../tests/unit)) membangun laporan dari daftar kasus (status, `retries` untuk test flaky, pesan), dan `TestApi` ([`tests/support/api-client.ts`](../tests/support/api-client.ts)) membuat token lalu mengunggah dengan Bearer, tanpa cookie. Satu test membuat project, token, dan run miliknya sendiri, sehingga tetap independen dan paralel.
+
+**Dua lapis untuk aturan inti.** Parser JUnit dan `flakyScore` adalah fungsi murni dengan unit test padat (semua contoh spec bagian 6 dan kasus tepi, dan di dalam gate coverage domain); perilaku database diuji di integration test dengan Postgres asli, termasuk **paritas**: skor dari query SQL harus sama dengan `flakyScore` pada pola hasil acak-terkendali. Upload paralel, retensi serentak, dan 20.000 testcase juga dibuktikan di database asli, bukan diasumsikan.
+
+**Reporter sebagai consumer kontrak.** Selain web, `packages/reporter` menulis pact untuk `POST runs`; provider API memverifikasi kedua pact terhadap API dan Postgres asli di job `contract` yang sama. CLI-nya diuji sebagai unit (argumen, glob, penggabungan, batas 5 MB, exit code 0/1/2) dengan `fetch` palsu, dan pernah dijalankan manual terhadap stack Docker.
+
+**UI dashboard.** Dashboard, daftar run, detail run, daftar flaky, riwayat test, dan Token CI memakai halaman yang di-lazy-load. Semuanya diuji sebagai pengunjung anonim (project publik), anggota per role, dan non-anggota (project privat tampil "tidak ditemukan"), di dua tema, di 375 px (termasuk nama branch, pesan, dan nama test yang sangat panjang), dan di bawah gate CSP. Grafik tren adalah SVG buatan sendiri dengan alternatif teks; status selalu punya ikon atau teks, tidak hanya warna. Konfirmasi hapus run berupa blok inline, bukan dialog, karena dialog dilarang oleh batasan CSP ([ADR 0003](./adr/0003-tailwind-shadcn.md)).
+
+**Dogfooding.** TestPulse menguji dirinya sendiri dan melaporkan hasilnya ke dirinya sendiri:
+
+```mermaid
+flowchart LR
+  CI["ci.yml: Vitest dan Playwright<br/>menulis junit-*.xml"] --> A["artifact allure-results-*"]
+  A --> D["deploy.yml, setelah smoke lulus:<br/>unduh artifact, ambil junit-*.xml"]
+  D --> R["testpulse-report<br/>(TESTPULSE_TOKEN dari env)"]
+  R --> P["production: project publik testpulse<br/>/p/testpulse"]
+  P --> S["smoke berikutnya:<br/>dashboard menampilkan run"]
+```
+
+- Vitest sudah menulis JUnit di setiap job (`junit-<paket>-<job>.xml`); Playwright menulisnya hanya saat `CI` diset (`junit-api.xml`, `junit-e2e-<shard>.xml`, ditentukan variabel `JUNIT_NAME` per langkah agar API dan tiap shard tidak saling menimpa). Output lokal tidak berubah.
+- Konfigurasi JUnit Playwright disengaja: `includeProjectInTestName` supaya test yang sama di Chromium, Firefox, dan WebKit menjadi tiga test, bukan satu test dengan "percobaan ulang"; `includeRetries` supaya test yang lulus setelah retry tertulis sebagai `flakyFailure` (konvensi Surefire yang dikenali parser) dan menjadi flaky di dashboard.
+- Langkah di [`deploy.yml`](../.github/workflows/deploy.yml) berjalan **setelah** smoke, `continue-on-error`, dan dilewati dengan `::warning::` bila secret `TESTPULSE_TOKEN` kosong atau deploy dipicu manual (tidak ada run CI pemicu). Token hanya melewati environment, tidak ada di daftar secret wajib, dan tidak pernah dicetak. Langkah membuat token ada di [deploy.md](./deploy.md), Langkah 12.
+- Smoke production `dashboard project testpulse menampilkan hasil run dari CI` menutup lingkarannya: lulus bila `/p/testpulse` menampilkan minimal satu run, dilewati (dengan pesan) bila belum ada. Ia sengaja tidak gagal sebelum dogfooding pertama.
+
+**Performa.** Bagian 5.1.
 
 ## 3. Risiko utama dan cakupannya
 
@@ -73,18 +105,25 @@ Tampilan baru (Tailwind CSS v4 + shadcn/ui, dua tema, dan landing page; lihat [A
 | **Drift kontrak web dan API** | UI rusak diam-diam setelah perubahan API | Pact consumer menulis kontrak, provider memverifikasinya terhadap API asli dengan state yang disiapkan; keduanya berjalan di job CI yang sama | `apps/web/test/contract`, `apps/api/test/contract` |
 | **Aksesibilitas** | Halaman tidak bisa dipakai pengguna pembaca layar atau keyboard, atau kontras gagal di salah satu tema | axe pada landing, halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan, **di tema terang dan gelap**; label terhubung di semua input | `tests/e2e`, `tests/support/a11y.ts` |
 | **Tampilan melonggarkan CSP** (komponen UI menyuntikkan `<style>` atau atribut `style`) | Production kehilangan perlindungan CSP, atau halaman rusak di bawah CSP | Gate CSP di fixture E2E: test gagal bila ada pelanggaran CSP; bermakna di stack Docker/nginx (bagian 2.1) | `tests/support/csp.ts`, `tests/e2e/csp-guard.spec.ts`, [ADR 0003](./adr/0003-tailwind-shadcn.md) |
+| **XXE dan entity expansion lewat laporan JUnit** (Tahap 2) | Pembacaan berkas lokal atau server kehabisan memori lewat dokumen berbahaya | Parser menolak `<!DOCTYPE` sebelum parsing dan tidak pernah me-resolve entity eksternal; reporter menolak dokumen yang sama sebelum mengunggah | `apps/api/src/modules/results/domain/junit.test.ts`, `apps/api/test/integration/ingest.int.test.ts`, `tests/api/results.spec.ts`, `packages/reporter/src/cli.test.ts` |
+| **Kebocoran token CI** (Tahap 2) | Siapa pun yang memegang token bisa menulis ke project | Token `tp_` + 32 byte acak, ditampilkan sekali, database hanya menyimpan SHA-256; tidak ada di daftar token, di log (`authorization` disensor), atau di keluaran reporter, bahkan bila server memantulkannya; token hanya berlaku di endpoint upload project pemiliknya, cookie tidak berlaku di endpoint itu; pencabutan langsung membuat upload 401 | `apps/api/test/integration/tokens.int.test.ts`, `ingest.int.test.ts`, `logging.int.test.ts`, `tests/api/tokens.spec.ts`, `packages/reporter/src/cli.test.ts` |
+| **Upload menghabiskan penyimpanan atau CPU** (Tahap 2) | Free tier Neon/Render penuh atau lambat | Batas 5 MB per body (413 sebelum parsing), 20.000 testcase per laporan, retensi 200 run per project (juga saat upload serentak), 10 token aktif per project, 60 upload per jam per token (kunci = hash token); gate k6 menjaga p95 | `ingest.int.test.ts` (5 MB, 20.000, retensi, 429), `tokens.int.test.ts`, `tests/perf` |
+| **Skor flaky di SQL menyimpang dari definisinya** (Tahap 2) | Dashboard menampilkan angka yang tidak sesuai rumus yang didokumentasikan | Rumus ada sebagai fungsi murni dan sebagai query SQL; test paritas membandingkan keduanya pada pola acak-terkendali; contoh spec bagian 6 diuji di unit | `apps/api/src/modules/results/domain/flaky.test.ts`, `apps/api/test/integration/results-read.int.test.ts` |
+| **Upload paralel menghasilkan duplikat atau 500** (Tahap 2) | Data ganda, statistik salah | Upsert `test_cases` dalam satu transaksi dengan run dan hasilnya; test mengunggah laporan sama berurutan berbeda secara paralel | `ingest.int.test.ts` |
+| **Pagination kehilangan atau menggandakan data** (Tahap 2) | Run terlewat di daftar atau di UI | Cursor `(created_at, id)` buram; test untuk `created_at` kembar dan selisih mikrodetik; UI mengabaikan hasil basi | `results-read.int.test.ts`, `apps/web/src/lib/cursorList.test.ts`, `tests/e2e/runs.spec.ts` |
+| **Dogfooding merusak deploy atau membocorkan token** (Tahap 2) | Deploy gagal karena langkah opsional, atau secret tercetak | Langkah setelah smoke, `continue-on-error`, dilewati dengan `::warning::` tanpa token; token hanya lewat environment; kedua workflow dilint dengan actionlint | `.github/workflows/deploy.yml`, bagian 2.2 |
 
 ## 4. Data dan lingkungan test
 
 - **Data:** dibuat per test lewat factory (`@faker-js/faker`, `tests/support/data.ts`) dan klien API (`tests/support/api-client.ts`). Tidak ada seed global untuk test API/E2E.
 - **Isolasi E2E:** pengguna berbeda memakai browser context berbeda (admin, anggota, pengunjung anonim).
 - **Lingkungan:** unit tanpa dependensi eksternal; integration dan contract memakai container Postgres sementara; API dan E2E berjalan terhadap stack Docker Compose (nginx + API + Postgres) yang sama dengan yang dipakai pengembang lokal; smoke berjalan terhadap production.
-- **Rate limit pada test:** stack lokal/test memakai `RATE_LIMIT_MAX=1000` agar suite paralel tidak terkena 429; production memakai default 10 per menit. Perilaku 429 dibuktikan di integration test dengan batas 10.
-- **Flaky:** CI memakai `retries: 2`; test yang lulus setelah retry ditandai flaky di laporan Allure, bukan disembunyikan.
+- **Rate limit pada test:** stack lokal/test memakai `RATE_LIMIT_MAX=1000` agar suite paralel tidak terkena 429; production memakai default 10 per menit. Perilaku 429 dibuktikan di integration test dengan batas 10. Upload memakai batas sendiri, `INGEST_RATE_LIMIT_MAX` (default 60 per jam per token; stack test menaikkannya): test API memeriksa header `x-ratelimit-*` dan 429 upload dibuktikan di integration test dengan batas 3.
+- **Flaky:** CI memakai `retries: 2`; test yang lulus setelah retry ditandai flaky di laporan Allure, bukan disembunyikan, dan (Tahap 2) tercatat sebagai `flakyFailure` di JUnit yang diunggah ke dashboard TestPulse sendiri.
 
 ## 5. Pelaporan dan quality gate
 
-Setiap job CI menulis hasil ke `allure-results`; job `report` menggabungkan semuanya menjadi satu laporan Allure yang dipublikasikan ke GitHub Pages dari `main`: <https://safeqq.github.io/testpulse/>. Pipeline lengkap ada di [`ci.yml`](../.github/workflows/ci.yml) dan deploy di [`deploy.yml`](../.github/workflows/deploy.yml).
+Setiap job CI menulis hasil ke `allure-results`; job `report` menggabungkan semuanya menjadi satu laporan Allure yang dipublikasikan ke GitHub Pages dari `main`: <https://safeqq.github.io/testpulse/>. Mulai Tahap 2, JUnit dari job yang sama juga diunggah ke project publik `testpulse` di production oleh `deploy.yml` (dogfooding, bagian 2.2), sehingga hasilnya terlihat di dashboard TestPulse sendiri: `/p/testpulse`. Pipeline lengkap ada di [`ci.yml`](../.github/workflows/ci.yml) dan deploy di [`deploy.yml`](../.github/workflows/deploy.yml).
 
 | Gate | Ambang | Ditegakkan oleh |
 |---|---|---|
@@ -94,23 +133,27 @@ Setiap job CI menulis hasil ke `allure-results`; job `report` menggabungkan semu
 | Unit, integration, contract, API, E2E | semua lulus | job `unit`, `integration`, `contract`, `stack-tests` |
 | ZAP baseline | 0 temuan High | `tests/security/check-zap-report.mjs` (dites di `check-zap-report.test.mjs`) |
 | Performa stack Docker | p95 upload < 1500 ms, p95 baca < 300 ms, error < 1% | job `perf` (k6), bagian 5.1 |
-| Smoke production | semua lulus setelah deploy | `deploy.yml` |
+| Smoke production | semua lulus setelah deploy (dashboard `/p/testpulse` boleh dilewati sebelum dogfooding pertama) | `deploy.yml` |
 
-### Jumlah test (snapshot per commit `ad6b30d`, 2026-10-27)
+### Jumlah test (snapshot per commit `0606543`, 2026-10-31)
 
-Angka ini adalah **snapshot**: hasil menjalankan suite secara lokal pada commit tersebut, dan akan bergeser seiring pengembangan. Angka terbaru ada di laporan Allure dan run CI terakhir. Angka yang sama dicantumkan di bagian "Dibangun dengan standar QA" pada landing page (`apps/web/src/pages/landing/Quality.tsx`); perbarui keduanya bersamaan.
+Angka ini adalah **snapshot**: hasil menjalankan suite secara lokal pada commit tersebut (ditambah satu test smoke dari perubahan dogfooding), dan akan bergeser seiring pengembangan. Unit, integration, dan contract dihitung dari jumlah test yang dilaporkan Vitest; API, E2E, dan smoke dari `playwright test --list` per project. Angka terbaru ada di laporan Allure dan run CI terakhir. Angka yang sama untuk Integration, API, Contract (consumer), dan E2E dicantumkan di bagian "Dibangun dengan standar QA" pada landing page (`apps/web/src/pages/landing/Quality.tsx`); perbarui keduanya bersamaan.
 
 | Suite | Jumlah test |
 |---|---|
-| Unit: `packages/shared` | 30 |
-| Unit: `apps/api` | 110 |
-| Unit: `apps/web` (tema dan `theme-init.js` 34, Pages Function 17, paritas header 6) | 57 |
-| Integration (`apps/api`, Postgres Testcontainers) | 125 |
-| Contract: consumer (web) | 27 test (satu interaksi per test) |
-| Contract: provider (API) | 1 test yang memverifikasi seluruh pact |
-| API (Playwright, termasuk matriks otorisasi) | 156 |
-| E2E (Playwright) | 77 skenario per browser, dijalankan di 3 browser (a11y-helper 1, auth 12, csp-guard 13, landing 12, projects 16, team 10, theme 13) |
-| Smoke production (`@smoke`) | 4 |
+| Unit: `packages/shared` | 53 |
+| Unit: `apps/api` | 284 |
+| Unit: `apps/web` (tema dan `theme-init.js` 34, Pages Function 18, paritas header 6, lainnya 29: klien API, format, navigasi, daftar bercursor, `index.html`) | 87 |
+| Unit: `packages/reporter` | 57 |
+| Unit: `tests/unit` (builder JUnit) | 7 |
+| Security: `tests/security` (gate ZAP) | 6 |
+| Integration (`apps/api`, Postgres Testcontainers) | 206 |
+| Contract: consumer (web 40, reporter 2) | 42 test (satu interaksi per test) |
+| Contract: provider (API) | 2 test, masing-masing memverifikasi satu pact (web dan reporter) |
+| API (Playwright, termasuk matriks otorisasi) | 318 |
+| E2E (Playwright) | 122 skenario per browser, dijalankan di 3 browser (a11y-helper 1, auth 12, csp-guard 15, dashboard 8, fonts 2, forced-colors 3, landing 12, projects 16, runs 23, team 10, theme 14, tokens 6) |
+| Smoke production (`@smoke`) | 5 |
+| Performa (k6) | 2 skenario (`ingest`, `read`), bukan test per kasus |
 
 ### 5.1 Performa (k6)
 
@@ -133,7 +176,8 @@ Ringkasan JSON k6 diunggah sebagai artifact `k6-summary`. Threshold mengikuti sp
 | Mutation testing | Perlu suite yang sudah stabil dan domain yang lebih besar | Tahap 4 |
 | Alur email (reset password, verifikasi) | Fiturnya sengaja tidak ada di tahap 1; undangan berupa link yang disalin manual | Tidak direncanakan |
 | Perilaku edge Cloudflare (cache, TLS, routing) | Tidak bisa direplikasi di CI. Yang bisa diuji (logika Pages Function, kesetaraan header) diuji sebagai unit; sisanya dicek lewat smoke test production | Smoke test |
-| Pagination, ganti slug, ganti email/password, OAuth, 2FA | Di luar lingkup tahap 1 (spec bagian 4) | Tahap berikut sesuai kebutuhan |
+| Ganti slug, ganti email/password, OAuth, 2FA | Di luar lingkup tahap 1 (spec bagian 4) | Tahap berikut sesuai kebutuhan |
+| Notifikasi, lampiran/screenshot test, perbandingan dua run, mute test flaky, format selain JUnit, ekspor data | Di luar lingkup tahap 2 (spec Tahap 2 bagian 14) | Tahap berikut sesuai kebutuhan |
 | Pengujian penetrasi manual | ZAP baseline hanya pemindaian pasif otomatis, bukan pengganti uji penetrasi | Di luar lingkup portfolio |
 | Beban pada Render/Neon free tier (cold start, batas koneksi) | Dikendalikan penyedia; didokumentasikan jujur di [deploy.md](./deploy.md) | Dicatat sebagai keterbatasan |
 
@@ -143,4 +187,5 @@ Ringkasan JSON k6 diunggah sebagai artifact `k6-summary`. Threshold mengikuti sp
 - Gate CSP hanya efektif bila E2E berjalan terhadap nginx dengan header CSP production (stack Docker dan job CI `stack-tests`); di dev server Vite ia tidak punya yang dijaga. Ia juga tidak memverifikasi header Cloudflare Pages secara langsung, melainkan mengandalkan paritas `_headers` dan `security-headers.conf` (`headers.test.ts`).
 - Screenshot di `docs/images` hanya dokumentasi, bukan baseline visual regression.
 - E2E berjalan di stack lokal dengan rate limit longgar, bukan di production; yang menyentuh production hanya smoke test.
-- Smoke test bergantung pada satu akun khusus dan satu project publik yang didaftarkan manual (lihat [deploy.md](./deploy.md)).
+- Smoke test bergantung pada satu akun khusus dan satu project publik yang didaftarkan manual (lihat [deploy.md](./deploy.md)). Smoke dashboard baru bermakna setelah pemilik repo membuat `TESTPULSE_TOKEN` (deploy.md, Langkah 12); sebelumnya ia dilewati, bukan gagal.
+- Dogfooding hanya mengunggah JUnit dari artifact CI yang masih ada (retensi 7 hari) dan hanya untuk run yang memicu deploy (bukan deploy manual); gate k6 mengukur stack Docker di runner CI, bukan production.

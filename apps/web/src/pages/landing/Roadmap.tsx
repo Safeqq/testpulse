@@ -4,8 +4,8 @@ import { SectionHeading } from "./SectionHeading";
 
 const STAGES = [
   { stage: 1, title: "Akun, project, tim, dan undangan", status: "Live", live: true },
-  { stage: 2, title: "Dashboard hasil test & deteksi flaky", status: "Berikutnya" },
-  { stage: 3, title: "Bug tracker", status: "Direncanakan" },
+  { stage: 2, title: "Dashboard hasil test & deteksi flaky", status: "Live", live: true },
+  { stage: 3, title: "Bug tracker", status: "Berikutnya" },
   { stage: 4, title: "Test case manual", status: "Direncanakan" },
   { stage: 5, title: "Crowdtesting", status: "Direncanakan" },
   { stage: 6, title: "Aplikasi desktop", status: "Opsional" },

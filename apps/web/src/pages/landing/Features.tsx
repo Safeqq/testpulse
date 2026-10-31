@@ -36,7 +36,6 @@ const FEATURES: Feature[] = [
     icon: LayoutDashboard,
     title: "Dashboard hasil test & deteksi flaky",
     description: "Kirim hasil test dari CI, lihat tren lulus/gagal, dan temukan test yang tidak stabil.",
-    stage: 2,
   },
   {
     slug: "bug-tracker",
@@ -65,7 +64,7 @@ export function Features() {
   return (
     <section aria-labelledby="landing-features-title" data-testid="landing-features" className="grid gap-8">
       <SectionHeading id="landing-features-title" eyebrow="Fitur" title="Semua yang dibutuhkan tim QA, bertahap">
-        Fondasi sudah live hari ini. Fitur berikutnya dikerjakan tahap demi tahap.
+        Fondasi dan dashboard hasil test sudah live hari ini. Fitur berikutnya dikerjakan tahap demi tahap.
       </SectionHeading>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(({ slug, icon: Icon, title, description, stage }) => (

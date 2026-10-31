@@ -217,10 +217,30 @@ Memutar rahasia: buat nilai baru, ubah di Render (**Environment**) dan di Cloudf
 ## Langkah 11. Deploy ulang dan pastikan smoke hijau
 
 1. **Actions** -> **Deploy** -> **Run workflow** lagi.
-2. **Cek:** seluruh langkah hijau, termasuk **Smoke test** (4 test lulus).
+2. **Cek:** seluruh langkah hijau, termasuk **Smoke test** (5 test: 4 lulus dan 1 dilewati dengan pesan "belum punya run" sampai Langkah 12 selesai; itu normal).
 3. Cek manual alur utama di production: daftar akun baru -> buat project -> project tampil di daftar. (Gunakan akun lain, bukan akun smoke.)
 
 Mulai sekarang, setiap push ke `main` yang membuat CI hijau men-deploy otomatis.
+
+---
+
+## Langkah 12. Dogfooding: kirim hasil test CI ke project `testpulse` (opsional, dilakukan pemilik repo)
+
+Mulai Tahap 2, `deploy.yml` mengunggah hasil test CI TestPulse **ke TestPulse sendiri**, sehingga `/p/testpulse` di production menampilkan run nyata. Setelah smoke test lulus, workflow mengunduh artifact `allure-results-*` dari run CI yang memicu deploy, lalu menjalankan reporter CLI ([`packages/reporter`](../packages/reporter)) ke `PRODUCTION_URL`, project `testpulse`, branch `main`, dengan commit dan link run CI yang sesuai. Langkah ini butuh satu secret tambahan, `TESTPULSE_TOKEN`, yang **Anda sendiri** buat dan pasang. Jangan membagikan nilainya kepada siapa pun (termasuk asisten AI) dan jangan menempelkannya ke file, issue, atau chat.
+
+1. Masuk ke production sebagai **admin** project `testpulse` (akun pribadi pemilik project dari Langkah 9, bukan akun smoke). Hanya admin yang melihat bagian ini.
+2. Buka `https://testpulse.pages.dev/p/testpulse/settings`, bagian **Token CI**. Isi nama, misalnya `GitHub Actions deploy`, lalu klik **Buat token**.
+3. Salin nilai token yang tampil (diawali `tp_`). Nilai itu **hanya tampil sekali**; server menyimpan hash-nya saja. Bila terlewat, cabut token itu dan buat yang baru.
+4. Di GitHub: repo -> **Settings** -> **Secrets and variables** -> **Actions** -> **New repository secret**, nama `TESTPULSE_TOKEN`, tempelkan nilainya, simpan. (Dengan GitHub CLI: `gh secret set TESTPULSE_TOKEN`, nilai diketik di prompt.) Secret ini **tidak** termasuk daftar wajib pada `Check required secrets`: bila kosong, langkah dogfooding dilewati dengan `::warning::` dan deploy tetap hijau.
+5. Picu deploy dari run CI, bukan dari **Run workflow**: **Actions** -> **CI** -> run terakhir di `main` -> **Re-run all jobs** (atau push commit baru ke `main`). Deploy yang dijalankan manual tidak punya run CI pemicu, sehingga dogfooding dilewati dengan `::warning::`. Artifact CI disimpan 7 hari; run yang lebih tua tidak bisa diunggah.
+6. **Cek:** pada run **Deploy**, langkah **Upload CI test results to TestPulse** mencetak `Laporan terkirim (N berkas): ... test, ... lulus, ...` dan URL run. Buka `https://testpulse.pages.dev/p/testpulse` di jendela incognito: dashboard menampilkan run itu. Pada deploy berikutnya smoke test **dashboard project testpulse menampilkan hasil run dari CI** berubah dari dilewati menjadi lulus.
+
+Catatan:
+
+- Kegagalan unggah (token dicabut, jaringan, laporan ditolak) **tidak menggagalkan deploy**: langkahnya `continue-on-error` dan menulis `::warning::` beserta exit code reporter (1 = unggah gagal, 2 = berkas atau argumen salah).
+- Token hanya berlaku untuk mengunggah ke project `testpulse`. Batasnya 60 unggahan per jam per token, jauh di atas satu unggahan per deploy.
+- Memutar token: buat token baru di **Token CI**, perbarui secret `TESTPULSE_TOKEN`, lalu cabut token lama. Run yang sudah diunggah tetap ada.
+- Reporter bisa dicoba dari komputer sendiri tanpa GitHub: `pnpm --filter @testpulse/reporter build`, lalu `node packages/reporter/dist/cli.js --url <URL> --project <slug> --branch main <berkas.xml>` dengan `TESTPULSE_TOKEN` di environment. Terhadap production itu menambah run sungguhan di project publik, jadi lakukan dengan sengaja.
 
 ---
 
@@ -241,7 +261,10 @@ Mulai sekarang, setiap push ke `main` yang membuat CI hijau men-deploy otomatis.
 | Deploy Cloudflare gagal `Authentication error` | Token salah/kedaluwarsa atau tanpa izin Pages:Edit, atau `CLOUDFLARE_ACCOUNT_ID` salah (Langkah 6). |
 | Smoke `akun smoke berhasil masuk` gagal | Email/password akun di production tidak sama dengan `SMOKE_EMAIL`/`SMOKE_PASSWORD` (Langkah 9). |
 | Smoke `project publik terbuka` gagal | Project belum publik atau slug-nya bukan `SMOKE_PUBLIC_SLUG` (Langkah 9). Akun smoke tidak perlu menjadi anggota. |
+| Smoke `dashboard project testpulse ...` dilewati | Project `testpulse` belum punya run: `TESTPULSE_TOKEN` belum diisi atau belum ada deploy dari run CI sesudahnya (Langkah 12). Bukan kegagalan. |
+| Smoke `dashboard project testpulse ...` gagal | Project `testpulse` tidak ada atau tidak publik (Langkah 9), atau dashboard tidak memuat hasil. Buka `/p/testpulse` di jendela incognito dan periksa. |
+| Deploy hijau, tetapi ada `::warning::` dari langkah dogfooding | `TESTPULSE_TOKEN` kosong atau dicabut (401), artifact CI sudah kedaluwarsa (7 hari), atau deploy dipicu manual tanpa run CI (Langkah 12). Deploy tidak terpengaruh. |
 
 ## Daftar rahasia (ringkasan)
 
-Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (kedelapan nama di Langkah 7). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.
+Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (kedelapan nama di Langkah 7, ditambah `TESTPULSE_TOKEN` yang opsional di Langkah 12). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.

@@ -63,6 +63,10 @@ describe("bugLink", () => {
     ["judul 101 karakter", { url: "https://example.com", title: "a".repeat(101) }],
   ])("menolak %s", (_label, input) => expect(ok(bugLink, input)).toBe(false));
 
+  it.each(["", "   "])("menganggap judul %j sebagai tidak ada", (title) =>
+    expect(bugLink.parse({ url: "https://example.com", title })).toEqual({ url: "https://example.com" }),
+  );
+
   it("menerima url 2000 karakter dan judul 100 karakter", () =>
     expect(ok(bugLink, { url: `https://example.com/${"a".repeat(2000 - 20)}`, title: "a".repeat(100) })).toBe(true));
 });
@@ -135,6 +139,10 @@ describe("createBugBody", () => {
 describe("updateBugBody", () => {
   it("menolak body yang hanya berisi version", () => expect(ok(updateBugBody, { version: 1 })).toBe(false));
   it("menolak body tanpa version", () => expect(ok(updateBugBody, { title: "abc" })).toBe(false));
+  it("menerima version maksimum int4 dan menolak di atasnya", () => {
+    expect(ok(updateBugBody, { version: 2_147_483_647, title: "abc" })).toBe(true);
+    expect(ok(updateBugBody, { version: 2_147_483_648, title: "abc" })).toBe(false);
+  });
   it.each([0, -1, 1.5, "1"])("menolak version %s", (version) =>
     expect(ok(updateBugBody, { version, title: "abc" })).toBe(false),
   );
@@ -192,6 +200,12 @@ describe("bugListQuery", () => {
     ["label tidak sah", { label: "ui_x" }],
     ["q 101 karakter", { q: "a".repeat(101) }],
   ])("menolak %s", (_label, input) => expect(ok(bugListQuery, input)).toBe(false));
+
+  it("men-trim q dan menganggap q kosong sebagai tidak ada", () => {
+    expect(bugListQuery.parse({ q: "  halo  " }).q).toBe("halo");
+    expect(bugListQuery.parse({ q: "   " })).toEqual({ status: "active", sort: "updated" });
+    expect(bugListQuery.parse({ q: "" })).toEqual({ status: "active", sort: "updated" });
+  });
 
   it("menerima q 100 karakter, priority, severity, cursor", () =>
     expect(ok(bugListQuery, { q: "a".repeat(100), priority: "high", severity: "critical", cursor: "abc" })).toBe(true));

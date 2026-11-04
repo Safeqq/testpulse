@@ -43,7 +43,13 @@ const bugUrl = z
 
 export const bugLink = z.object({
   url: bugUrl,
-  title: z.string().trim().max(100, "Judul link maksimal 100 karakter").optional(),
+  // Judul kosong (atau hanya spasi) dianggap tidak ada.
+  title: z
+    .string()
+    .trim()
+    .max(100, "Judul link maksimal 100 karakter")
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
 });
 export type BugLink = z.infer<typeof bugLink>;
 
@@ -75,7 +81,7 @@ export type CreateBugBody = z.infer<typeof createBugBody>;
 
 export const updateBugBody = z
   .object({
-    version: z.int("Versi tidak valid").min(1, "Versi tidak valid"),
+    version: z.int("Versi tidak valid").min(1, "Versi tidak valid").max(2_147_483_647, "Versi tidak valid"),
     title: bugTitle.optional(),
     description: bugDescription.optional(),
     priority: bugPriority.optional(),
@@ -107,7 +113,12 @@ export const bugListQuery = z.object({
   priority: bugPriority.optional(),
   severity: bugSeverity.optional(),
   label: bugLabel.optional(),
-  q: z.string().max(100, "Pencarian maksimal 100 karakter").optional(),
+  q: z
+    .string()
+    .trim()
+    .max(100, "Pencarian maksimal 100 karakter")
+    .transform((v) => (v === "" ? undefined : v))
+    .optional(),
   sort: z.enum(BUG_SORTS).default("updated"),
   cursor: z.string().optional(),
 });

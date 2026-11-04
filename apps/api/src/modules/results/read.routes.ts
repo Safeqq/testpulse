@@ -187,6 +187,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           retries: row.retries,
           durationMs: row.durationMs,
           message: row.message,
+          // TODO(Tahap 3 Task 6): attach bug refs
           bugs: [],
         })),
         nextCursor: rows.length > RESULTS_PAGE_SIZE && last ? encodeResultCursor(last.id) : null,
@@ -242,6 +243,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
       const key = `${project.id}:${branch}`;
       const cached = flakyCache.get(key);
       if (cached?.fingerprint === fingerprint) return cached.tests;
+      // TODO(Tahap 3 Task 6): attach bug refs
       const tests = (await listFlakyTests(db, project.id, branch, MAX_FLAKY_TESTS)).map(
         (row): FlakyTestDto => ({ ...row, bugs: [] }),
       );
@@ -268,6 +270,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           history: resolved === null ? [] : await listTestHistory(db, project.id, found.id, resolved, HISTORY_LENGTH),
         };
       });
+      // TODO(Tahap 3 Task 6): attach bug refs
       const testCaseDto = { ...testCase, bugs: [] };
       if (branch === null) return { testCase: testCaseDto, branch: null, results: [] };
 

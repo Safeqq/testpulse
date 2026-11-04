@@ -2,7 +2,7 @@ import type { Role, Visibility } from "@testpulse/shared";
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { memberships, projects, users } from "../../db/schema.js";
-import { clearAssigneeOnLeave } from "../bugs/repository.js";
+import { clearAssigneeOnLeave } from "../bugs/write.repository.js";
 import { wouldLeaveNoAdmin } from "./domain/admins.js";
 
 export interface ProjectRecord {

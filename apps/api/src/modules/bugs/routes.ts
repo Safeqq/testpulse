@@ -1,11 +1,13 @@
 import { bugListQuery, createBugBody, updateBugBody, type BugDto, type BugsPageDto } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
+import { AppError } from "../../http/errors.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser, requireUser } from "../auth/service.js";
 import { resolveProject } from "../projects/access.js";
 import { decodeBugCursor, encodeBugCursor } from "./cursor.js";
 import { bugConflict, bugNotFound, fieldError, invalidTransition } from "./errors.js";
-import { createBug, deleteBug, findBugByNumber, listBugs, listLabels, updateBug } from "./repository.js";
+import { findBugByNumber, listBugs, listLabels } from "./read.repository.js";
+import { createBug, deleteBug, updateBug } from "./write.repository.js";
 
 /** Ukuran halaman & batas daftar (spec Tahap 3 §6). */
 export const BUGS_PAGE_SIZE = 25;
@@ -58,6 +60,7 @@ export async function bugRoutes(app: FastifyInstance): Promise<void> {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "bugs:write");
     const body = parseOrThrow(createBugBody, req.body);
     const result = await createBug(app.db, { projectId: project.id, reporterId: req.user!.id, body });
+    if (result === "project_not_found") throw new AppError(404, "PROJECT_NOT_FOUND", "Project tidak ditemukan");
     if (result === "assignee_not_member") throw fieldError("assigneeId", ASSIGNEE_NOT_MEMBER);
     if (result === "test_case_not_found") throw fieldError("testCaseId", "Test tidak ditemukan di project ini");
     if (result === "run_not_found") throw fieldError("runId", "Run tidak ditemukan atau tidak memuat hasil test ini");

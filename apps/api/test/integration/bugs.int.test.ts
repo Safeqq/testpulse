@@ -221,6 +221,39 @@ describe("API bug tracker", () => {
       expect(next.number).toBe(21);
     });
 
+    it("project terhapus saat pembuatan menunggu kunci project → 404 PROJECT_NOT_FOUND (bukan 500)", async () => {
+      const fx = await setup();
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let deleted!: () => void;
+      const deleteDone = new Promise<void>((resolve) => {
+        deleted = resolve;
+      });
+      // Transaksi lain menghapus project (mengunci barisnya) dan baru commit setelah POST tertahan di kunci itu.
+      const holder = app.db.transaction(async (tx) => {
+        await tx.delete(projects).where(eq(projects.id, fx.project.id));
+        deleted();
+        await released;
+      });
+      await deleteDone;
+
+      const pending = request("POST", fx, "", fx.tester.cookie, { title: "Bug yatim" });
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        const result = await app.db.execute(
+          sql`select count(*)::int as n from pg_stat_activity
+              where wait_event_type = 'Lock' and query ilike '%from "projects"%for no key update%'`,
+        );
+        if (Number((result.rows[0] as { n: number }).n) >= 1) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      release();
+      await holder;
+      expectError(await pending, 404, "PROJECT_NOT_FOUND");
+    });
+
     it("400 fields.assigneeId: assignee bukan anggota project (atau user tak dikenal); tidak ada bug tersimpan", async () => {
       const fx = await setup();
       const outsider = await registerUser(app);
@@ -485,6 +518,26 @@ describe("API bug tracker", () => {
       expect(res.body).not.toContain("@example.test");
       expectError(await request("GET", priv, "/1"), 404, "PROJECT_NOT_FOUND");
     });
+
+    it("token CI (Bearer) = anonim: GET daftar/detail/label project privat → 404", async () => {
+      const fx = await setup();
+      await createBug(fx);
+      const tokenRes = await app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${fx.project.slug}/tokens`,
+        headers: { cookie: fx.admin.cookie },
+        payload: { name: "CI" },
+      });
+      const token = createdTokenDto.parse(tokenRes.json()).token;
+      for (const path of ["", "/1", "/labels"]) {
+        const res = await app.inject({
+          method: "GET",
+          url: `/api/v1/projects/${fx.project.slug}/bugs${path}`,
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expectError(res, 404, "PROJECT_NOT_FOUND");
+      }
+    });
   });
 
   describe("GET /bugs/labels", () => {
@@ -498,6 +551,12 @@ describe("API bug tracker", () => {
       expect(res.statusCode).toBe(200);
       expect(z.array(z.string()).parse(res.json())).toEqual(["api", "backend", "ui"]);
       expectError(await request("GET", fx, "/labels"), 404, "PROJECT_NOT_FOUND");
+    });
+
+    it("urutan label = urutan code unit (tidak bergantung collation): a-c, a0, ab", async () => {
+      const fx = await setup();
+      await createBug(fx, { labels: ["ab", "a0", "a-c"] });
+      expect((await request("GET", fx, "/labels", fx.viewer.cookie)).json()).toEqual(["a-c", "a0", "ab"]);
     });
   });
 
@@ -680,6 +739,47 @@ describe("API bug tracker", () => {
       ]);
     });
 
+    it("nomor tak dikenal → 404 BUG_NOT_FOUND lebih dulu daripada validasi assignee", async () => {
+      const fx = await setup();
+      const outsider = await registerUser(app);
+      await createBug(fx);
+      expectError(await patchBug(fx, 2, { version: 1, assigneeId: outsider.user.id }), 404, "BUG_NOT_FOUND");
+    });
+
+    it("label tanpa perubahan tidak bergantung collation: [a-c, ab, a0] beda urutan → no-op; event memakai urutan code unit", async () => {
+      const fx = await setup();
+      const bug = await createBug(fx, { labels: ["ab", "a0", "a-c"] });
+      expect(bug.labels).toEqual(["a-c", "a0", "ab"]);
+      const same = await patchBug(fx, 1, { version: 1, labels: ["a0", "a-c", "ab"] });
+      expect(same.statusCode, same.body).toBe(200);
+      expect(bugDto.parse(same.json())).toEqual(bug);
+      expect(await eventsOf(fx.project.id, 1)).toEqual([]);
+
+      const changed = bugDto.parse((await patchBug(fx, 1, { version: 1, labels: ["ab", "a-c", "a1"] })).json());
+      expect(changed.labels).toEqual(["a-c", "a1", "ab"]);
+      expect((await eventsOf(fx.project.id, 1)).map((e) => [e.field, e.oldValue, e.newValue])).toEqual([
+        ["labels", "a-c, a0, ab", "a-c, a1, ab"],
+      ]);
+    });
+
+    it("dua PATCH paralel dengan version 1 → tepat satu 200 dan satu 409 BUG_CONFLICT; version akhir 2, event hanya dari pemenang", async () => {
+      const fx = await setup();
+      await createBug(fx, { title: "Awal" });
+      const [a, b] = await Promise.all([
+        patchBug(fx, 1, { version: 1, title: "Versi tester" }, fx.tester.cookie),
+        patchBug(fx, 1, { version: 1, title: "Versi admin" }, fx.admin.cookie),
+      ]);
+      expect([a?.statusCode, b?.statusCode].toSorted()).toEqual([200, 409]);
+      const loser = a?.statusCode === 409 ? a : b;
+      expect(loser?.json().error.code).toBe("BUG_CONFLICT");
+      const winner = a?.statusCode === 200 ? { title: "Versi tester", actor: fx.tester } : { title: "Versi admin", actor: fx.admin };
+
+      expect(await bugRow(fx.project.id, 1)).toMatchObject({ title: winner.title, version: 2 });
+      expect(await eventsOf(fx.project.id, 1)).toEqual([
+        { actorId: winner.actor.user.id, field: "title", oldValue: "Awal", newValue: winner.title },
+      ]);
+    });
+
     it("update gagal di tengah (error dipaksa) → 500, bug tidak berubah, tidak ada event tertulis", async () => {
       const fx = await setup();
       await createBug(fx, { title: "Stabil", labels: ["a"] });
@@ -713,6 +813,19 @@ describe("API bug tracker", () => {
       expectError(await request("PATCH", fx, "/1", undefined, { version: 1, title: "abc" }), 401, "UNAUTHENTICATED");
       expectError(await patchBug(fx, 2, { version: 1, title: "abc" }), 404, "BUG_NOT_FOUND");
       expect((await patchBug(fx, 1, { version: 1, title: "abc" }, fx.admin.cookie)).statusCode).toBe(200);
+    });
+
+    it("bukan anggota: PATCH & DELETE di project publik → 403, di project privat → 404", async () => {
+      const pub = await setup({ visibility: "public" });
+      const priv = await setup();
+      const outsider = await registerUser(app);
+      await createBug(pub);
+      await createBug(priv);
+      expectError(await patchBug(pub, 1, { version: 1, title: "Diubah luar" }, outsider.cookie), 403, "FORBIDDEN");
+      expectError(await request("DELETE", pub, "/1", outsider.cookie), 403, "FORBIDDEN");
+      expectError(await patchBug(priv, 1, { version: 1, title: "Diubah luar" }, outsider.cookie), 404, "PROJECT_NOT_FOUND");
+      expectError(await request("DELETE", priv, "/1", outsider.cookie), 404, "PROJECT_NOT_FOUND");
+      expect(await bugRow(pub.project.id, 1)).toMatchObject({ version: 1 });
     });
   });
 

@@ -9,6 +9,7 @@ import { registerErrorHandlers } from "./http/errors.js";
 import { serializeError, serializeRequest } from "./http/logging.js";
 import { registerSecurity } from "./http/security.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { commentRoutes } from "./modules/bugs/comments.routes.js";
 import { bugRoutes } from "./modules/bugs/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
 import { memberRoutes } from "./modules/projects/members.routes.js";
@@ -87,6 +88,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
         opts.readStatementTimeoutMs !== undefined ? { statementTimeoutMs: opts.readStatementTimeoutMs } : {},
       );
       await bugRoutes(api);
+      await commentRoutes(api);
     },
     { prefix: "/api/v1" },
   );

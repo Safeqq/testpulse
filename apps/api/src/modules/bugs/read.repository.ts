@@ -20,7 +20,7 @@ const reporterUser = alias(users, "reporter");
 const priorityRank = sql<number>`(case ${bugs.priority} when 'urgent' then 4 when 'high' then 3 when 'medium' then 2 else 1 end)`;
 
 /** Waktu sebagai teks ISO UTC berpresisi mikrodetik (presisi penuh kolom), untuk cursor keyset. */
-const microIso = (column: SQLWrapper) =>
+export const microIso = (column: SQLWrapper) =>
   sql<string>`to_char(${column} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 export const bugByNumber = (projectId: string, number: number) =>

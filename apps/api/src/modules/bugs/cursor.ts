@@ -24,7 +24,7 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 const MICRO_ISO = /^(?!0000)\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}(\d{3})Z$/;
 const RANK = /^[1-4]$/;
 
-function isMicroIso(value: string): boolean {
+export function isMicroIso(value: string): boolean {
   if (!MICRO_ISO.test(value)) return false;
   // Bagian sampai milidetik harus kanonis menurut `Date` (menolak 2026-02-30, jam 25, dst.).
   const millis = `${value.slice(0, 23)}Z`;

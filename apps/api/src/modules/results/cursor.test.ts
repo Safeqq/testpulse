@@ -65,11 +65,14 @@ describe("cursor hasil test (id bigserial)", () => {
   });
 });
 
-describe("cursor kelompok perbandingan (suite, name, testCaseId)", () => {
-  it("round-trip mempertahankan suite & nama apa adanya (termasuk pemisah, unicode, string kosong)", () => {
+const RUN_A = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+const RUN_B = "1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e";
+
+describe("cursor kelompok perbandingan (baseId, targetId, suite, name, testCaseId)", () => {
+  it("round-trip mempertahankan id run & suite/nama apa adanya (termasuk pemisah, unicode, string kosong)", () => {
     for (const key of [
-      { suite: "a|b", name: "nama \"kutip\" \u0000 ✓", testCaseId: ID },
-      { suite: "", name: "", testCaseId: ID },
+      { baseId: RUN_A, targetId: RUN_B, suite: "a|b", name: "nama \"kutip\" \u0000 ✓", testCaseId: ID },
+      { baseId: RUN_A, targetId: RUN_B, suite: "", name: "", testCaseId: ID },
     ]) {
       const cursor = encodeCompareCursor(key);
       expect(cursor).toMatch(/^[A-Za-z0-9_-]+$/);
@@ -82,10 +85,12 @@ describe("cursor kelompok perbandingan (suite, name, testCaseId)", () => {
     ["karakter di luar base64url", "ab$c"],
     ["bukan JSON", b64("bukan json")],
     ["bukan array", b64(JSON.stringify({ suite: "a", name: "b", testCaseId: ID }))],
-    ["dua elemen", b64(JSON.stringify(["a", ID]))],
-    ["empat elemen", b64(JSON.stringify(["a", "b", ID, "x"]))],
-    ["suite bukan string", b64(JSON.stringify([1, "b", ID]))],
-    ["id bukan uuid", b64(JSON.stringify(["a", "b", "123"]))],
+    ["tanpa id run (bentuk lama)", b64(JSON.stringify(["a", "b", ID]))],
+    ["enam elemen", b64(JSON.stringify([RUN_A, RUN_B, "a", "b", ID, "x"]))],
+    ["suite bukan string", b64(JSON.stringify([RUN_A, RUN_B, 1, "b", ID]))],
+    ["id test bukan uuid", b64(JSON.stringify([RUN_A, RUN_B, "a", "b", "123"]))],
+    ["id base bukan uuid", b64(JSON.stringify(["x", RUN_B, "a", "b", ID]))],
+    ["id target bukan uuid", b64(JSON.stringify([RUN_A, "x", "a", "b", ID]))],
     ["cursor run", encodeCursor(new Date("2026-10-28T08:15:30.123Z"), ID)],
   ])("cursor rusak (%s) → null", (_label, cursor) => {
     expect(decodeCompareCursor(cursor)).toBeNull();

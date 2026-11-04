@@ -1,5 +1,5 @@
 import type { ResultStatus } from "@testpulse/shared";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import type { Queryable } from "../../db/client.js";
 import { runs, testCases, testResults } from "../../db/schema.js";
 import type { RunRecord } from "./repository.js";
@@ -25,11 +25,13 @@ export interface CompareResultRow {
   name: string;
   status: ResultStatus;
   durationMs: number;
-  message: string | null;
   flakyInRun: boolean;
 }
 
-/** Seluruh hasil test satu run (satu query per run) untuk diklasifikasi di domain. */
+/**
+ * Seluruh hasil test satu run (satu query per run) untuk diklasifikasi di domain. Tanpa `message` (bisa panjang):
+ * pesan hanya diambil untuk item yang benar-benar dikembalikan, lewat `listResultMessages`.
+ */
 export async function listCompareResults(db: Queryable, runId: string): Promise<CompareResultRow[]> {
   const rows = await db
     .select({
@@ -38,7 +40,6 @@ export async function listCompareResults(db: Queryable, runId: string): Promise<
       name: testCases.name,
       status: testResults.status,
       durationMs: testResults.durationMs,
-      message: testResults.message,
       flakyInRun: testResults.flakyInRun,
     })
     .from(testResults)
@@ -46,4 +47,29 @@ export async function listCompareResults(db: Queryable, runId: string): Promise<
     .where(eq(testResults.runId, runId));
   // Kolom status dibatasi CHECK constraint `test_results_status_check`.
   return rows.map((row) => ({ ...row, status: row.status as ResultStatus }));
+}
+
+/** Kunci peta pesan dari `listResultMessages`. */
+export const messageKey = (runId: string, testCaseId: string) => `${runId}:${testCaseId}`;
+
+/**
+ * Pesan hasil test (yang tidak kosong) untuk test tertentu di run tertentu, dengan **satu** query untuk semua sisi
+ * (base dan target). Kunci = `messageKey(runId, testCaseId)`.
+ */
+export async function listResultMessages(
+  db: Queryable,
+  sides: ReadonlyArray<{ runId: string; testCaseIds: readonly string[] }>,
+): Promise<Map<string, string>> {
+  const wanted = sides.filter((side) => side.testCaseIds.length > 0);
+  if (wanted.length === 0) return new Map();
+  const rows = await db
+    .select({ runId: testResults.runId, testCaseId: testResults.testCaseId, message: testResults.message })
+    .from(testResults)
+    .where(
+      and(
+        or(...wanted.map((side) => and(eq(testResults.runId, side.runId), inArray(testResults.testCaseId, [...side.testCaseIds])))),
+        isNotNull(testResults.message),
+      ),
+    );
+  return new Map(rows.map((row) => [messageKey(row.runId, row.testCaseId), row.message ?? ""]));
 }

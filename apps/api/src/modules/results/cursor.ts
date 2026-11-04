@@ -55,12 +55,21 @@ export interface CompareKey {
   testCaseId: string;
 }
 
-/** Cursor kelompok perbandingan: kunci urut item terakhir di halaman, sebagai array JSON `[suite, name, id]`. */
-export function encodeCompareCursor(key: CompareKey): string {
-  return encode(JSON.stringify([key.suite, key.name, key.testCaseId]));
+/** Posisi cursor kelompok perbandingan, terikat pada pasangan run yang dibandingkan. */
+export interface CompareCursor extends CompareKey {
+  baseId: string;
+  targetId: string;
 }
 
-export function decodeCompareCursor(cursor: string): CompareKey | null {
+/**
+ * Cursor kelompok perbandingan: id run base & target plus kunci urut item terakhir di halaman, sebagai array JSON
+ * `[baseId, targetId, suite, name, testCaseId]`. Id run membuat cursor ditolak bila pasangan run berubah.
+ */
+export function encodeCompareCursor(cursor: CompareCursor): string {
+  return encode(JSON.stringify([cursor.baseId, cursor.targetId, cursor.suite, cursor.name, cursor.testCaseId]));
+}
+
+export function decodeCompareCursor(cursor: string): CompareCursor | null {
   const text = decode(cursor);
   if (text === null) return null;
   let parsed: unknown;
@@ -69,7 +78,7 @@ export function decodeCompareCursor(cursor: string): CompareKey | null {
   } catch {
     return null;
   }
-  if (!Array.isArray(parsed) || parsed.length !== 3 || !parsed.every((part) => typeof part === "string")) return null;
-  const [suite, name, testCaseId] = parsed as [string, string, string];
-  return isUuid(testCaseId) ? { suite, name, testCaseId } : null;
+  if (!Array.isArray(parsed) || parsed.length !== 5 || !parsed.every((part) => typeof part === "string")) return null;
+  const [baseId, targetId, suite, name, testCaseId] = parsed as [string, string, string, string, string];
+  return [baseId, targetId, testCaseId].every(isUuid) ? { baseId, targetId, suite, name, testCaseId } : null;
 }

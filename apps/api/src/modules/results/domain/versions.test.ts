@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareSemver, isAllSemver, orderVersions, parseSemver, sameVersion } from "./versions.js";
+import { compareSemver, groupRunsByVersion, isAllSemver, orderVersions, parseSemver, sameVersion } from "./versions.js";
 
 function cmp(a: string, b: string): number {
   const pa = parseSemver(a);
@@ -209,5 +209,46 @@ describe("orderVersions", () => {
         { version: "alpha", latestRunAt: at("2025-12-01T00:00:00Z") },
       ]),
     ).toEqual(["alpha", "beta"]);
+  });
+});
+
+describe("groupRunsByVersion", () => {
+  let minute = 0;
+  const run = (id: string, version: string | null) => {
+    minute += 1;
+    return { id, version, createdAt: new Date(Date.UTC(2026, 0, 1, 0, minute)) };
+  };
+
+  it("groups versioned runs lowest -> highest, merging semver-equal spellings, runs kept oldest -> newest", () => {
+    const a = run("a", "1.10.0");
+    const b = run("b", "v1.0.1");
+    const u = run("u", null);
+    const c = run("c", "1.0.1");
+    const d = run("d", "1.2.0");
+    const { groups, allSemver } = groupRunsByVersion([a, b, u, c, d]);
+    expect(allSemver).toBe(true);
+    expect(groups.map((g) => [g.version, g.runs.map((r) => r.id)])).toEqual([
+      ["1.0.1", ["b", "c"]],
+      ["1.2.0", ["d"]],
+      ["1.10.0", ["a"]],
+    ]);
+  });
+
+  it("orders by latest run time and only merges identical strings when a non-semver version exists", () => {
+    const a = run("a", "nightly");
+    const b = run("b", "1.0.0");
+    const c = run("c", "v1.0.0");
+    const d = run("d", "nightly");
+    const { groups, allSemver } = groupRunsByVersion([a, b, c, d]);
+    expect(allSemver).toBe(false);
+    expect(groups.map((g) => [g.version, g.runs.map((r) => r.id)])).toEqual([
+      ["1.0.0", ["b"]],
+      ["v1.0.0", ["c"]],
+      ["nightly", ["a", "d"]],
+    ]);
+  });
+
+  it("returns no groups when no run has a version", () => {
+    expect(groupRunsByVersion([run("a", null)])).toEqual({ groups: [], allSemver: true });
   });
 });

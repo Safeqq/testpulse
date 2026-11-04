@@ -294,6 +294,10 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       expect(body.groups.added.items[0]?.base).toBeNull();
       expect(body.groups.removed.items[0]?.target).toBeNull();
       expect(body.groups.removed.items[0]?.base?.status).toBe("passed");
+      expect(body.groups.stillFailing.items[0]).toMatchObject({
+        base: { status: "failed", message: "gagal lama" },
+        target: { status: "failed", message: "gagal baru" },
+      });
     });
 
     it("added 250 test → 200 item + nextCursor; ?group=added&cursor= → 50 sisanya", async () => {
@@ -335,6 +339,34 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       );
       expect(second.items.map((i) => i.name)).toEqual(added.slice(100, 200).map((r) => r.name));
       expect(second.nextCursor).not.toBeNull();
+    });
+
+    it("cursor terikat pada pasangan run: upload baru di antara halaman (pasangan default bergeser) → 400 fields.cursor", async () => {
+      const fx = await setup();
+      const added = Array.from({ length: 101 }, (_, i) => result(`t${String(i).padStart(3, "0")}`, "passed"));
+      const base = await seedRun(fx, { at: 0, results: [result("keep", "passed")] });
+      const target = await seedRun(fx, { at: 1, results: [result("keep", "passed"), ...added] });
+      const url = `/projects/${fx.project.slug}/compare`;
+
+      const first = compareGroupPageDto.parse((await get(`${url}?group=added`, fx.admin.cookie)).json());
+      expect(first.items).toHaveLength(100);
+      const cursor = encodeURIComponent(first.nextCursor!);
+
+      await seedRun(fx, { at: 2, results: [result("keep", "passed"), ...added] });
+      const stale = await get(`${url}?group=added&cursor=${cursor}`, fx.admin.cookie);
+      expect(stale.statusCode).toBe(400);
+      expect(stale.json().error.code).toBe("VALIDATION_ERROR");
+      expect(stale.json().error.fields.cursor).toMatch(/tidak berlaku/);
+
+      // Pasangan lain secara eksplisit (base/target tertukar) juga ditolak.
+      const swapped = await get(`${url}?base=${target}&target=${base}&group=added&cursor=${cursor}`, fx.admin.cookie);
+      expect(swapped.statusCode).toBe(400);
+      expect(swapped.json().error.fields).toHaveProperty("cursor");
+
+      // Pasangan asli (eksplisit) tetap melanjutkan halaman.
+      const resumed = await get(`${url}?base=${base}&target=${target}&group=added&cursor=${cursor}`, fx.admin.cookie);
+      expect(resumed.statusCode, resumed.body).toBe(200);
+      expect(compareGroupPageDto.parse(resumed.json()).items.map((i) => i.name)).toEqual(["t100"]);
     });
 
     it("400: cursor tanpa group, cursor rusak, group tak dikenal", async () => {
@@ -614,6 +646,54 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       expect(regressions).toHaveLength(100);
       expect(regressions.every((i) => i.bugs.length === 1)).toBe(true);
       expect(largeCompare.count).toBe(smallCompare.count);
+
+      // Daftar flaky (dihitung pertama kali di app penghitung untuk kedua project): maks 50 test.
+      const flakyUrl = (s: typeof small) => `/projects/${s.fx.project.slug}/flaky`;
+      const smallFlaky = await countQueries(flakyUrl(small), small.fx.admin.cookie);
+      const largeFlaky = await countQueries(flakyUrl(large), large.fx.admin.cookie);
+      const flakyTests = z.array(flakyTestDto).parse(largeFlaky.body);
+      expect(flakyTests).toHaveLength(50);
+      expect(flakyTests.every((t) => t.bugs.length === 1)).toBe(true);
+      expect(largeFlaky.count).toBe(smallFlaky.count);
+    });
+
+    it("isolasi antar project: bug project lain tidak pernah muncul sebagai lencana", async () => {
+      const mine = await setup();
+      const other = await setup();
+      const pattern = (status: ResultStatus) => [result("a", status)];
+      await seedRun(mine, { at: 0, results: pattern("failed") });
+      const mineRun = await seedRun(mine, { at: 1, results: pattern("passed") });
+      await seedRun(other, { at: 0, results: pattern("failed") });
+      await seedRun(other, { at: 1, results: pattern("passed") });
+      const mineA = await testCaseId(mine.project.id, "a");
+      const otherA = await testCaseId(other.project.id, "a");
+
+      // Bug sah di project lain pada test bernama sama, plus baris bug project lain yang (secara tidak sah)
+      // menunjuk test project ini — keduanya tidak boleh tampil.
+      await createBug(other, { title: "Bug project lain", testCaseId: otherA });
+      await app.db.insert(bugs).values({
+        projectId: other.project.id,
+        number: 99,
+        title: "Bug salah tautan",
+        reporterId: other.admin.user.id,
+        testCaseId: mineA,
+      });
+
+      const slug = mine.project.slug;
+      const detail = runDetailDto.parse((await get(`/projects/${slug}/runs/${mineRun}?status=all`, mine.admin.cookie)).json());
+      expect(detail.results.map((r) => r.bugs)).toEqual([[]]);
+      const flaky = z.array(flakyTestDto).parse((await get(`/projects/${slug}/flaky`, mine.admin.cookie)).json());
+      expect(flaky.map((t) => t.bugs)).toEqual([[]]);
+      const history = testHistoryDto.parse((await get(`/projects/${slug}/tests/${mineA}/history`, mine.admin.cookie)).json());
+      expect(history.testCase.bugs).toEqual([]);
+      const body = await compare(mine);
+      expect(Object.values(body.groups).flatMap((g) => g.items.map((i) => i.bugs))).toEqual([[]]);
+
+      // Kontrol: project lain melihat bug sahnya.
+      const otherFlaky = z
+        .array(flakyTestDto)
+        .parse((await get(`/projects/${other.project.slug}/flaky`, other.admin.cookie)).json());
+      expect(otherFlaky[0]?.bugs.map((b) => b.title)).toEqual(["Bug project lain"]);
     });
   });
 

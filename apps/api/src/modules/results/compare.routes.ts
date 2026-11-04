@@ -18,11 +18,17 @@ import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser } from "../auth/service.js";
 import { resolveProject } from "../projects/access.js";
-import { listBranchRuns, listCompareResults, type CompareResultRow } from "./compare.repository.js";
+import {
+  listBranchRuns,
+  listCompareResults,
+  listResultMessages,
+  messageKey,
+  type CompareResultRow,
+} from "./compare.repository.js";
 import { decodeCompareCursor, encodeCompareCursor, type CompareKey } from "./cursor.js";
-import { pickBaseline, pickDefaultTarget, type RunRef } from "./domain/baseline.js";
+import { pickBaseline, pickDefaultTarget } from "./domain/baseline.js";
 import { classify, type CompareMatch } from "./domain/compare.js";
-import { isAllSemver, orderVersions, sameVersion } from "./domain/versions.js";
+import { groupRunsByVersion } from "./domain/versions.js";
 import {
   invalidCursor,
   passRate,
@@ -46,9 +52,11 @@ function sameRun(): AppError {
   });
 }
 
-/** Elemen `branchRuns` yang dipilih domain (domain mengembalikan elemen input itu sendiri). */
-function asRecord(ref: RunRef | null, branchRuns: readonly RunRecord[]): RunRecord | null {
-  return ref === null ? null : (branchRuns.find((run) => run.id === ref.id) ?? null);
+/** Cursor dari halaman perbandingan lain (run base/target berbeda, mis. ada upload baru di antara halaman). */
+function staleCursor(): AppError {
+  return new AppError(400, "VALIDATION_ERROR", "Data tidak valid", {
+    cursor: "Cursor tidak berlaku untuk perbandingan ini. Muat ulang perbandingan",
+  });
 }
 
 /**
@@ -57,16 +65,9 @@ function asRecord(ref: RunRef | null, branchRuns: readonly RunRecord[]): RunReco
  * bawahnya, `null` bila tidak ada versi di bawahnya atau salah satu pass rate `null`.
  */
 function listVersions(branchRuns: readonly RunRecord[]): VersionDto[] {
-  const versioned = branchRuns.filter((run): run is RunRecord & { version: string } => run.version !== null);
-  // `branchRuns` urut lama → baru, jadi nilai terakhir per string = waktu run terakhirnya.
-  const latestAt = new Map<string, Date>();
-  for (const run of versioned) latestAt.set(run.version, run.createdAt);
-  const allSemver = isAllSemver(latestAt.keys());
-
-  const rows = orderVersions([...latestAt].map(([version, latestRunAt]) => ({ version, latestRunAt }))).map((label) => {
-    const runsOfVersion = versioned.filter((run) => sameVersion(run.version, label, allSemver));
-    const run = runsOfVersion.at(-1)!;
-    return { version: label, run, runCount: runsOfVersion.length, passRate: passRate(run) };
+  const rows = groupRunsByVersion(branchRuns).groups.map((group) => {
+    const run = group.runs.at(-1)!;
+    return { version: group.version, run, runCount: group.runs.length, passRate: passRate(run) };
   });
 
   return rows
@@ -125,20 +126,31 @@ interface EntryPage {
   nextCursor: string | null;
 }
 
-/** `size` item setelah posisi `after` (atau dari awal); `nextCursor` = kunci item terakhir bila masih ada sisa. */
-function pageOf(entries: CompareEntry[], after: CompareKey | undefined, size: number): EntryPage {
+/**
+ * `size` item setelah posisi `after` (atau dari awal); `nextCursor` = kunci item terakhir (terikat pada pasangan run
+ * `pair`) bila masih ada sisa.
+ */
+function pageOf(
+  entries: CompareEntry[],
+  after: CompareKey | undefined,
+  size: number,
+  pair: { baseId: string; targetId: string },
+): EntryPage {
   const found = after === undefined ? 0 : entries.findIndex((entry) => compareKeys(entry, after) > 0);
   const start = found === -1 ? entries.length : found;
   const page = entries.slice(start, start + size);
   const last = page.at(-1);
   return {
     entries: page,
-    nextCursor: start + size < entries.length && last ? encodeCompareCursor(last) : null,
+    nextCursor:
+      start + size < entries.length && last
+        ? encodeCompareCursor({ ...pair, suite: last.suite, name: last.name, testCaseId: last.testCaseId })
+        : null,
   };
 }
 
-const toSide = (row: CompareResultRow | null) =>
-  row === null ? null : { status: row.status, durationMs: row.durationMs, message: row.message, flakyInRun: row.flakyInRun };
+const toSide = (row: CompareResultRow | null, message: string | null) =>
+  row === null ? null : { status: row.status, durationMs: row.durationMs, message, flakyInRun: row.flakyInRun };
 
 /**
  * Daftar versi dan perbandingan dua run (spec Tahap 3 §4.2–4.4, §6). Sama seperti rute baca hasil: hanya sesi
@@ -179,7 +191,7 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
     } else {
       const branch = query.branch ?? (await latestBranch(db, projectId));
       branchRuns = branch === null ? [] : await listBranchRuns(db, projectId, branch);
-      target = asRecord(pickDefaultTarget(branchRuns), branchRuns);
+      target = pickDefaultTarget(branchRuns);
     }
 
     if (explicitBase !== null) {
@@ -188,7 +200,7 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
     }
     if (target === null) return { base: null, target: null };
     branchRuns ??= await listBranchRuns(db, projectId, target.branch);
-    return { base: asRecord(pickBaseline(target, branchRuns), branchRuns), target };
+    return { base: pickBaseline(target, branchRuns), target };
   }
 
   app.get<{ Params: { slug: string } }>(
@@ -202,9 +214,21 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
       // Id run berbentuk lain tidak mungkin ada (dan akan ditolak Postgres saat bind).
       for (const id of [query.base, query.target]) if (id !== undefined && !isUuid(id)) throw runNotFound();
 
-      const { base, target, groups, pages, bugs } = await heavyRead(async (db) => {
+      const { base, target, groups, pages, bugs, messages } = await heavyRead(async (db) => {
         const pair = await resolvePair(db, project.id, query);
-        if (pair.base === null || pair.target === null) return { ...pair, groups: null, pages: new Map<CompareGroup, EntryPage>(), bugs: new Map<string, BugRefDto[]>() };
+        // Cursor hanya berlaku untuk pasangan run tempat ia dibuat (default bisa bergeser setelah upload baru).
+        if (after !== undefined && (pair.base?.id !== after.baseId || pair.target?.id !== after.targetId)) {
+          throw staleCursor();
+        }
+        if (pair.base === null || pair.target === null) {
+          return {
+            ...pair,
+            groups: null,
+            pages: new Map<CompareGroup, EntryPage>(),
+            bugs: new Map<string, BugRefDto[]>(),
+            messages: new Map<string, string>(),
+          };
+        }
 
         const grouped = groupEntries(
           await listCompareResults(db, pair.base.id),
@@ -213,11 +237,29 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
         // Respons utama: 200 item pertama tiap kelompok; `group` (+ `cursor`): 100 item satu kelompok.
         const selected = query.group === undefined ? COMPARE_GROUPS : [query.group];
         const size = query.group === undefined ? COMPARE_FIRST_PAGE : COMPARE_PAGE_SIZE;
-        const paged = new Map(selected.map((group) => [group, pageOf(grouped[group], after, size)] as const));
-        const ids = [...paged.values()].flatMap((page) => page.entries.map((entry) => entry.testCaseId));
-        return { ...pair, groups: grouped, pages: paged, bugs: await bugRefsForTests(db, project.id, ids) };
+        const ids = { baseId: pair.base.id, targetId: pair.target.id };
+        const paged = new Map(selected.map((group) => [group, pageOf(grouped[group], after, size, ids)] as const));
+        const shown = [...paged.values()].flatMap((page) => page.entries);
+        // Pesan (bisa panjang) hanya untuk item yang dikembalikan: satu query untuk kedua sisi.
+        const messageRows = await listResultMessages(db, [
+          { runId: pair.base.id, testCaseIds: shown.filter((entry) => entry.base !== null).map((entry) => entry.testCaseId) },
+          { runId: pair.target.id, testCaseIds: shown.filter((entry) => entry.target !== null).map((entry) => entry.testCaseId) },
+        ]);
+        return {
+          ...pair,
+          groups: grouped,
+          pages: paged,
+          bugs: await bugRefsForTests(
+            db,
+            project.id,
+            shown.map((entry) => entry.testCaseId),
+          ),
+          messages: messageRows,
+        };
       });
 
+      const messageOf = (run: RunRecord | null, testCaseId: string) =>
+        run === null ? null : (messages.get(messageKey(run.id, testCaseId)) ?? null);
       const toPage = (group: CompareGroup): CompareGroupPageDto => {
         const page = pages.get(group);
         return {
@@ -226,8 +268,8 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
               testCaseId: entry.testCaseId,
               suite: entry.suite,
               name: entry.name,
-              base: toSide(entry.base),
-              target: toSide(entry.target),
+              base: toSide(entry.base, messageOf(base, entry.testCaseId)),
+              target: toSide(entry.target, messageOf(target, entry.testCaseId)),
               bugs: bugs.get(entry.testCaseId) ?? [],
             }),
           ),

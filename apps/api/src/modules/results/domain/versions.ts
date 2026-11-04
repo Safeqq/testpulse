@@ -118,3 +118,22 @@ export function orderVersions(entries: ReadonlyArray<{ version: string; latestRu
   });
   return merged.map((g) => g.label);
 }
+
+/**
+ * Run berversi satu branch dikelompokkan per versi, terendah -> tertinggi (aturan `orderVersions`/`sameVersion`).
+ * `runs` harus urut lama -> baru; run tiap kelompok mengikuti urutan itu, jadi run terakhir kelompok = "run sebuah
+ * versi" (spec §4.2). Run tanpa versi diabaikan. Dipakai bersama oleh pembanding default dan daftar versi.
+ */
+export function groupRunsByVersion<T extends { version: string | null; createdAt: Date }>(
+  runs: ReadonlyArray<T>,
+): { groups: { version: string; runs: T[] }[]; allSemver: boolean } {
+  const latest = new Map<string, Date>();
+  for (const run of runs) if (run.version !== null) latest.set(run.version, run.createdAt);
+  const allSemver = isAllSemver(latest.keys());
+  const ordered = orderVersions([...latest].map(([version, latestRunAt]) => ({ version, latestRunAt })));
+  const groups = ordered.map((version) => ({
+    version,
+    runs: runs.filter((run) => run.version !== null && sameVersion(run.version, version, allSemver)),
+  }));
+  return { groups, allSemver };
+}

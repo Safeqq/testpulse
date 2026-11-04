@@ -6,11 +6,14 @@ import type {
   BugSeverity,
   BugStatus,
   BugSummaryDto,
+  ResultStatus,
+  TestHintDto,
 } from "@testpulse/shared";
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Queryable } from "../../db/client.js";
 import { bugLabels, bugLinks, bugs, testCases, users } from "../../db/schema.js";
+import { listTestHistory } from "../results/repository.js";
 import type { BugCursor, BugSort } from "./cursor.js";
 
 const assigneeUser = alias(users, "assignee");
@@ -91,11 +94,52 @@ export async function labelsByBug(db: Queryable, bugIds: string[]): Promise<Map<
   return new Map([...grouped].map(([id, labels]) => [id, sortLabels(labels)]));
 }
 
-/** Detail bug (spec §6). `testHint` diisi Task 6; di sini selalu `null`. */
+/** Jumlah hasil terbaru pada petunjuk status test (spec §6.2). */
+export const TEST_HINT_LENGTH = 20;
+
+/**
+ * Petunjuk status test asal bug (spec §6.2): `TEST_HINT_LENGTH` hasil terbaru test itu di branch run asal (lama →
+ * baru). Bila run asal sudah dihapus (atau bug tidak pernah menyimpan run), branch = branch hasil terbaru test itu;
+ * `branch: null` bila test tidak punya hasil lagi. `consecutivePasses` = jumlah `passed` berturut-turut dari hasil
+ * terbaru (berhenti di hasil pertama yang bukan `passed`, termasuk `skipped`).
+ */
+async function loadTestHint(
+  db: Queryable,
+  projectId: string,
+  testCaseId: string,
+  runId: string | null,
+): Promise<TestHintDto> {
+  const found = await db.execute<{ branch: string | null }>(sql`
+    select coalesce(
+      (select r.branch from runs r where r.id = ${runId}::uuid and r.project_id = ${projectId}),
+      (select r.branch from test_results tr join runs r on r.id = tr.run_id
+        where tr.test_case_id = ${testCaseId} and r.project_id = ${projectId}
+        order by r.created_at desc, r.id desc limit 1)
+    ) as branch
+  `);
+  const branch = found.rows[0]?.branch ?? null;
+  if (branch === null) return { branch: null, results: [], consecutivePasses: 0, lastStatus: null };
+
+  const newestFirst = await listTestHistory(db, projectId, testCaseId, branch, TEST_HINT_LENGTH);
+  const firstNotPassed = newestFirst.findIndex((row) => row.status !== "passed");
+  return {
+    branch,
+    results: newestFirst.toReversed().map((row) => ({
+      runId: row.runId,
+      createdAt: row.createdAt.toISOString(),
+      status: row.status as ResultStatus,
+    })),
+    consecutivePasses: firstNotPassed === -1 ? newestFirst.length : firstNotPassed,
+    lastStatus: (newestFirst[0]?.status as ResultStatus | undefined) ?? null,
+  };
+}
+
+/** Detail bug (spec §6), termasuk `testHint` bila bug tertaut ke test. */
 export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> {
   const [row] = await db
     .select({
       ...summaryColumns,
+      projectId: bugs.projectId,
       description: bugs.description,
       reporterId: bugs.reporterId,
       reporterName: reporterUser.name,
@@ -134,7 +178,7 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
     version: row.version,
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     closedAt: row.closedAt?.toISOString() ?? null,
-    testHint: null,
+    testHint: row.testCaseId === null ? null : await loadTestHint(db, row.projectId, row.testCaseId, row.runId),
   };
 }
 

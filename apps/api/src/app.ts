@@ -14,6 +14,7 @@ import { bugRoutes } from "./modules/bugs/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
 import { memberRoutes } from "./modules/projects/members.routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
+import { compareRoutes } from "./modules/results/compare.routes.js";
 import { ingestRoutes } from "./modules/results/ingest.routes.js";
 import { readRoutes } from "./modules/results/read.routes.js";
 import { tokenRoutes } from "./modules/tokens/routes.js";
@@ -83,10 +84,9 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await invitationRoutes(api, config);
       await tokenRoutes(api);
       await ingestRoutes(api, config);
-      await readRoutes(
-        api,
-        opts.readStatementTimeoutMs !== undefined ? { statementTimeoutMs: opts.readStatementTimeoutMs } : {},
-      );
+      const readOpts = opts.readStatementTimeoutMs !== undefined ? { statementTimeoutMs: opts.readStatementTimeoutMs } : {};
+      await readRoutes(api, readOpts);
+      await compareRoutes(api, readOpts);
       await bugRoutes(api);
       await commentRoutes(api);
     },

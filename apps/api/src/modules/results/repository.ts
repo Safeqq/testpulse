@@ -1,7 +1,7 @@
-import type { IngestQuery, ResultStatus } from "@testpulse/shared";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import type { BugRefDto, BugStatus, IngestQuery, ResultStatus } from "@testpulse/shared";
+import { and, asc, desc, eq, inArray, lte, sql } from "drizzle-orm";
 import type { Db, Queryable } from "../../db/client.js";
-import { projects, runs, testCases, testResults } from "../../db/schema.js";
+import { bugs, projects, runs, testCases, testResults } from "../../db/schema.js";
 import { touchToken } from "../tokens/auth.js";
 import { FLAKY_WINDOW } from "./domain/flaky.js";
 import type { ParsedReport, ParsedResult } from "./domain/junit.js";
@@ -367,4 +367,46 @@ export async function listTestHistory(
     .where(and(eq(testResults.testCaseId, testCaseId), eq(runs.projectId, projectId), eq(runs.branch, branch)))
     .orderBy(...newestFirst)
     .limit(limit);
+}
+
+/** Maksimum lencana bug per test (spec Tahap 3 §6). */
+export const MAX_BUG_REFS = 5;
+
+/**
+ * Lencana bug untuk setiap test di `testCaseIds` dengan **satu** query: bug non-`closed` yang tertaut ke test itu,
+ * maks `MAX_BUG_REFS`, terbaru dulu (`created_at desc`, nomor sebagai pemutus seri). Predikat `status <> 'closed'`
+ * ditulis literal agar indeks parsial `bugs_test_case_open_idx` terpakai. Test tanpa bug mendapat `[]`.
+ */
+export async function bugRefsForTests(
+  db: Queryable,
+  projectId: string,
+  testCaseIds: readonly string[],
+): Promise<Map<string, BugRefDto[]>> {
+  const refs = new Map<string, BugRefDto[]>(testCaseIds.map((id) => [id, []]));
+  if (testCaseIds.length === 0) return refs;
+
+  const ranked = db
+    .select({
+      testCaseId: bugs.testCaseId,
+      number: bugs.number,
+      title: bugs.title,
+      status: bugs.status,
+      recency: sql<number>`row_number() over (partition by ${bugs.testCaseId} order by ${bugs.createdAt} desc, ${bugs.number} desc)`.as(
+        "recency",
+      ),
+    })
+    .from(bugs)
+    .where(and(inArray(bugs.testCaseId, [...refs.keys()]), sql`${bugs.status} <> 'closed'`, eq(bugs.projectId, projectId)))
+    .as("ranked");
+  const rows = await db
+    .select()
+    .from(ranked)
+    .where(lte(ranked.recency, MAX_BUG_REFS))
+    .orderBy(ranked.testCaseId, ranked.recency);
+
+  for (const row of rows) {
+    if (row.testCaseId === null) continue;
+    refs.get(row.testCaseId)?.push({ number: row.number, title: row.title, status: row.status as BugStatus });
+  }
+  return refs;
 }

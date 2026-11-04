@@ -47,3 +47,29 @@ export function decodeResultCursor(cursor: string): number | null {
   const id = Number(text);
   return Number.isSafeInteger(id) ? id : null;
 }
+
+/** Posisi item dalam kelompok perbandingan; urutan kelompok = `suite`, `name`, `testCaseId` (urutan code unit). */
+export interface CompareKey {
+  suite: string;
+  name: string;
+  testCaseId: string;
+}
+
+/** Cursor kelompok perbandingan: kunci urut item terakhir di halaman, sebagai array JSON `[suite, name, id]`. */
+export function encodeCompareCursor(key: CompareKey): string {
+  return encode(JSON.stringify([key.suite, key.name, key.testCaseId]));
+}
+
+export function decodeCompareCursor(cursor: string): CompareKey | null {
+  const text = decode(cursor);
+  if (text === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 3 || !parsed.every((part) => typeof part === "string")) return null;
+  const [suite, name, testCaseId] = parsed as [string, string, string];
+  return isUuid(testCaseId) ? { suite, name, testCaseId } : null;
+}

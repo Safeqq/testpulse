@@ -21,6 +21,7 @@ import { resolveProject } from "../projects/access.js";
 import { decodeCursor, decodeResultCursor, encodeCursor, encodeResultCursor } from "./cursor.js";
 import { LruCache } from "./lru-cache.js";
 import {
+  bugRefsForTests,
   deleteRun,
   findRun,
   findTestCase,
@@ -32,6 +33,7 @@ import {
   listRunResults,
   listRuns,
   listTestHistory,
+  type FlakyRow,
   type RunRecord,
 } from "./repository.js";
 
@@ -41,7 +43,7 @@ export const RESULTS_PAGE_SIZE = 100;
 export const TREND_POINTS = 30;
 export const MAX_FLAKY_TESTS = 50;
 export const HISTORY_LENGTH = 20;
-/** Batas waktu tiap statement pada query baca berat (flaky, stats, riwayat, detail run). */
+/** Batas waktu tiap statement pada query baca berat (flaky, stats, riwayat, detail run, versi, perbandingan). */
 export const READ_STATEMENT_TIMEOUT_MS = 5000;
 /** Jumlah daftar flaky (per project + branch) yang disimpan di cache memori (Ruling F-I1). */
 export const FLAKY_CACHE_SIZE = 500;
@@ -60,11 +62,11 @@ const runDetailQuery = z.object({
   cursor: z.string().optional(),
 });
 
-function invalidCursor(): AppError {
+export function invalidCursor(): AppError {
   return new AppError(400, "VALIDATION_ERROR", "Data tidak valid", { cursor: "Cursor tidak valid" });
 }
 
-function runNotFound(): AppError {
+export function runNotFound(): AppError {
   return new AppError(404, "RUN_NOT_FOUND", "Run tidak ditemukan");
 }
 
@@ -72,7 +74,7 @@ function testNotFound(): AppError {
   return new AppError(404, "TEST_NOT_FOUND", "Test tidak ditemukan");
 }
 
-function toRunSummary(run: RunRecord): RunSummaryDto {
+export function toRunSummary(run: RunRecord): RunSummaryDto {
   return {
     id: run.id,
     branch: run.branch,
@@ -91,7 +93,7 @@ function toRunSummary(run: RunRecord): RunSummaryDto {
 }
 
 /** passed / (passed + failed) × 100, dibulatkan 1 desimal (setengah ke atas); `null` bila penyebutnya 0. */
-function passRate(run: RunRecord): number | null {
+export function passRate(run: RunRecord): number | null {
   const executed = run.passed + run.failed;
   return executed === 0 ? null : Math.round((run.passed * 1000) / executed) / 10;
 }
@@ -99,7 +101,8 @@ function passRate(run: RunRecord): number | null {
 interface CachedFlaky {
   /** `flakyFingerprint` saat daftar dihitung; daftar hanya dipakai ulang bila sidik branch masih sama. */
   fingerprint: string;
-  tests: FlakyTestDto[];
+  /** Tanpa lencana bug: status bug tidak memengaruhi sidik, jadi lencana selalu dibaca segar (Ruling T1-b). */
+  tests: FlakyRow[];
 }
 
 /**
@@ -165,7 +168,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
 
       if (!isUuid(req.params.runId)) throw runNotFound();
       const runId = req.params.runId;
-      const { run, rows } = await heavyRead(async (db) => {
+      const { run, rows, bugs } = await heavyRead(async (db) => {
         const found = await findRun(db, project.id, runId);
         if (!found) throw runNotFound();
         const results = await listRunResults(db, found.id, {
@@ -173,7 +176,8 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           ...(afterId !== undefined ? { afterId } : {}),
           limit: RESULTS_PAGE_SIZE + 1,
         });
-        return { run: found, rows: results };
+        const shown = results.slice(0, RESULTS_PAGE_SIZE).map((row) => row.testCaseId);
+        return { run: found, rows: results, bugs: await bugRefsForTests(db, project.id, shown) };
       });
       const page = rows.slice(0, RESULTS_PAGE_SIZE);
       const last = page.at(-1);
@@ -188,8 +192,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           retries: row.retries,
           durationMs: row.durationMs,
           message: row.message,
-          // TODO(Tahap 3 Task 6): attach bug refs
-          bugs: [],
+          bugs: bugs.get(row.testCaseId) ?? [],
         })),
         nextCursor: rows.length > RESULTS_PAGE_SIZE && last ? encodeResultCursor(last.id) : null,
       };
@@ -243,13 +246,20 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
 
       const key = `${project.id}:${branch}`;
       const cached = flakyCache.get(key);
-      if (cached?.fingerprint === fingerprint) return cached.tests;
-      // TODO(Tahap 3 Task 6): attach bug refs
-      const tests = (await listFlakyTests(db, project.id, branch, MAX_FLAKY_TESTS)).map(
-        (row): FlakyTestDto => ({ ...row, bugs: [] }),
+      let tests: FlakyRow[];
+      if (cached?.fingerprint === fingerprint) {
+        tests = cached.tests;
+      } else {
+        tests = await listFlakyTests(db, project.id, branch, MAX_FLAKY_TESTS);
+        flakyCache.set(key, { fingerprint, tests });
+      }
+      // Lencana dilampirkan setelah membaca cache agar bug baru/ditutup langsung terlihat.
+      const bugs = await bugRefsForTests(
+        db,
+        project.id,
+        tests.map((test) => test.testCaseId),
       );
-      flakyCache.set(key, { fingerprint, tests });
-      return tests;
+      return tests.map((test): FlakyTestDto => ({ ...test, bugs: bugs.get(test.testCaseId) ?? [] }));
     });
   });
 
@@ -261,7 +271,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
       const query = parseOrThrow(branchQuery, req.query);
       if (!isUuid(req.params.testCaseId)) throw testNotFound();
       const testCaseId = req.params.testCaseId;
-      const { testCase, branch, history } = await heavyRead(async (db) => {
+      const { testCase, branch, history, bugs } = await heavyRead(async (db) => {
         const found = await findTestCase(db, project.id, testCaseId);
         if (!found) throw testNotFound();
         const resolved = await branchOrLatest(db, project.id, query.branch);
@@ -269,10 +279,10 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           testCase: found,
           branch: resolved,
           history: resolved === null ? [] : await listTestHistory(db, project.id, found.id, resolved, HISTORY_LENGTH),
+          bugs: (await bugRefsForTests(db, project.id, [found.id])).get(found.id) ?? [],
         };
       });
-      // TODO(Tahap 3 Task 6): attach bug refs
-      const testCaseDto = { ...testCase, bugs: [] };
+      const testCaseDto = { ...testCase, bugs };
       if (branch === null) return { testCase: testCaseDto, branch: null, results: [] };
 
       return {

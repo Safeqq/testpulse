@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 import { LoadError } from "@/components/LoadError";
 import { Loading } from "@/components/Loading";
 import { ProjectNotFound } from "@/components/ProjectNotFound";
+import { ProjectTabs, type ProjectTab } from "@/components/ProjectTabs";
 import { api, ApiError } from "@/lib/api";
 import { useDocumentTitle } from "@/lib/forms";
 import { useLoad } from "@/lib/useLoad";
@@ -16,14 +17,16 @@ interface ProjectFrameProps {
   slug: string;
   /** Judul halaman (tab browser, `document.title`), tanpa nama project. */
   title: string;
+  /** Tab project yang aktif untuk halaman ini; kosong bila halaman bukan salah satu tab (mis. riwayat test). */
+  tab?: ProjectTab;
   children: (project: ProjectDto) => ReactNode;
 }
 
 /**
  * Kerangka halaman hasil test: memuat project (untuk `myRole`), menangani project tidak ditemukan/privat dengan
- * tampilan yang sama seperti `/p/:slug`, dan menyediakan tautan kembali ke ringkasan project.
+ * tampilan yang sama seperti `/p/:slug`, menyediakan tautan kembali ke ringkasan project, dan menampilkan tab navigasi project.
  */
-export function ProjectFrame({ slug, title, children }: ProjectFrameProps) {
+export function ProjectFrame({ slug, title, tab, children }: ProjectFrameProps) {
   // Setelah masuk, pengguna kembali ke halaman ini lengkap dengan query-nya (mis. ?branch=).
   const { pathname, search } = useLocation();
   const fetchProject = useCallback(() => api.projects.get(slug), [slug]);
@@ -49,6 +52,7 @@ export function ProjectFrame({ slug, title, children }: ProjectFrameProps) {
           <span className="min-w-0 truncate">{project.name}</span>
         </Link>
       </nav>
+      <ProjectTabs slug={project.slug} active={tab} canSeeSettings={project.myRole !== null} />
       {children(project)}
     </div>
   );

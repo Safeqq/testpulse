@@ -1,8 +1,9 @@
-import { Globe, Settings } from "lucide-react";
+import { Globe } from "lucide-react";
 import { useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Loading } from "@/components/Loading";
 import { ProjectNotFound } from "@/components/ProjectNotFound";
+import { ProjectTabs } from "@/components/ProjectTabs";
 import { RoleBadge, VisibilityBadge } from "@/components/ProjectBadges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -62,23 +63,18 @@ export function ProjectPage() {
             {project.myRole ? <RoleBadge role={project.myRole} prefix="Peran Anda: " /> : null}
           </div>
         </div>
-        <div className="shrink-0">
-          {isMember ? (
-            <Button asChild variant="outline">
-              <Link to={`/p/${project.slug}/settings`} data-testid="settings-link">
-                <Settings aria-hidden="true" />
-                Pengaturan
-              </Link>
-            </Button>
-          ) : status === "anonymous" ? (
+        {!isMember && status === "anonymous" ? (
+          <div className="shrink-0">
             <Button asChild>
               <Link to={loginPathFor(`/p/${project.slug}`)} data-testid="project-login">
                 Masuk
               </Link>
             </Button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
       </div>
+
+      <ProjectTabs slug={project.slug} active="ringkasan" canSeeSettings={isMember} />
 
       <ProjectResults project={project} />
     </section>

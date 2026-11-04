@@ -27,7 +27,7 @@ export class ProjectPage {
     this.notFound = page.getByTestId("project-not-found");
     this.emptyResults = page.getByTestId("empty-results");
     this.setupInstructions = page.getByTestId("setup-instructions");
-    this.settingsLink = page.getByTestId("settings-link");
+    this.settingsLink = page.getByTestId("tab-pengaturan");
     this.loginButton = page.getByTestId("project-login");
     this.dashboardBranch = page.getByTestId("dashboard-branch");
     this.statLastStatus = page.getByTestId("stat-last-status");

@@ -18,7 +18,7 @@ import { defaultBranch } from "./ProjectResults";
 export function FlakyPage() {
   const { slug = "" } = useParams();
   return (
-    <ProjectFrame slug={slug} title="Test flaky">
+    <ProjectFrame slug={slug} title="Test flaky" tab="flaky">
       {(project) => <FlakyView slug={project.slug} />}
     </ProjectFrame>
   );

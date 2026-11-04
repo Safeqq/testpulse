@@ -21,7 +21,7 @@ import { ProjectFrame } from "./ProjectFrame";
 export function RunsPage() {
   const { slug = "" } = useParams();
   return (
-    <ProjectFrame slug={slug} title="Daftar run">
+    <ProjectFrame slug={slug} title="Daftar run" tab="run">
       {(project) => <RunsView slug={project.slug} />}
     </ProjectFrame>
   );

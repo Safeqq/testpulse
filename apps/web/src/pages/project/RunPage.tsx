@@ -44,7 +44,7 @@ function safeExternalUrl(url: string | null): string | null {
 export function RunPage() {
   const { slug = "", runId = "" } = useParams();
   return (
-    <ProjectFrame slug={slug} title="Detail run">
+    <ProjectFrame slug={slug} title="Detail run" tab="run">
       {(project) => <RunView key={runId} project={project} runId={runId} />}
     </ProjectFrame>
   );

@@ -1,7 +1,18 @@
 import type {
   AcceptInvitationDto,
+  ActivityPageDto,
   ApiErrorBody,
   BranchDto,
+  BugDto,
+  BugListQuery,
+  BugsPageDto,
+  CommentBody,
+  CommentDto,
+  CompareDto,
+  CompareGroup,
+  CompareGroupPageDto,
+  CompareQuery,
+  CreateBugBody,
   CreateInvitationBody,
   CreateProjectBody,
   CreatedInvitationDto,
@@ -20,9 +31,11 @@ import type {
   StatsDto,
   TestHistoryDto,
   TokenDto,
+  UpdateBugBody,
   UpdateMemberBody,
   UpdateProjectBody,
   UserDto,
+  VersionDto,
 } from "@testpulse/shared";
 
 export class ApiError extends Error {
@@ -72,6 +85,15 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
   const text = query.toString();
   return text === "" ? path : `${path}?${text}`;
 }
+
+/** Pasangan run yang dibandingkan; kosong = default server (spec Tahap 3 §4.3). */
+export type CompareParams = Pick<CompareQuery, "base" | "target" | "branch">;
+
+/**
+ * Halaman berikutnya satu kelompok perbandingan. `cursor` terikat pada pasangan run, jadi `base` dan `target` harus
+ * id run dari respons pertama (bukan default yang bisa bergeser setelah upload baru).
+ */
+export type CompareGroupParams = CompareParams & { base: string; target: string; group: CompareGroup; cursor: string };
 
 export function createApiClient(baseUrl: string, fetchFn: typeof fetch = fetch) {
   const base = baseUrl.replace(/\/+$/, "");
@@ -144,6 +166,32 @@ export function createApiClient(baseUrl: string, fetchFn: typeof fetch = fetch) 
         request<FlakyTestDto[]>("GET", withQuery(`/projects/${seg(slug)}/flaky`, { branch })),
       history: (slug: string, testCaseId: string, branch?: string) =>
         request<TestHistoryDto>("GET", withQuery(`/projects/${seg(slug)}/tests/${seg(testCaseId)}/history`, { branch })),
+      versions: (slug: string, branch?: string) =>
+        request<VersionDto[]>("GET", withQuery(`/projects/${seg(slug)}/versions`, { branch })),
+      compare: (slug: string, params: CompareParams = {}) =>
+        request<CompareDto>("GET", withQuery(`/projects/${seg(slug)}/compare`, params)),
+      compareGroup: (slug: string, params: CompareGroupParams) =>
+        request<CompareGroupPageDto>("GET", withQuery(`/projects/${seg(slug)}/compare`, params)),
+    },
+    bugs: {
+      list: (slug: string, query: Partial<BugListQuery> = {}) =>
+        request<BugsPageDto>("GET", withQuery(`/projects/${seg(slug)}/bugs`, query)),
+      labels: (slug: string) => request<string[]>("GET", `/projects/${seg(slug)}/bugs/labels`),
+      get: (slug: string, number: number) => request<BugDto>("GET", `/projects/${seg(slug)}/bugs/${number}`),
+      create: (slug: string, body: CreateBugBody) => request<BugDto>("POST", `/projects/${seg(slug)}/bugs`, body),
+      update: (slug: string, number: number, body: UpdateBugBody) =>
+        request<BugDto>("PATCH", `/projects/${seg(slug)}/bugs/${number}`, body),
+      remove: (slug: string, number: number) => request<void>("DELETE", `/projects/${seg(slug)}/bugs/${number}`),
+      activity: (slug: string, number: number, cursor?: string) =>
+        request<ActivityPageDto>("GET", withQuery(`/projects/${seg(slug)}/bugs/${number}/activity`, { cursor })),
+    },
+    comments: {
+      create: (slug: string, number: number, body: CommentBody) =>
+        request<CommentDto>("POST", `/projects/${seg(slug)}/bugs/${number}/comments`, body),
+      update: (slug: string, number: number, id: string, body: CommentBody) =>
+        request<CommentDto>("PATCH", `/projects/${seg(slug)}/bugs/${number}/comments/${seg(id)}`, body),
+      remove: (slug: string, number: number, id: string) =>
+        request<void>("DELETE", `/projects/${seg(slug)}/bugs/${number}/comments/${seg(id)}`),
     },
     tokens: {
       list: (slug: string) => request<TokenDto[]>("GET", `/projects/${seg(slug)}/tokens`),

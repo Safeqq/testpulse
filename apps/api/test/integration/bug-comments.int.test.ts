@@ -1,6 +1,6 @@
 import { faker } from "@faker-js/faker";
-import { activityPageDto, bugDto, commentDto, type CommentDto, type ProjectDto } from "@testpulse/shared";
-import { and, eq } from "drizzle-orm";
+import { activityPageDto, bugDto, bugsPageDto, commentDto, type CommentDto, type ProjectDto } from "@testpulse/shared";
+import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { beforeAll, describe, expect, it } from "vitest";
 import { bugComments, bugEvents, bugs } from "../../src/db/schema.js";
@@ -135,6 +135,44 @@ describe("API komentar & aktivitas bug", () => {
       await addComment(fx, number, "x".repeat(10_000));
     });
 
+    it("komentar baru menaikkan updatedAt bug (tanpa version/event); sort=updated menaruhnya di atas", async () => {
+      const fx = await setup();
+      const first = await createBug(fx);
+      const second = await createBug(fx);
+      const listNumbers = async () => {
+        const res = await call("GET", fx, "?sort=updated", fx.tester.cookie);
+        return bugsPageDto.parse(res.json()).bugs.map((bug) => bug.number);
+      };
+      expect(await listNumbers()).toEqual([second, first]);
+
+      const before = bugDto.parse((await call("GET", fx, `/${first}`, fx.tester.cookie)).json());
+      await addComment(fx, first, "bangkitkan");
+      const after = bugDto.parse((await call("GET", fx, `/${first}`, fx.tester.cookie)).json());
+      expect(Date.parse(after.updatedAt)).toBeGreaterThan(Date.parse(before.updatedAt));
+      expect(after.version).toBe(before.version);
+      expect(await listNumbers()).toEqual([first, second]);
+      const events = await app.db.select().from(bugEvents).where(eq(bugEvents.bugId, await bugId(fx, first)));
+      expect(events).toHaveLength(0);
+
+      // Edit dan hapus komentar tidak mengubah updatedAt.
+      const comment = await addComment(fx, first, "lagi");
+      const mid = bugDto.parse((await call("GET", fx, `/${first}`, fx.tester.cookie)).json());
+      await call("PATCH", fx, `/${first}/comments/${comment.id}`, fx.tester.cookie, { body: "diubah" });
+      await call("DELETE", fx, `/${first}/comments/${comment.id}`, fx.tester.cookie);
+      const end = bugDto.parse((await call("GET", fx, `/${first}`, fx.tester.cookie)).json());
+      expect(end.updatedAt).toBe(mid.updatedAt);
+    });
+
+    it.each(["halo\u0000dunia", "halo\u001bdunia", "\u0000"])("400: body dengan karakter kontrol %j, bukan 500", async (body) => {
+      const fx = await setup();
+      const number = await createBug(fx);
+      const res = await call("POST", fx, `/${number}/comments`, fx.tester.cookie, { body });
+      expectError(res, 400, "VALIDATION_ERROR");
+      expect(res.json().error.fields.body).toBeTruthy();
+      const bad = await call("POST", fx, "", fx.tester.cookie, { title: "judul bug", description: "a\u0000b" });
+      expectError(bad, 400, "VALIDATION_ERROR");
+    });
+
     it("404 BUG_NOT_FOUND untuk nomor yang tidak ada atau bukan angka", async () => {
       const fx = await setup();
       for (const n of ["99", "abc", "0"]) {
@@ -165,6 +203,41 @@ describe("API komentar & aktivitas bug", () => {
       const page = await activity(fx, number);
       expect(page.items).toHaveLength(1);
       expect(page.items[0]).toMatchObject({ kind: "comment", id: comment.id, body: "revisi", editedAt: edited.editedAt });
+    });
+
+    it("PATCH dengan isi (setelah trim) yang sama: tidak menulis, editedAt tetap, mengembalikan komentar saat ini", async () => {
+      const fx = await setup();
+      const number = await createBug(fx);
+      const comment = await addComment(fx, number, "sama");
+      const res = await call("PATCH", fx, `/${number}/comments/${comment.id}`, fx.tester.cookie, { body: "  sama \n" });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(commentDto.parse(res.json())).toEqual(comment);
+      const edited = await call("PATCH", fx, `/${number}/comments/${comment.id}`, fx.tester.cookie, { body: "beda" });
+      const { editedAt } = commentDto.parse(edited.json());
+      expect(editedAt).not.toBeNull();
+      const again = await call("PATCH", fx, `/${number}/comments/${comment.id}`, fx.tester.cookie, { body: "beda " });
+      expect(commentDto.parse(again.json()).editedAt).toBe(editedAt);
+    });
+
+    it("400: PATCH dengan karakter kontrol", async () => {
+      const fx = await setup();
+      const number = await createBug(fx);
+      const comment = await addComment(fx, number, "awal");
+      const res = await call("PATCH", fx, `/${number}/comments/${comment.id}`, fx.tester.cookie, { body: "a b" });
+      expectError(res, 400, "VALIDATION_ERROR");
+    });
+
+    it("404: id komentar dari project lain dengan nomor bug yang sama", async () => {
+      const fx = await setup();
+      const fx2 = await setup();
+      const number = await createBug(fx);
+      const number2 = await createBug(fx2);
+      expect(number2).toBe(number);
+      const foreign = await addComment(fx2, number2, "milik project lain");
+      expectError(await call("PATCH", fx, `/${number}/comments/${foreign.id}`, fx.tester.cookie, { body: "x" }), 404, "COMMENT_NOT_FOUND");
+      expectError(await call("DELETE", fx, `/${number}/comments/${foreign.id}`, fx.admin.cookie), 404, "COMMENT_NOT_FOUND");
+      const [row] = await app.db.select().from(bugComments).where(eq(bugComments.id, foreign.id));
+      expect(row).toMatchObject({ body: "milik project lain", deletedAt: null, editedAt: null });
     });
 
     it("403: tester lain dan admin tidak boleh mengedit komentar orang lain", async () => {
@@ -315,6 +388,31 @@ describe("API komentar & aktivitas bug", () => {
           expect(prev.id < cur.id).toBe(true);
         }
       }
+    });
+
+    it("paging 51 item dengan mikrodetik berbeda di dalam satu milidetik: tanpa duplikat atau lompatan", async () => {
+      const fx = await setup();
+      const number = await createBug(fx);
+      const id = await bugId(fx, number);
+      const at = (n: number) => sql`timestamptz '2026-10-01 00:00:00.123+00' + ${n} * interval '1 microsecond'`;
+      for (let n = 1; n <= 51; n++) {
+        if (n % 2 === 0) {
+          await app.db.execute(
+            sql`insert into bug_events (bug_id, actor_id, field, old_value, new_value, created_at) values (${id}, ${fx.admin.user.id}, ${"n"}, ${String(n)}, ${String(n)}, ${at(n)})`,
+          );
+        } else {
+          await app.db.execute(
+            sql`insert into bug_comments (bug_id, author_id, body, created_at) values (${id}, ${fx.tester.user.id}, ${String(n)}, ${at(n)})`,
+          );
+        }
+      }
+      const page1 = await activity(fx, number);
+      expect(page1.items).toHaveLength(50);
+      const page2 = await activity(fx, number, page1.nextCursor!);
+      expect(page2.items).toHaveLength(1);
+      expect(page2.nextCursor).toBeNull();
+      const labels = [...page1.items, ...page2.items].map((item) => (item.kind === "comment" ? item.body : item.newValue));
+      expect(labels).toEqual(Array.from({ length: 51 }, (_, i) => String(i + 1)));
     });
 
     it("event id numerik diurutkan sebagai angka (9 sebelum 10) dan cursor melewati batas halaman di tengah waktu sama", async () => {

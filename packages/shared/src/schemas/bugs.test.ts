@@ -178,6 +178,28 @@ describe("commentBody", () => {
   it("menerima 10.000 karakter", () => expect(ok(commentBody, { body: "a".repeat(10000) })).toBe(true));
 });
 
+describe("karakter kontrol", () => {
+  const bad = ["\u0000", "\u0001", "\u001b", "\u007f", "\u0085"];
+  const good = "baris 1\n\tbaris 2\r\nlagi";
+
+  it.each(bad)("komentar menolak %j dengan pesan Indonesia", (ch) => {
+    const result = commentBody.safeParse({ body: `halo${ch}dunia` });
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toBe("Teks tidak boleh mengandung karakter kontrol");
+  });
+  it.each(bad)("judul, deskripsi, dan judul link menolak %j", (ch) => {
+    expect(ok(createBugBody, { title: `judul${ch}bug` })).toBe(false);
+    expect(ok(createBugBody, { title: "judul bug", description: `desk${ch}` })).toBe(false);
+    expect(ok(updateBugBody, { version: 1, description: `desk${ch}` })).toBe(false);
+    expect(ok(bugLink, { url: "https://example.com", title: `t${ch}` })).toBe(false);
+  });
+  it("tab, LF, dan CR tetap diterima", () => {
+    expect(ok(commentBody, { body: good })).toBe(true);
+    expect(ok(createBugBody, { title: "judul\tbug", description: good })).toBe(true);
+    expect(ok(bugLink, { url: "https://example.com", title: "a\tb" })).toBe(true);
+  });
+});
+
 describe("bugListQuery", () => {
   it("default: status active, sort updated", () =>
     expect(bugListQuery.parse({})).toEqual({ status: "active", sort: "updated" }));

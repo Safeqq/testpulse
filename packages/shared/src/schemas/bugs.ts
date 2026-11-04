@@ -1,6 +1,21 @@
 import { z } from "zod";
 import { RESULT_STATUSES } from "./result-status.js";
 
+/**
+ * Karakter kontrol selain tab, LF, dan CR (NUL, ESC, DEL, C1, dst.). Postgres menolak NUL pada kolom teks (500),
+ * dan karakter kontrol lain tidak berguna di teks bug/komentar.
+ */
+export function hasControlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if ((code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || (code >= 0x7f && code <= 0x9f)) return true;
+  }
+  return false;
+}
+
+const CONTROL_CHARS_MESSAGE = "Teks tidak boleh mengandung karakter kontrol";
+const noControlChars = (value: string) => !hasControlChars(value);
+
 export const BUG_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 export type BugStatus = (typeof BUG_STATUSES)[number];
 
@@ -48,6 +63,7 @@ export const bugLink = z.object({
     .string()
     .trim()
     .max(100, "Judul link maksimal 100 karakter")
+    .refine(noControlChars, CONTROL_CHARS_MESSAGE)
     .transform((v) => (v === "" ? undefined : v))
     .optional(),
 });
@@ -55,8 +71,16 @@ export type BugLink = z.infer<typeof bugLink>;
 
 const bugLinks = z.array(bugLink).max(10, "Maksimal 10 link");
 
-const bugTitle = z.string().trim().min(3, "Judul minimal 3 karakter").max(200, "Judul maksimal 200 karakter");
-const bugDescription = z.string().max(20000, "Deskripsi maksimal 20.000 karakter");
+const bugTitle = z
+  .string()
+  .trim()
+  .min(3, "Judul minimal 3 karakter")
+  .max(200, "Judul maksimal 200 karakter")
+  .refine(noControlChars, CONTROL_CHARS_MESSAGE);
+const bugDescription = z
+  .string()
+  .max(20000, "Deskripsi maksimal 20.000 karakter")
+  .refine(noControlChars, CONTROL_CHARS_MESSAGE);
 const bugPriority = z.enum(BUG_PRIORITIES);
 const bugSeverity = z.enum(BUG_SEVERITIES);
 const assigneeId = z.uuid("Assignee tidak valid").nullable();
@@ -98,7 +122,8 @@ export const updateBugBody = z
 export type UpdateBugBody = z.infer<typeof updateBugBody>;
 
 export const commentBody = z.object({
-  body: z.string().trim().min(1, "Komentar wajib diisi").max(10000, "Komentar maksimal 10.000 karakter"),
+  body: z.string().trim().min(1, "Komentar wajib diisi").max(10000, "Komentar maksimal 10.000 karakter")
+    .refine(noControlChars, CONTROL_CHARS_MESSAGE),
 });
 export type CommentBody = z.infer<typeof commentBody>;
 

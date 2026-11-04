@@ -7,7 +7,7 @@ import { bugByNumber, microIso } from "./read.repository.js";
 
 /**
  * Komentar & linimasa aktivitas bug (spec Tahap 3 §3.4, §6). Email user tidak pernah dipilih: hanya `id` dan `name`.
- * Jalur tulis mengunci baris komentar/bug yang dibaca dalam transaksi yang sama, agar hapus bersamaan (bug atau
+ * Jalur tulis mengunci baris komentar/bug yang dipakai dalam transaksi yang sama, agar hapus bersamaan (bug atau
  * komentar) menghasilkan 404 alih-alih pelanggaran foreign key.
  */
 
@@ -59,13 +59,21 @@ export async function findBugId(db: Queryable, projectId: string, number: number
   return row?.id ?? null;
 }
 
-/** Menambah komentar; `null` bila bug tidak ada (atau terhapus bersamaan). */
+/**
+ * Menambah komentar; `null` bila bug tidak ada (atau terhapus bersamaan). Komentar baru menaikkan `updated_at` bug
+ * (bug dengan diskusi aktif muncul di urutan teratas) dalam transaksi yang sama; `version` tidak berubah dan tidak ada
+ * event, sehingga editor yang sedang membuka bug tidak mendapat konflik. UPDATE ini sekaligus mengunci baris bug.
+ */
 export async function createComment(
   db: Db,
   input: { projectId: string; number: number; authorId: string; body: string },
 ): Promise<CommentDto | null> {
   return db.transaction(async (tx) => {
-    const [bug] = await tx.select({ id: bugs.id }).from(bugs).where(bugByNumber(input.projectId, input.number)).for("key share");
+    const [bug] = await tx
+      .update(bugs)
+      .set({ updatedAt: sql`now()` })
+      .where(bugByNumber(input.projectId, input.number))
+      .returning({ id: bugs.id });
     if (!bug) return null;
     const [created] = await tx
       .insert(bugComments)
@@ -88,7 +96,7 @@ interface CommentTarget {
 /** Mengunci komentar milik bug bernomor `number` di project ini; `null` bila tidak ada. */
 async function lockComment(tx: Queryable, target: CommentTarget) {
   const [row] = await tx
-    .select({ authorId: bugComments.authorId, deletedAt: bugComments.deletedAt })
+    .select({ authorId: bugComments.authorId, body: bugComments.body, deletedAt: bugComments.deletedAt })
     .from(bugComments)
     .innerJoin(bugs, eq(bugs.id, bugComments.bugId))
     .where(and(eq(bugComments.id, target.commentId), bugByNumber(target.projectId, target.number)))
@@ -97,7 +105,7 @@ async function lockComment(tx: Queryable, target: CommentTarget) {
 }
 
 /**
- * Mengubah isi komentar. Hanya penulis; komentar terhapus diperlakukan tidak ada (`not_found`). Pemeriksaan
+ * Mengubah isi komentar (tanpa perubahan isi = tanpa tulis). Hanya penulis; komentar terhapus diperlakukan tidak ada (`not_found`). Pemeriksaan
  * role penulis (masih tester/admin) dilakukan rute lewat izin `bugs:write` sebelum memanggil ini.
  */
 export async function editComment(
@@ -108,10 +116,13 @@ export async function editComment(
     const comment = await lockComment(tx, input);
     if (!comment || comment.deletedAt !== null) return "not_found";
     if (comment.authorId !== input.actorId) return "forbidden";
-    await tx
-      .update(bugComments)
-      .set({ body: input.body, editedAt: sql`now()` })
-      .where(eq(bugComments.id, input.commentId));
+    // Isi (setelah trim) tidak berubah: tidak ada yang ditulis, `editedAt` tetap.
+    if (comment.body !== input.body) {
+      await tx
+        .update(bugComments)
+        .set({ body: input.body, editedAt: sql`now()` })
+        .where(eq(bugComments.id, input.commentId));
+    }
     return loadComment(tx, input.commentId);
   });
 }

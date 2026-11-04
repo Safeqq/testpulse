@@ -66,6 +66,13 @@ describe("pickBaseline", () => {
     expect(pickBaseline(t, [a, u, t])?.id).toBe("a");
   });
 
+  it("still applies the version rule when the target is absent from branchRuns", () => {
+    const a = run("a", "1.0.0");
+    const b = run("b", "1.1.0");
+    const t = run("t", "1.1.0");
+    expect(pickBaseline(t, [a, b])?.id).toBe("a");
+  });
+
   it("returns null when the target is the only run", () => {
     const t = run("t", "1.0.0");
     expect(pickBaseline(t, [t])).toBeNull();

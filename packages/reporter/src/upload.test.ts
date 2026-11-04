@@ -10,6 +10,7 @@ const OPTS: ReporterOptions = {
   commit: "abc1234",
   ciUrl: "https://ci.example.com/run/1?a=b",
   name: "unit tests",
+  appVersion: "1.0.1",
   files: ["a.xml"],
   token: TOKEN,
 };
@@ -49,6 +50,7 @@ describe("uploadReport", () => {
       commit: "abc1234",
       ciUrl: "https://ci.example.com/run/1?a=b",
       name: "unit tests",
+      version: "1.0.1",
     });
     expect(init.method).toBe("POST");
     expect(init.body).toBe(XML);

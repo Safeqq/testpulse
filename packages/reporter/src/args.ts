@@ -15,6 +15,8 @@ export interface ReporterOptions {
   commit?: string;
   ciUrl?: string;
   name?: string;
+  /** Versi aplikasi yang diuji (`--app-version`, bukan `--version`); divalidasi sama dengan server. */
+  appVersion?: string;
   /** Path atau pola glob, apa adanya dari argumen. */
   files: string[];
   /** Token CI dari env `TESTPULSE_TOKEN`; tidak pernah dari flag dan tidak pernah dicetak. */
@@ -36,6 +38,7 @@ export const USAGE = [
   "  --commit <sha>    SHA commit (hex 7-40 karakter)",
   "  --ci-url <url>    URL run di CI",
   "  --name <nama>     nama run",
+  "  --app-version <v> versi aplikasi (1-50 karakter: huruf, angka, . _ + -)",
   "",
   `Token CI dibaca dari environment variable ${TOKEN_ENV} (tidak ada flag token).`,
 ].join("\n");
@@ -47,11 +50,22 @@ const OPTIONS = {
   commit: { type: "string" },
   "ci-url": { type: "string" },
   name: { type: "string" },
+  "app-version": { type: "string" },
 } as const;
 
 /** Nama opsi dari galat `util.parseArgs`; nilai argumen sengaja tidak diulang agar rahasia tidak bocor. */
 function optionNameFrom(err: unknown): string | undefined {
   return err instanceof Error ? /'(--?[\w-]+)/.exec(err.message)?.[1] : undefined;
+}
+
+/** Aturan sama dengan `runVersion` di @testpulse/shared (reporter tidak memuat zod saat dijalankan). */
+const APP_VERSION_SHAPE = /^[A-Za-z0-9._+-]{1,50}$/;
+
+function parseAppVersion(raw: string): string {
+  if (!APP_VERSION_SHAPE.test(raw)) {
+    throw new UsageError("--app-version harus 1-50 karakter: huruf, angka, titik, garis bawah, plus, atau tanda hubung");
+  }
+  return raw;
 }
 
 function parseBaseUrl(raw: string): string {
@@ -104,6 +118,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv): ReporterOptio
   if (!values.url) throw new UsageError("--url wajib diisi");
   if (!values.project) throw new UsageError("--project wajib diisi");
   if (!values.branch) throw new UsageError("--branch wajib diisi");
+  const appVersion = values["app-version"] === undefined ? undefined : parseAppVersion(values["app-version"]);
   if (positionals.length === 0) throw new UsageError("Minimal satu berkas atau pola glob JUnit wajib diberikan");
 
   const token = env[TOKEN_ENV]?.trim();
@@ -120,6 +135,7 @@ export function parseArgs(argv: string[], env: NodeJS.ProcessEnv): ReporterOptio
     ...(values.commit ? { commit: values.commit } : {}),
     ...(values["ci-url"] ? { ciUrl: values["ci-url"] } : {}),
     ...(values.name ? { name: values.name } : {}),
+    ...(appVersion !== undefined ? { appVersion } : {}),
     files: positionals,
     token,
   };

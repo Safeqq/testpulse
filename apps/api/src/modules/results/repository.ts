@@ -77,6 +77,7 @@ export async function insertRun(
         commitSha: "commitSha" in query ? query.commitSha : null,
         ciUrl: query.ciUrl ?? null,
         name: query.name ?? null,
+        version: query.version ?? null,
         durationMs: report.durationMs,
         ...totals,
         tokenId,
@@ -173,10 +174,11 @@ export async function latestBranch(db: Queryable, projectId: string): Promise<st
 export async function listRuns(
   db: Db,
   projectId: string,
-  opts: { branch?: string; after?: { createdAt: Date; id: string }; limit: number },
+  opts: { branch?: string; version?: string; after?: { createdAt: Date; id: string }; limit: number },
 ): Promise<RunRecord[]> {
   const conditions = [eq(runs.projectId, projectId)];
   if (opts.branch !== undefined) conditions.push(eq(runs.branch, opts.branch));
+  if (opts.version !== undefined) conditions.push(eq(runs.version, opts.version));
   if (opts.after) {
     const { createdAt, id } = opts.after;
     const position = sql`coalesce(

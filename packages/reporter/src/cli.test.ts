@@ -205,7 +205,7 @@ describe("main: berkas", () => {
 describe("main: upload", () => {
   it("201 -> exit 0, mencetak total dan URL run, tanpa token", async () => {
     const h = harness();
-    const code = await run(h, ["single.xml"], ["--commit", "abc1234", "--ci-url", "https://ci.example.com/1", "--name", "unit"]);
+    const code = await run(h, ["single.xml"], ["--commit", "abc1234", "--ci-url", "https://ci.example.com/1", "--name", "unit", "--app-version", "1.0.1"]);
     expect(code).toBe(0);
     const out = h.out.join("\n");
     expect(out).toContain(RESULT.url);
@@ -220,7 +220,15 @@ describe("main: upload", () => {
     expect(url.pathname).toBe("/api/v1/projects/testpulse/runs");
     expect(url.searchParams.get("branch")).toBe("main");
     expect(url.searchParams.get("commit")).toBe("abc1234");
+    expect(url.searchParams.get("version")).toBe("1.0.1");
     expect(new Headers(init.headers).get("authorization")).toBe(`Bearer ${TOKEN}`);
+  });
+
+  it("--app-version tidak sah -> exit 2 tanpa upload", async () => {
+    const h = harness();
+    expect(await run(h, ["single.xml"], ["--app-version", "1 0"])).toBe(2);
+    expect(h.err.join("\n")).toContain("--app-version");
+    expect(h.requests).toHaveLength(0);
   });
 
   it("422 -> exit 1 dan mencetak pesan API", async () => {

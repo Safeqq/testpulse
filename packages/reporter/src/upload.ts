@@ -25,6 +25,7 @@ function endpointUrl(opts: ReporterOptions): URL {
   if (opts.commit !== undefined) url.searchParams.set("commit", opts.commit);
   if (opts.ciUrl !== undefined) url.searchParams.set("ciUrl", opts.ciUrl);
   if (opts.name !== undefined) url.searchParams.set("name", opts.name);
+  if (opts.appVersion !== undefined) url.searchParams.set("version", opts.appVersion);
   return url;
 }
 

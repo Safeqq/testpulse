@@ -25,6 +25,7 @@ describe("parseArgs", () => {
         "--commit", "abc1234",
         "--ci-url", "https://ci.example.com/run/1",
         "--name", "unit",
+        "--app-version", "1.0.1",
         "a.xml",
         "reports/*.xml",
       ],
@@ -37,6 +38,7 @@ describe("parseArgs", () => {
       commit: "abc1234",
       ciUrl: "https://ci.example.com/run/1",
       name: "unit",
+      appVersion: "1.0.1",
       files: ["a.xml", "reports/*.xml"],
       token: TOKEN,
     });
@@ -47,6 +49,24 @@ describe("parseArgs", () => {
     expect(opts).not.toHaveProperty("commit");
     expect(opts).not.toHaveProperty("ciUrl");
     expect(opts).not.toHaveProperty("name");
+    expect(opts).not.toHaveProperty("appVersion");
+  });
+
+  it("--app-version menerima versi yang sah", () => {
+    expect(parseArgs(["--app-version", "v1.2.3-rc.1+build.5", ...BASE], ENV).appVersion).toBe("v1.2.3-rc.1+build.5");
+    expect(parseArgs(["--app-version", "a".repeat(50), ...BASE], ENV).appVersion).toBe("a".repeat(50));
+  });
+
+  it.each([
+    ["berisi spasi", "1 0"],
+    ["berisi karakter terlarang", "1.0/1"],
+    ["terlalu panjang", "a".repeat(51)],
+  ])("--app-version %s -> UsageError yang menyebut opsi", (_label, value) => {
+    expect(usageMessage(["--app-version", value, ...BASE])).toContain("--app-version");
+  });
+
+  it("--app-version kosong ditolak", () => {
+    expect(usageMessage(["--app-version", "", ...BASE])).toContain("--app-version");
   });
 
   it("mempertahankan path dasar pada --url (tanpa garis miring akhir)", () => {

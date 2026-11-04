@@ -1,5 +1,6 @@
 import {
   ingestQuery,
+  runVersion,
   type BranchDto,
   type FlakyTestDto,
   type ResultStatus,
@@ -53,7 +54,7 @@ export interface ReadRoutesOptions {
 /** Aturan `branch` sama persis dengan query upload (1–200 karakter `[A-Za-z0-9._/-]`). */
 const branchParam = ingestQuery.in.shape.branch.optional();
 const branchQuery = z.object({ branch: branchParam });
-const runsQuery = z.object({ branch: branchParam, cursor: z.string().optional() });
+const runsQuery = z.object({ branch: branchParam, version: runVersion.optional(), cursor: z.string().optional() });
 const runDetailQuery = z.object({
   status: z.enum(["failed", "flaky", "all"]).default("failed"),
   cursor: z.string().optional(),
@@ -85,8 +86,7 @@ function toRunSummary(run: RunRecord): RunSummaryDto {
     failed: run.failed,
     skipped: run.skipped,
     flaky: run.flaky,
-    // TODO(Tahap 3): isi dari kolom runs.version setelah migrasi.
-    version: null,
+    version: run.version,
   };
 }
 
@@ -142,6 +142,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
 
     const rows = await listRuns(app.db, project.id, {
       ...(query.branch !== undefined ? { branch: query.branch } : {}),
+      ...(query.version !== undefined ? { version: query.version } : {}),
       ...(after ? { after } : {}),
       limit: RUNS_PAGE_SIZE + 1,
     });

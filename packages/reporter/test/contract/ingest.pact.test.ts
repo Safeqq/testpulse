@@ -25,9 +25,12 @@ const XML_RULES = { body: { path: "$.testsuites", rules: [like("")] } };
 const REQUEST_BODY = Buffer.from(REPORT, "utf8");
 
 const QUERY = { branch: "main", commit: "abc1234def", ciUrl: "https://ci.example.com/runs/1", name: "unit" };
+const APP_VERSION = "1.0.1";
+/** Query yang dikirim reporter: opsi `appVersion` menjadi parameter `version`. */
+const PACT_QUERY = { ...QUERY, version: APP_VERSION };
 
 function optionsFor(baseUrl: string, token: string): ReporterOptions {
-  return { url: baseUrl, project: PROJECT_SLUG, files: [], token, ...QUERY };
+  return { url: baseUrl, project: PROJECT_SLUG, files: [], token, ...QUERY, appVersion: APP_VERSION };
 }
 
 describe("kontrak reporter -> POST /projects/:slug/runs", () => {
@@ -38,7 +41,7 @@ describe("kontrak reporter -> POST /projects/:slug/runs", () => {
       .uponReceiving("upload laporan JUnit dengan token CI aktif")
       .withRequest("POST", `/api/v1/projects/${PROJECT_SLUG}/runs`, (b) =>
         b
-          .query(QUERY)
+          .query(PACT_QUERY)
           .headers({ Authorization: `Bearer ${INGEST_TOKEN}` })
           .body("application/xml", REQUEST_BODY)
           .matchingRules(XML_RULES),
@@ -70,7 +73,7 @@ describe("kontrak reporter -> POST /projects/:slug/runs", () => {
       .uponReceiving("upload laporan JUnit dengan token CI tidak dikenal")
       .withRequest("POST", `/api/v1/projects/${PROJECT_SLUG}/runs`, (b) =>
         b
-          .query(QUERY)
+          .query(PACT_QUERY)
           .headers({ Authorization: `Bearer ${UNKNOWN_TOKEN}` })
           .body("application/xml", REQUEST_BODY)
           .matchingRules(XML_RULES),

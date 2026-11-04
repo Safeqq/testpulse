@@ -7,3 +7,5 @@ export * from "./schemas/members.js";
 export * from "./schemas/invitations.js";
 export * from "./schemas/results.js";
 export * from "./schemas/tokens.js";
+export * from "./schemas/bugs.js";
+export * from "./schemas/compare.js";

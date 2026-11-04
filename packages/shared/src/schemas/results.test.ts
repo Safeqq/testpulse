@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { RESULT_STATUSES, createTokenBody, ingestQuery } from "../index.js";
+import {
+  RESULT_STATUSES,
+  createTokenBody,
+  flakyTestDto,
+  ingestQuery,
+  runSummaryDto,
+  runVersion,
+  testHistoryDto,
+  testResultDto,
+} from "../index.js";
 
 describe("ingestQuery", () => {
   it("menerima branch valid dan memetakan commit ke commitSha", () => {
@@ -71,4 +80,74 @@ describe("createTokenBody", () => {
 
 describe("RESULT_STATUSES", () => {
   it("berisi passed, failed, skipped", () => expect([...RESULT_STATUSES]).toEqual(["passed", "failed", "skipped"]));
+});
+
+describe("runVersion", () => {
+  it.each(["1.0.1", "v2.0.0-beta.1+sha.5", "build-42", "rc_1", "a", "a".repeat(50)])("menerima %s", (v) =>
+    expect(runVersion.safeParse(v).success).toBe(true),
+  );
+  it.each([["spasi", "1 0"], ["kosong", ""], ["51 karakter", "a".repeat(51)], ["garis miring", "1/0"], ["at", "1@0"]])(
+    "menolak %s",
+    (_label, v) => expect(runVersion.safeParse(v).success).toBe(false),
+  );
+});
+
+describe("ingestQuery version", () => {
+  it("menerima version dan meneruskannya", () =>
+    expect(ingestQuery.parse({ branch: "main", version: "1.0.1" })).toEqual({ branch: "main", version: "1.0.1" }));
+  it("version opsional", () => expect(ingestQuery.parse({ branch: "main" })).toEqual({ branch: "main" }));
+  it.each(["1 0", "", "a".repeat(51)])("menolak version %j", (version) =>
+    expect(ingestQuery.safeParse({ branch: "main", version }).success).toBe(false),
+  );
+});
+
+describe("DTO hasil dengan versi dan bug", () => {
+  const bug = { number: 3, title: "Bug", status: "open" };
+  const run = {
+    id: "r1",
+    branch: "main",
+    commitSha: null,
+    ciUrl: null,
+    name: null,
+    createdAt: "2026-11-04T00:00:00.000Z",
+    durationMs: 1,
+    total: 1,
+    passed: 1,
+    failed: 0,
+    skipped: 0,
+    flaky: 0,
+  };
+
+  it("runSummaryDto wajib memuat version (string atau null)", () => {
+    expect(runSummaryDto.safeParse({ ...run, version: "1.0.1" }).success).toBe(true);
+    expect(runSummaryDto.safeParse({ ...run, version: null }).success).toBe(true);
+    expect(runSummaryDto.safeParse(run).success).toBe(false);
+  });
+
+  it("testResultDto wajib memuat bugs", () => {
+    const result = {
+      testCaseId: "t1",
+      suite: "s",
+      name: "n",
+      status: "failed",
+      flakyInRun: false,
+      retries: 0,
+      durationMs: 1,
+      message: null,
+    };
+    expect(testResultDto.safeParse({ ...result, bugs: [bug] }).success).toBe(true);
+    expect(testResultDto.safeParse(result).success).toBe(false);
+  });
+
+  it("flakyTestDto wajib memuat bugs", () => {
+    const flaky = { testCaseId: "t1", suite: "s", name: "n", score: 0.5, lastStatus: "failed" };
+    expect(flakyTestDto.safeParse({ ...flaky, bugs: [] }).success).toBe(true);
+    expect(flakyTestDto.safeParse(flaky).success).toBe(false);
+  });
+
+  it("testHistoryDto.testCase wajib memuat bugs", () => {
+    const history = (testCase: object) => ({ testCase, branch: "main", results: [] });
+    expect(testHistoryDto.safeParse(history({ id: "t1", suite: "s", name: "n", bugs: [bug] })).success).toBe(true);
+    expect(testHistoryDto.safeParse(history({ id: "t1", suite: "s", name: "n" })).success).toBe(false);
+  });
 });

@@ -21,7 +21,11 @@ export type ErrorCode =
   | "TOKEN_NOT_FOUND"
   | "TOKEN_LIMIT"
   | "PAYLOAD_TOO_LARGE"
-  | "INVALID_REPORT";
+  | "INVALID_REPORT"
+  | "BUG_NOT_FOUND"
+  | "COMMENT_NOT_FOUND"
+  | "BUG_CONFLICT"
+  | "INVALID_TRANSITION";
 
 export interface ApiErrorBody {
   error: {

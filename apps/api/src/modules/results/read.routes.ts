@@ -85,6 +85,8 @@ function toRunSummary(run: RunRecord): RunSummaryDto {
     failed: run.failed,
     skipped: run.skipped,
     flaky: run.flaky,
+    // TODO(Tahap 3): isi dari kolom runs.version setelah migrasi.
+    version: null,
   };
 }
 
@@ -185,6 +187,7 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           retries: row.retries,
           durationMs: row.durationMs,
           message: row.message,
+          bugs: [],
         })),
         nextCursor: rows.length > RESULTS_PAGE_SIZE && last ? encodeResultCursor(last.id) : null,
       };
@@ -239,7 +242,9 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
       const key = `${project.id}:${branch}`;
       const cached = flakyCache.get(key);
       if (cached?.fingerprint === fingerprint) return cached.tests;
-      const tests = await listFlakyTests(db, project.id, branch, MAX_FLAKY_TESTS);
+      const tests = (await listFlakyTests(db, project.id, branch, MAX_FLAKY_TESTS)).map(
+        (row): FlakyTestDto => ({ ...row, bugs: [] }),
+      );
       flakyCache.set(key, { fingerprint, tests });
       return tests;
     });
@@ -263,10 +268,11 @@ export async function readRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
           history: resolved === null ? [] : await listTestHistory(db, project.id, found.id, resolved, HISTORY_LENGTH),
         };
       });
-      if (branch === null) return { testCase, branch: null, results: [] };
+      const testCaseDto = { ...testCase, bugs: [] };
+      if (branch === null) return { testCase: testCaseDto, branch: null, results: [] };
 
       return {
-        testCase,
+        testCase: testCaseDto,
         branch,
         // Urut waktu (lama → baru), sama seperti titik tren dan masukan `flakyScore`.
         results: history.toReversed().map((row) => ({

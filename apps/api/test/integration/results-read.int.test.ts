@@ -260,6 +260,7 @@ describe("API baca hasil test & hapus run", () => {
         retries: 0,
         durationMs: 10,
         message: "expected 200",
+        bugs: [],
       });
       expect(failed.nextCursor).toBeNull();
 
@@ -514,6 +515,7 @@ describe("API baca hasil test & hapus run", () => {
         name: "capped",
         score: 100,
         lastStatus: "passed",
+        bugs: [],
       });
       expect(list[1]).toMatchObject({ score: 75, lastStatus: "failed" });
     });
@@ -711,7 +713,7 @@ describe("API baca hasil test & hapus run", () => {
       const main = testHistoryDto.parse(
         (await get(`/projects/${fx.project.slug}/tests/${id}/history?branch=main`, fx.admin.cookie)).json(),
       );
-      expect(main.testCase).toEqual({ id, suite: "suite", name: "target" });
+      expect(main.testCase).toEqual({ id, suite: "suite", name: "target", bugs: [] });
       expect(main.branch).toBe("main");
       expect(main.results.map((r) => r.runId)).toEqual(mainRuns.slice(5));
       expect(main.results[19]).toEqual({

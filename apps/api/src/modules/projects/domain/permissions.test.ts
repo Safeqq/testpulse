@@ -50,6 +50,16 @@ const matrix: Record<ProjectAction, AccessDecision[]> = {
     "allow",
   ],
   "tokens:manage": manage,
+  "bugs:write": [
+    "unauthenticated",
+    "unauthenticated",
+    "not_found",
+    "forbidden",
+    "forbidden",
+    "allow",
+    "allow",
+  ],
+  "bugs:delete": manage,
 };
 
 describe("decideAccess", () => {

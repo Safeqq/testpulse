@@ -1,16 +1,27 @@
 import { z } from "zod";
+import { bugRefDto } from "./bugs.js";
+import { RESULT_STATUSES } from "./result-status.js";
 
-export const RESULT_STATUSES = ["passed", "failed", "skipped"] as const;
-export type ResultStatus = (typeof RESULT_STATUSES)[number];
+export { RESULT_STATUSES, type ResultStatus } from "./result-status.js";
+
+// Versi aplikasi pada run (spec Tahap 3 §4.1): 1–50 karakter [A-Za-z0-9._+-].
+export const runVersion = z
+  .string()
+  .min(1, "Versi wajib diisi")
+  .max(50, "Versi maksimal 50 karakter")
+  .regex(/^[A-Za-z0-9._+-]+$/, "Versi hanya boleh berisi huruf, angka, titik, garis bawah, plus, dan tanda hubung");
+
+// Aturan nama branch dipakai bersama oleh query upload, daftar run, dan perbandingan.
+export const branchName = z
+  .string()
+  .min(1, "Branch wajib diisi")
+  .max(200, "Branch maksimal 200 karakter")
+  .regex(/^[A-Za-z0-9._/-]+$/, "Branch hanya boleh berisi huruf, angka, titik, garis bawah, garis miring, dan tanda hubung");
 
 // Query upload JUnit XML (spec §4). `commit` dipetakan ke `commitSha` pada output.
 export const ingestQuery = z
   .object({
-    branch: z
-      .string()
-      .min(1, "Branch wajib diisi")
-      .max(200, "Branch maksimal 200 karakter")
-      .regex(/^[A-Za-z0-9._/-]+$/, "Branch hanya boleh berisi huruf, angka, titik, garis bawah, garis miring, dan tanda hubung"),
+    branch: branchName,
     commit: z
       .string()
       .regex(/^[0-9a-fA-F]{7,40}$/, "Commit harus berupa hex 7–40 karakter")
@@ -29,6 +40,7 @@ export const ingestQuery = z
       }, "URL CI harus berupa URL http atau https tanpa username/password")
       .optional(),
     name: z.string().max(120, "Nama maksimal 120 karakter").optional(),
+    version: runVersion.optional(),
   })
   .transform(({ commit, ...rest }) => (commit === undefined ? rest : { ...rest, commitSha: commit.toLowerCase() }));
 export type IngestQuery = z.infer<typeof ingestQuery>;
@@ -61,6 +73,7 @@ export const runSummaryDto = z.object({
   failed: z.number(),
   skipped: z.number(),
   flaky: z.number(),
+  version: z.string().nullable(),
 });
 export type RunSummaryDto = z.infer<typeof runSummaryDto>;
 
@@ -79,6 +92,7 @@ export const testResultDto = z.object({
   retries: z.number(),
   durationMs: z.number(),
   message: z.string().nullable(),
+  bugs: z.array(bugRefDto),
 });
 export type TestResultDto = z.infer<typeof testResultDto>;
 
@@ -115,11 +129,12 @@ export const flakyTestDto = z.object({
   name: z.string(),
   score: z.number(),
   lastStatus: z.enum(RESULT_STATUSES),
+  bugs: z.array(bugRefDto),
 });
 export type FlakyTestDto = z.infer<typeof flakyTestDto>;
 
 export const testHistoryDto = z.object({
-  testCase: z.object({ id: z.string(), suite: z.string(), name: z.string() }),
+  testCase: z.object({ id: z.string(), suite: z.string(), name: z.string(), bugs: z.array(bugRefDto) }),
   branch: z.string().nullable(),
   results: z.array(
     z.object({

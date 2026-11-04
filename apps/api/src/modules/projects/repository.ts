@@ -2,6 +2,7 @@ import type { Role, Visibility } from "@testpulse/shared";
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { memberships, projects, users } from "../../db/schema.js";
+import { clearAssigneeOnLeave } from "../bugs/repository.js";
 import { wouldLeaveNoAdmin } from "./domain/admins.js";
 
 export interface ProjectRecord {
@@ -142,12 +143,16 @@ export async function findMember(db: Db, projectId: string, userId: string): Pro
  * Seluruh baris admin project dikunci (`FOR UPDATE`) lebih dulu, baru dihitung. Transaksi paralel
  * yang menyentuh admin project yang sama menunggu di kunci ini, lalu menghitung ulang dari data
  * yang sudah di-commit, sehingga dua request tidak bisa sama-sama lolos dan menyisakan nol admin.
+ *
+ * Mengeluarkan anggota (`null`) juga mengosongkan assignee bug-nya di project ini dalam transaksi yang sama,
+ * dengan event `assignee` ber-actor `actorId` (yang mengeluarkan, atau orang itu sendiri; spec Tahap 3 §3.3).
  */
 export async function changeMemberRole(
   db: Db,
   projectId: string,
   userId: string,
   newRole: Role | null,
+  actorId: string,
 ): Promise<"ok" | "not_member" | "last_admin"> {
   return db.transaction(async (tx) => {
     // ORDER BY menjaga urutan pengambilan kunci tetap sama antar transaksi (menghindari deadlock).
@@ -174,6 +179,7 @@ export async function changeMemberRole(
     const where = and(eq(memberships.projectId, projectId), eq(memberships.userId, userId));
     if (newRole === null) {
       await tx.delete(memberships).where(where);
+      await clearAssigneeOnLeave(tx, projectId, userId, actorId);
     } else {
       await tx.update(memberships).set({ role: newRole }).where(where);
     }

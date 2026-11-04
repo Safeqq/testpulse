@@ -38,7 +38,7 @@ export async function memberRoutes(app: FastifyInstance): Promise<void> {
       const { userId } = req.params;
       if (!isUuid(userId)) throw memberNotFound();
 
-      const result = await changeMemberRole(app.db, project.id, userId, role);
+      const result = await changeMemberRole(app.db, project.id, userId, role, req.user!.id);
       if (result === "not_member") throw memberNotFound();
       if (result === "last_admin") throw lastAdmin();
 
@@ -66,7 +66,7 @@ export async function memberRoutes(app: FastifyInstance): Promise<void> {
       if (isSelf && role === null) throw memberNotFound();
       if (!isUuid(userId)) throw memberNotFound();
 
-      const result = await changeMemberRole(app.db, project.id, userId, null);
+      const result = await changeMemberRole(app.db, project.id, userId, null, req.user!.id);
       if (result === "not_member") throw memberNotFound();
       if (result === "last_admin") throw lastAdmin();
       return reply.status(204).send();

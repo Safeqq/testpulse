@@ -1,0 +1,120 @@
+// Urutan versi per branch (spec Tahap 3 §4.2). Tanpa dependency semver; parser linear (tanpa regex bersarang).
+
+export type Semver = {
+  // Disimpan sebagai string desimal tanpa nol di depan agar perbandingan tetap tepat untuk angka sebesar apa pun.
+  major: string;
+  minor: string;
+  patch: string;
+  prerelease: string[];
+};
+
+const NUMERIC = /^(0|[1-9][0-9]*)$/;
+const IDENTIFIER = /^[0-9A-Za-z-]+$/;
+const ALL_DIGITS = /^[0-9]+$/;
+
+/** Cocok dengan `^[vV]?MAJOR.MINOR.PATCH(-prerelease)?(+build)?$`; `+build` dibuang, prefiks `v` diabaikan. */
+export function parseSemver(version: string): Semver | null {
+  const rest = version.startsWith("v") || version.startsWith("V") ? version.slice(1) : version;
+
+  const plus = rest.indexOf("+");
+  const withoutBuild = plus === -1 ? rest : rest.slice(0, plus);
+  if (plus !== -1 && !isDotSeparated(rest.slice(plus + 1))) return null;
+
+  const dash = withoutBuild.indexOf("-");
+  const core = dash === -1 ? withoutBuild : withoutBuild.slice(0, dash);
+  const prerelease = dash === -1 ? [] : withoutBuild.slice(dash + 1).split(".");
+
+  const numbers = core.split(".");
+  if (numbers.length !== 3 || !numbers.every((n) => NUMERIC.test(n))) return null;
+
+  if (dash !== -1) {
+    // Identifier numerik tidak boleh berawalan nol (semver 2.0 butir 9).
+    const valid = prerelease.every((id) => IDENTIFIER.test(id) && (!ALL_DIGITS.test(id) || NUMERIC.test(id)));
+    if (!valid) return null;
+  }
+
+  return { major: numbers[0]!, minor: numbers[1]!, patch: numbers[2]!, prerelease };
+}
+
+function isDotSeparated(s: string): boolean {
+  return s.split(".").every((id) => IDENTIFIER.test(id));
+}
+
+function compareNumeric(a: string, b: string): number {
+  if (a.length !== b.length) return a.length < b.length ? -1 : 1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function compareIdentifier(a: string, b: string): number {
+  const aNum = ALL_DIGITS.test(a);
+  const bNum = ALL_DIGITS.test(b);
+  if (aNum && bNum) return compareNumeric(a, b);
+  if (aNum) return -1; // identifier numerik < alfanumerik
+  if (bNum) return 1;
+  return a < b ? -1 : a > b ? 1 : 0; // urutan ASCII
+}
+
+export function compareSemver(a: Semver, b: Semver): number {
+  const core = compareNumeric(a.major, b.major) || compareNumeric(a.minor, b.minor) || compareNumeric(a.patch, b.patch);
+  if (core !== 0) return core;
+
+  if (a.prerelease.length === 0 && b.prerelease.length === 0) return 0;
+  if (a.prerelease.length === 0) return 1; // rilis > pre-release
+  if (b.prerelease.length === 0) return -1;
+
+  const shared = Math.min(a.prerelease.length, b.prerelease.length);
+  for (let i = 0; i < shared; i += 1) {
+    const c = compareIdentifier(a.prerelease[i]!, b.prerelease[i]!);
+    if (c !== 0) return c;
+  }
+  return a.prerelease.length === b.prerelease.length ? 0 : a.prerelease.length < b.prerelease.length ? -1 : 1;
+}
+
+/** True bila setiap versi cocok semver. Aturan urutan memakai semver hanya bila ini true. */
+export function isAllSemver(versions: Iterable<string>): boolean {
+  for (const v of versions) if (parseSemver(v) === null) return false;
+  return true;
+}
+
+/** Dua versi dianggap sama menurut semver hanya bila semua versi di branch semver; selain itu harus string identik. */
+export function sameVersion(a: string, b: string, allSemver: boolean): boolean {
+  if (a === b) return true;
+  if (!allSemver) return false;
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  return pa !== null && pb !== null && compareSemver(pa, pb) === 0;
+}
+
+function semverKey(s: Semver): string {
+  return `${s.major}.${s.minor}.${s.patch}${s.prerelease.length > 0 ? `-${s.prerelease.join(".")}` : ""}`;
+}
+
+/**
+ * Mengurutkan versi satu branch dari terendah ke tertinggi. Versi yang sama menurut semver digabung
+ * menjadi satu entri berlabel string run terbarunya (seri waktu: string yang lebih besar, agar deterministik).
+ * Bila ada versi non-semver, semua diurutkan menurut `latestRunAt` dan hanya string identik yang digabung.
+ */
+export function orderVersions(entries: ReadonlyArray<{ version: string; latestRunAt: Date }>): string[] {
+  const parsed = entries.map((e) => ({ ...e, semver: parseSemver(e.version) }));
+  const allSemver = parsed.every((e) => e.semver !== null);
+
+  const groups = new Map<string, { label: string; latestRunAt: Date; semver: Semver | null }>();
+  for (const e of parsed) {
+    const key = allSemver ? semverKey(e.semver!) : e.version;
+    const existing = groups.get(key);
+    const newer =
+      !existing ||
+      e.latestRunAt.getTime() > existing.latestRunAt.getTime() ||
+      (e.latestRunAt.getTime() === existing.latestRunAt.getTime() && e.version > existing.label);
+    if (newer) groups.set(key, { label: e.version, latestRunAt: e.latestRunAt, semver: e.semver });
+  }
+
+  const merged = [...groups.values()];
+  merged.sort((a, b) => {
+    if (allSemver) return compareSemver(a.semver!, b.semver!);
+    const byTime = a.latestRunAt.getTime() - b.latestRunAt.getTime();
+    if (byTime !== 0) return byTime;
+    return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
+  });
+  return merged.map((g) => g.label);
+}

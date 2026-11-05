@@ -7,6 +7,7 @@ const loadFlakyPage = () => import("./FlakyPage").then((m) => ({ default: m.Flak
 const loadTestHistoryPage = () => import("./TestHistoryPage").then((m) => ({ default: m.TestHistoryPage }));
 const loadBugsPage = () => import("./BugsPage").then((m) => ({ default: m.BugsPage }));
 const loadBugNewPage = () => import("./BugNewPage").then((m) => ({ default: m.BugNewPage }));
+const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage }));
 
 export const RunsPage = lazy(loadRunsPage);
 export const RunPage = lazy(loadRunPage);
@@ -14,6 +15,7 @@ export const FlakyPage = lazy(loadFlakyPage);
 export const TestHistoryPage = lazy(loadTestHistoryPage);
 export const BugsPage = lazy(loadBugsPage);
 export const BugNewPage = lazy(loadBugNewPage);
+export const BugPage = lazy(loadBugPage);
 
 const LOADERS = {
   runs: loadRunsPage,
@@ -22,6 +24,7 @@ const LOADERS = {
   test: loadTestHistoryPage,
   bugs: loadBugsPage,
   bugNew: loadBugNewPage,
+  bug: loadBugPage,
 };
 
 /**

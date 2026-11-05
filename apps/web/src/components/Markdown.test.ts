@@ -40,6 +40,10 @@ describe("Markdown", () => {
       expect(html).not.toContain("<iframe");
       expect(html).not.toContain("<style");
       expect(html).not.toContain("<div style");
+      // Tampil sebagai teks yang di-escape, bukan hilang diam-diam.
+      expect(html).toContain("&lt;iframe src=&quot;https://evil.example&quot;&gt;&lt;/iframe&gt;");
+      expect(html).toContain("&lt;style&gt;body{display:none}&lt;/style&gt;");
+      expect(html).toContain("&lt;div style=&quot;x&quot;&gt;a&lt;/div&gt;");
     });
   });
 
@@ -67,6 +71,32 @@ describe("Markdown", () => {
       expect(html).not.toContain("<a");
       expect(html).not.toContain("href=");
       expect(html).toContain("klik saya");
+    });
+
+    it.each([
+      ["referensi", "[klik saya][r]\n\n[r]: javascript:alert(1)"],
+      ["referensi pendek", "[klik saya]\n\n[klik saya]: javascript:alert(1)"],
+      ["entitas desimal", "[klik saya](&#106;avascript:alert(1))"],
+      ["entitas heksadesimal", "[klik saya](&#x6A;avascript:alert(1))"],
+      ["tab lewat entitas", "[klik saya](java&#x09;script:alert(1))"],
+      ["autolink", "<javascript:alert(1)>"],
+      ["gambar bersarang di link", "[![klik saya](https://x/b.svg)](javascript:alert(1))"],
+    ])("tidak ada href berbahaya lewat %s", (_name, source) => {
+      const html = render(source);
+      expect(html).not.toMatch(/href="[^"]*script/i);
+      expect(html).not.toMatch(/<a [^>]*href="(?!https?:|mailto:)/i);
+      expect(html).not.toContain("<img");
+    });
+
+    it("gambar bersarang di link berbahaya tetap menyisakan teks gambar", () => {
+      const html = render("[![klik saya](https://x/b.svg)](javascript:alert(1))");
+      expect(html).toContain("klik saya");
+      expect(html).not.toContain("javascript");
+    });
+
+    it("autolink aman tetap menjadi link", () => {
+      const html = render("<https://aman.example/a>");
+      expect(html).toContain('href="https://aman.example/a"');
     });
   });
 
@@ -144,6 +174,33 @@ describe("Markdown", () => {
       ['# a', '', '<span style="color:red">x</span>', '', '| a | b |', '| :-: | -: |', '| 1 | 2 |', '', '```', 'x', '```', '', '- [x] tugas'].join("\n"),
     );
     expect(html).not.toMatch(/<[a-z][^>]*\sstyle=/i);
+  });
+
+  describe("catatan kaki", () => {
+    const source = "Teks[^1] dan[^lain].\n\n[^1]: Isi catatan.\n[^lain]: Catatan lain.";
+
+    it("tidak dirender sebagai catatan kaki (spec tidak mendukungnya): tanpa id, label Inggris, atau tautan", () => {
+      const html = render(source);
+      expect(html).not.toContain("footnote");
+      expect(html).not.toContain("Footnotes");
+      expect(html).not.toMatch(/\sid="/);
+      expect(html).not.toContain("<a");
+      expect(html).not.toContain("<sup");
+    });
+
+    it("tetap menampilkan isi sebagai teks agar tidak ada yang hilang", () => {
+      const html = render(source);
+      expect(html).toContain("[^1]");
+      expect(html).toContain("Isi catatan.");
+      expect(html).toContain("[^lain]");
+      expect(html).toContain("Catatan lain.");
+    });
+
+    it("beberapa blok Markdown satu halaman tidak menghasilkan id ganda", () => {
+      const html = render(source) + render(source);
+      const ids = html.match(/\sid="[^"]*"/g) ?? [];
+      expect(new Set(ids).size).toBe(ids.length);
+    });
   });
 
   it("daftar tugas GFM tampil tanpa elemen input aktif", () => {

@@ -1,4 +1,4 @@
-import type { FocusEvent } from "react";
+import { useEffect, useRef, type FocusEvent } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +28,21 @@ function revealOnFocus(event: FocusEvent<HTMLAnchorElement>): void {
   event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
+/**
+ * Menggeser daftar tab (hanya sumbu mendatar, tanpa menggulir halaman) sampai tab aktif terlihat penuh. Tanpa ini, di
+ * layar sempit tab aktif yang berada di ujung kanan (mis. Flaky) tersembunyi saat halaman dibuka. Tidak menggeser
+ * apa pun bila tab itu sudah terlihat.
+ */
+function revealActive(list: HTMLElement): void {
+  const active = list.querySelector<HTMLElement>('[aria-current="page"]');
+  if (!active) return;
+  const tab = active.getBoundingClientRect();
+  const box = list.getBoundingClientRect();
+  // Dibulatkan ke arah menggeser: scrollLeft sebagian browser (WebKit) bulat, sisa pecahan menyisakan tepi tab tersembunyi.
+  if (tab.left < box.left) list.scrollLeft += Math.floor(tab.left - box.left);
+  else if (tab.right > box.right) list.scrollLeft += Math.ceil(tab.right - box.right);
+}
+
 interface ProjectTabsProps {
   slug: string;
   /** Tab halaman ini; kosong untuk halaman turunan yang bukan salah satu tab (mis. riwayat test). */
@@ -43,9 +58,13 @@ interface ProjectTabsProps {
  */
 export function ProjectTabs({ slug, active, canSeeSettings }: ProjectTabsProps) {
   const tabs = TABS.filter((tab) => tab.id !== "pengaturan" || canSeeSettings);
+  const list = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    if (list.current) revealActive(list.current);
+  }, [active]);
   return (
     <nav aria-label="Navigasi project" data-testid="project-tabs" className="min-w-0 border-b">
-      <ul className="m-0 flex list-none gap-1 overflow-x-auto p-0">
+      <ul ref={list} className="m-0 flex list-none gap-1 overflow-x-auto p-0">
         {tabs.map((tab) => {
           const isActive = tab.id === active;
           return (

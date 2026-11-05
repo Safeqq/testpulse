@@ -72,7 +72,7 @@ function parseFilters(params: URLSearchParams): BugFilters {
 
 function BugsView({ slug, isMember, canCreate }: { slug: string; isMember: boolean; canCreate: boolean }) {
   useEffect(() => {
-    if (canCreate) preloadPages("bugNew");
+    preloadPages("bug", ...(canCreate ? (["bugNew"] as const) : []));
   }, [canCreate]);
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => parseFilters(params), [params]);

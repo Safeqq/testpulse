@@ -1,4 +1,4 @@
-import { bugLabel } from "@testpulse/shared";
+import { bugLabel, updateBugBody, type UpdateBugBody } from "@testpulse/shared";
 
 export const MAX_BUG_LABELS = 10;
 
@@ -44,4 +44,25 @@ export function addLabels(current: readonly string[], pieces: readonly string[])
     labels = [...labels, parsed.data];
   }
   return { labels, rest: "", error: null };
+}
+
+export type BugPatch = Omit<UpdateBugBody, "version">;
+
+/**
+ * Memvalidasi perubahan bug di klien dengan schema PATCH yang sama dengan server (judul, deskripsi, label, link),
+ * lalu mengembalikan nilai ternormalisasi tanpa `version` (version ditambahkan saat menyimpan). Galat dipetakan ke
+ * kunci field (`links.0.url`, dst.); satu pesan pertama per kunci.
+ */
+export function validateBugPatch(
+  patch: Record<string, unknown>,
+): { ok: true; patch: BugPatch } | { ok: false; fields: Record<string, string> } {
+  const parsed = updateBugBody.safeParse({ version: 1, ...patch });
+  if (parsed.success) {
+    const patch: Partial<UpdateBugBody> = { ...parsed.data };
+    delete patch.version;
+    return { ok: true, patch };
+  }
+  const fields: Record<string, string> = {};
+  for (const issue of parsed.error.issues) fields[issue.path.map(String).join(".") || "form"] ??= issue.message;
+  return { ok: false, fields };
 }

@@ -43,6 +43,44 @@ function rehypeImagesAsLinks() {
   return (tree: HastNode): void => visit(tree, false);
 }
 
+interface MdastNode {
+  type: string;
+  value?: string;
+  label?: string | null;
+  identifier?: string;
+  children?: MdastNode[];
+}
+
+/**
+ * Plugin remark: sintaks catatan kaki GFM (`[^1]` dan `[^1]: ...`) tidak didukung (spec Tahap 3 §3.5). Hasil bawaannya
+ * rusak di sini: tautan `#...` dibuang oleh `urlTransform`, label sr-only berbahasa Inggris, dan id tetap sama di setiap
+ * blok sehingga bentrok bila satu halaman memuat beberapa Markdown (deskripsi dan banyak komentar). Maka keduanya
+ * dikembalikan menjadi teks biasa, tanpa id.
+ */
+function remarkFootnotesAsText() {
+  const marker = (node: MdastNode): string => `[^${node.label ?? node.identifier ?? ""}]`;
+  const flatten = (parent: MdastNode): void => {
+    if (!parent.children) return;
+    const next: MdastNode[] = [];
+    for (const child of parent.children) {
+      if (child.type === "footnoteReference") {
+        next.push({ type: "text", value: marker(child) });
+      } else if (child.type === "footnoteDefinition") {
+        const [first, ...rest] = child.children ?? [];
+        const lead: MdastNode = { type: "text", value: `${marker(child)}: ` };
+        if (first?.type === "paragraph") next.push({ type: "paragraph", children: [lead, ...(first.children ?? [])] });
+        else next.push({ type: "paragraph", children: [lead] }, ...(first ? [first] : []));
+        next.push(...rest);
+      } else {
+        next.push(child);
+      }
+    }
+    parent.children = next;
+    next.forEach(flatten);
+  };
+  return (tree: MdastNode): void => flatten(tree);
+}
+
 const FOCUSABLE_SCROLLER =
   "overflow-x-auto rounded-md focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden";
 
@@ -92,7 +130,7 @@ const components: Components = {
     ) : null,
 };
 
-const remarkPlugins: Options["remarkPlugins"] = [remarkGfm];
+const remarkPlugins: Options["remarkPlugins"] = [remarkGfm, remarkFootnotesAsText];
 const rehypePlugins: Options["rehypePlugins"] = [rehypeImagesAsLinks];
 
 // Tipografi lewat varian arbitrer pada wadah (tanpa plugin typography dan tanpa `style`).

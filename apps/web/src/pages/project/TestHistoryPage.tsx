@@ -5,6 +5,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { HistoryStrip } from "@/components/charts/HistoryStrip";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadError } from "@/components/LoadError";
+import { BugBadge } from "@/components/BugBadge";
 import { Loading } from "@/components/Loading";
 import { Badge } from "@/components/ui/badge";
 import { api, ApiError } from "@/lib/api";
@@ -26,7 +27,7 @@ export function TestHistoryPage() {
 }
 
 function HistoryView({ slug, testCaseId }: { slug: string; testCaseId: string }) {
-  useEffect(() => preloadPages("run"), []);
+  useEffect(() => preloadPages("run", "bug"), []);
   const [params] = useSearchParams();
   const branch = params.get("branch") ?? undefined;
   const fetchHistory = useCallback(() => api.results.history(slug, testCaseId, branch), [slug, testCaseId, branch]);
@@ -58,7 +59,7 @@ function HistoryContent({
   results,
 }: {
   slug: string;
-  testCase: { suite: string; name: string };
+  testCase: TestHistoryDto["testCase"];
   branch: string | null;
   results: TestHistoryDto["results"];
 }) {
@@ -75,6 +76,14 @@ function HistoryContent({
             <Badge variant="outline" className="max-w-full font-mono" data-testid="test-branch">
               <span className="min-w-0 truncate">{branch}</span>
             </Badge>
+          </div>
+        ) : null}
+        {testCase.bugs.length > 0 ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-sm text-muted-foreground" data-testid="test-bugs">
+            Bug terkait
+            {testCase.bugs.map((bug) => (
+              <BugBadge key={bug.number} bug={bug} slug={slug} />
+            ))}
           </div>
         ) : null}
       </div>

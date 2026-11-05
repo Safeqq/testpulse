@@ -1,11 +1,8 @@
-import { lazy, Suspense, useId, useState } from "react";
-import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
+import { useId, useState } from "react";
+import { LazyMarkdown } from "@/components/LazyMarkdown";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-
-// Markdown berat (react-markdown + remark): hanya diunduh saat pratinjau dibuka pertama kali.
-const Markdown = lazy(() => import("./Markdown").then((m) => ({ default: m.Markdown })));
 
 interface MarkdownEditorProps {
   /** `name` textarea (dipakai untuk memindahkan fokus saat ada error) dan akhiran `field-error-<name>`. */
@@ -103,17 +100,11 @@ export function MarkdownEditor({
             <p className="m-0 text-muted-foreground">Tidak ada yang dipratinjau.</p>
           ) : (
             // Kegagalan memuat chunk Markdown hanya mematikan pratinjau; formulir dan isinya tetap utuh.
-            <ChunkErrorBoundary
-              fallback={
-                <p role="alert" className="m-0 font-medium text-destructive" data-testid={`${testId}-preview-error`}>
-                  Pratinjau gagal dimuat. Isi tetap aman di kolom Tulis; periksa koneksi lalu muat ulang halaman setelah menyimpan.
-                </p>
-              }
-            >
-              <Suspense fallback={<p className="m-0 text-muted-foreground">Memuat pratinjau…</p>}>
-                <Markdown source={value} />
-              </Suspense>
-            </ChunkErrorBoundary>
+            <LazyMarkdown
+              source={value}
+              failedMessage="Pratinjau gagal dimuat. Isi tetap aman di kolom Tulis; periksa koneksi lalu muat ulang halaman setelah menyimpan."
+              failedTestId={`${testId}-preview-error`}
+            />
           )}
         </div>
       ) : null}

@@ -14,6 +14,7 @@ import { buildJUnit } from "../support/junit.js";
 /** Batas menunggu halaman lazy setelah navigasi klien (unduh chunk pertama kali). */
 const LAZY_NAVIGATION_TIMEOUT = 15_000;
 const MOBILE = { width: 375, height: 812 };
+const NARROW = { width: 320, height: 800 };
 const MEMBER_LABELS = ["Ringkasan", "Run", "Versi", "Bug", "Flaky", "Pengaturan"];
 const VISITOR_LABELS = ["Ringkasan", "Run", "Versi", "Bug", "Flaky"];
 
@@ -178,6 +179,25 @@ test.describe("Tab navigasi project", () => {
     await expect(tabs.tab("pengaturan")).toBeInViewport({ ratio: 0.99 });
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     await expectNoA11yViolationsInBothThemes(page);
+  });
+
+  test("320 px: tab aktif yang tersembunyi tergulir ke tampilan saat halaman dibuka", async ({ api, signedInPage }) => {
+    const { owner, project } = await seed(api);
+    const { page } = await signedInPage(owner);
+    await page.setViewportSize(NARROW);
+    const tabs = new ProjectTabsNav(page);
+
+    await new FlakyPage(page).goto(project.slug);
+    await expectCurrentTab(tabs, "Flaky");
+    expect(await tabs.scrollOverflow()).toBeGreaterThan(0);
+    await expect(tabs.tab("flaky")).toBeInViewport({ ratio: 0.99 });
+    expect(await tabs.root.locator("ul").evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+    // Tab yang sudah terlihat tidak menggeser apa pun.
+    await new RunsPage(page).goto(project.slug);
+    await expectCurrentTab(tabs, "Run");
+    expect(await tabs.root.locator("ul").evaluate((el) => el.scrollLeft)).toBe(0);
   });
 
   test("keyboard: Tab menjangkau semua tab secara berurutan", async ({ api, signedInPage, browserName }) => {

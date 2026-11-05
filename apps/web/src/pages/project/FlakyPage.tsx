@@ -25,7 +25,7 @@ export function FlakyPage() {
 }
 
 function FlakyView({ slug }: { slug: string }) {
-  useEffect(() => preloadPages("test"), []);
+  useEffect(() => preloadPages("test", "bug"), []);
   const [params, setParams] = useSearchParams();
   const fetchBranches = useCallback(() => api.results.branches(slug), [slug]);
   const branches = useLoad(fetchBranches);

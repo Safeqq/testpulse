@@ -1,5 +1,6 @@
 import type { FlakyTestDto } from "@testpulse/shared";
 import { Link } from "react-router-dom";
+import { BugBadge } from "@/components/BugBadge";
 import { ScoreBar } from "@/components/charts/ScoreBar";
 import { LIST_ITEM_LINK_CLASS } from "@/components/listItemLink";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,14 @@ export function FlakyTestItem({
         {showBar ? <ScoreBar score={test.score} /> : null}
         <span className="text-xs text-muted-foreground">Hasil terakhir: {LAST_STATUS_LABEL[test.lastStatus]}</span>
       </Link>
+      {/* Badge menaut sendiri, jadi di luar tautan baris (tautan tidak boleh bersarang). */}
+      {test.bugs.length > 0 ? (
+        <p className="m-0 flex flex-wrap items-center gap-2 px-4 pb-3">
+          {test.bugs.map((bug) => (
+            <BugBadge key={bug.number} bug={bug} slug={slug} />
+          ))}
+        </p>
+      ) : null}
     </li>
   );
 }

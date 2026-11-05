@@ -55,7 +55,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
   const { slug } = project;
   // Tester/admin: menghapus run dan melaporkan bug (izin "bugs:write"); hanya mereka yang mungkin membuka formulir bug.
   const canWriteBugs = project.myRole === "tester" || project.myRole === "admin";
-  useEffect(() => preloadPages("test", "runs", ...(canWriteBugs ? (["bugNew"] as const) : [])), [canWriteBugs]);
+  useEffect(() => preloadPages("test", "runs", "bug", ...(canWriteBugs ? (["bugNew"] as const) : [])), [canWriteBugs]);
   const [filter, setFilter] = useState<Filter>("failed");
   // Ringkasan run ikut di setiap halaman hasil; disimpan agar header tetap tampil saat filter diganti.
   const [run, setRun] = useState<RunSummaryDto | null>(null);

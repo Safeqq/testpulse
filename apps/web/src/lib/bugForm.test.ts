@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addLabels, normalizeErrorKey, remapLinkKeys } from "./bugForm";
+import { addLabels, normalizeErrorKey, remapLinkKeys, validateBugPatch } from "./bugForm";
 
 describe("remapLinkKeys", () => {
   it("memetakan indeks daftar terkirim ke indeks baris formulir saat ada baris kosong di depan", () => {
@@ -47,5 +47,30 @@ describe("addLabels", () => {
     expect(addLabels(ten, ["baru"])).toEqual({ labels: ten, rest: "baru", error: "Maksimal 10 label" });
     // Duplikat dari yang sudah ada tidak dihitung sebagai tambahan.
     expect(addLabels(ten, ["l1"]).error).toBeNull();
+  });
+});
+
+describe("validateBugPatch", () => {
+  it("menerima perubahan valid dan mengembalikannya ternormalisasi tanpa version", () => {
+    const result = validateBugPatch({
+      title: "  Judul baru  ",
+      labels: [" UI "],
+      links: [{ url: "https://x.example/a", title: "  " }],
+    });
+    expect(result).toEqual({ ok: true, patch: { title: "Judul baru", labels: ["ui"], links: [{ url: "https://x.example/a" }] } });
+  });
+
+  it("memetakan galat ke kunci field, termasuk baris link", () => {
+    const result = validateBugPatch({ title: "ab", links: [{ url: "bukan url" }] });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.fields.title).toBe("Judul minimal 3 karakter");
+      expect(result.fields["links.0.url"]).toContain("URL harus berupa URL http atau https");
+    }
+  });
+
+  it("menolak deskripsi lebih dari 20.000 karakter", () => {
+    const result = validateBugPatch({ description: "a".repeat(20_001) });
+    expect(result).toMatchObject({ ok: false, fields: { description: "Deskripsi maksimal 20.000 karakter" } });
   });
 });

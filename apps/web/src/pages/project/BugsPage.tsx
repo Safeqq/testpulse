@@ -1,6 +1,6 @@
 import { bugListQuery, type BugListQuery, type BugSummaryDto, type MemberDto } from "@testpulse/shared";
 import { Bug, Loader2, Plus, Search } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { BugStatus } from "@/components/BugStatus";
 import { EmptyState } from "@/components/EmptyState";
@@ -49,27 +49,36 @@ export function BugsPage() {
 
 type BugFilters = Pick<BugListQuery, "status" | "assignee" | "priority" | "severity" | "label" | "q">;
 
-/** Filter dari URL. Nilai yang tidak valid (mis. hasil suntingan manual) diabaikan agar halaman tetap bisa dipakai. */
+/**
+ * Filter dari URL. Tiap kunci divalidasi sendiri dengan skema bersama: nilai yang tidak valid (mis. hasil suntingan
+ * manual) hanya menggugurkan kunci itu, filter lain tetap berlaku.
+ */
 function parseFilters(params: URLSearchParams): BugFilters {
-  const parsed = bugListQuery.safeParse(Object.fromEntries(params));
-  if (!parsed.success) return { status: "active" };
-  const { status, assignee, priority, severity, label, q } = parsed.data;
-  return {
-    status,
-    ...(assignee !== undefined ? { assignee } : {}),
-    ...(priority !== undefined ? { priority } : {}),
-    ...(severity !== undefined ? { severity } : {}),
-    ...(label !== undefined ? { label } : {}),
-    ...(q !== undefined ? { q } : {}),
-  };
+  const { shape } = bugListQuery;
+  const status = shape.status.safeParse(params.get("status") ?? undefined);
+  const filters: BugFilters = { status: status.success ? status.data : "active" };
+  const priority = shape.priority.safeParse(params.get("priority") ?? undefined);
+  if (priority.success && priority.data !== undefined) filters.priority = priority.data;
+  const severity = shape.severity.safeParse(params.get("severity") ?? undefined);
+  if (severity.success && severity.data !== undefined) filters.severity = severity.data;
+  const assignee = shape.assignee.safeParse(params.get("assignee") ?? undefined);
+  if (assignee.success && assignee.data !== undefined) filters.assignee = assignee.data;
+  const label = shape.label.safeParse(params.get("label") ?? undefined);
+  if (label.success && label.data !== undefined) filters.label = label.data;
+  const q = shape.q.safeParse(params.get("q") ?? undefined);
+  if (q.success && q.data !== undefined) filters.q = q.data;
+  return filters;
 }
 
 function BugsView({ slug, isMember, canCreate }: { slug: string; isMember: boolean; canCreate: boolean }) {
-  useEffect(() => preloadPages("bugNew"), []);
+  useEffect(() => {
+    if (canCreate) preloadPages("bugNew");
+  }, [canCreate]);
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => parseFilters(params), [params]);
   const status = filters.status;
-  const hasFilters = FILTER_KEYS.some((key) => filters[key] !== undefined);
+  // Berdasarkan URL (bukan filter yang lolos validasi) agar "Atur ulang filter" juga membersihkan parameter yang tidak valid.
+  const hasFilters = FILTER_KEYS.some((key) => params.has(key));
 
   /**
    * Menulis satu filter ke URL (kosong menghapusnya); filter lain tetap. Dasarnya adalah URL saat ini, bukan `params`
@@ -141,8 +150,7 @@ function BugsView({ slug, isMember, canCreate }: { slug: string; isMember: boole
         <LabelFilter slug={slug} value={filters.label ?? ""} onChange={(value) => setFilter("label", value)} />
       </div>
 
-      {/* `key`: kolom cari mengikuti `q` di URL (mis. saat tombol Kembali ditekan) tanpa state ganda. */}
-      <SearchForm key={filters.q ?? ""} value={filters.q ?? ""} onSubmit={(value) => setFilter("q", value.trim())} />
+      <SearchForm value={filters.q ?? ""} onSubmit={(value) => setFilter("q", value.trim())} />
 
       <BugsList
         key={params.toString()}
@@ -249,20 +257,37 @@ function LabelFilter({ slug, value, onChange }: { slug: string; value: string; o
   );
 }
 
+/** Kolom cari: teks diketik lokal, dikirim ke URL saat submit, dan mengikuti URL bila berubah dari luar (mis. Kembali/Atur ulang). */
 function SearchForm({ value, onSubmit }: { value: string; onSubmit: (value: string) => void }) {
   const id = useId();
+  const [draft, setDraft] = useState(value);
+  const [seen, setSeen] = useState(value);
+  // Menyelaraskan state saat render (tanpa effect/remount) supaya kolom tetap fokus setelah submit.
+  if (value !== seen) {
+    setSeen(value);
+    setDraft(value);
+  }
   return (
     <form
       role="search"
       className="flex min-w-0 flex-wrap items-end gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(String(new FormData(e.currentTarget).get("q") ?? ""));
+        onSubmit(draft);
       }}
     >
       <div className="grid min-w-0 flex-1 gap-1.5 sm:max-w-md">
         <Label htmlFor={id}>Cari judul</Label>
-        <Input id={id} name="q" type="search" defaultValue={value} maxLength={100} autoComplete="off" data-testid="bugs-search" />
+        <Input
+          id={id}
+          name="q"
+          type="search"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          maxLength={100}
+          autoComplete="off"
+          data-testid="bugs-search"
+        />
       </div>
       <Button type="submit" variant="outline" data-testid="bugs-search-submit">
         <Search aria-hidden="true" />

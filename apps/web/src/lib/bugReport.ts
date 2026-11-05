@@ -1,3 +1,5 @@
+import { stripControlChars } from "@testpulse/shared";
+
 /** Batas deskripsi bug di server (spec Tahap 3 §3.1). */
 const MAX_DESCRIPTION = 20_000;
 const TRUNCATED = "… (dipotong)";
@@ -12,21 +14,35 @@ export interface BugReportSource {
   message: string | null;
 }
 
-/** Karakter kontrol selain tab/LF/CR ditolak server (sama dengan `hasControlChars` di schema bersama); dibuang di sini. */
-function stripControlChars(value: string): string {
-  let out = "";
-  for (const char of value) {
-    const code = char.codePointAt(0)!;
-    const control = (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || (code >= 0x7f && code <= 0x9f);
-    if (!control) out += char;
-  }
-  return out;
+/** Deretan backtick terpanjang di dalam teks (0 bila tidak ada). */
+function longestBacktickRun(text: string): number {
+  return Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
+}
+
+/**
+ * Teks satu baris sebagai code span Markdown yang aman: pembatasnya lebih panjang daripada deretan backtick di dalam
+ * teks, baris baru menjadi spasi, dan spasi pengaman ditambahkan bila teks diawali/diakhiri backtick. Isi code span
+ * tidak pernah ditafsirkan sebagai Markdown, jadi data dari pihak lain (suite, branch, commit) tidak bisa menyisipkan
+ * tautan atau judul.
+ */
+function codeSpan(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  const ticks = "`".repeat(longestBacktickRun(flat) + 1);
+  const pad = flat.startsWith("`") || flat.endsWith("`") ? " " : "";
+  return `${ticks}${pad}${flat}${pad}${ticks}`;
 }
 
 /** Pagar blok kode: lebih panjang daripada deretan backtick terpanjang di dalam teks (minimal tiga). */
 function fenceFor(text: string): string {
-  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((run) => run.length));
-  return "`".repeat(Math.max(3, longest + 1));
+  return "`".repeat(Math.max(3, longestBacktickRun(text) + 1));
+}
+
+/**
+ * Link CI sebagai autolink `<url>` hanya bila berupa URL http(s) tanpa spasi, `<`, atau `>`; selain itu tidak ditulis
+ * (URL dari run dianggap tak tepercaya, jadi tidak boleh menjadi Markdown bebas).
+ */
+function ciAutolink(url: string): string | null {
+  return /^https?:\/\/[^\s<>]+$/i.test(url) ? `<${url}>` : null;
 }
 
 function assemble(head: string[], message: string | null): string {
@@ -37,25 +53,30 @@ function assemble(head: string[], message: string | null): string {
 
 /**
  * Deskripsi awal bug dari test gagal (spec Tahap 3 §7.5): suite, branch, commit, link CI, dan pesan error dalam
- * blok kode (Markdown). Pesan yang terlalu panjang dipotong supaya total tetap di bawah batas server.
+ * blok kode (Markdown). Semua nilai berasal dari laporan CI, jadi dirender sebagai code span/autolink/blok kode.
+ * Pesan yang terlalu panjang dipotong sampai total (termasuk pagar yang ikut memanjang) muat dalam batas server.
  */
 export function buildBugReportDescription(source: BugReportSource): string {
-  const head = [`- **Suite:** ${stripControlChars(source.suite)}`];
-  if (source.branch) head.push(`- **Branch:** \`${stripControlChars(source.branch)}\``);
-  if (source.commitSha) head.push(`- **Commit:** \`${stripControlChars(source.commitSha)}\``);
-  if (source.ciUrl) head.push(`- **Link CI:** ${stripControlChars(source.ciUrl)}`);
+  const head = [`- **Suite:** ${codeSpan(stripControlChars(source.suite))}`];
+  if (source.branch) head.push(`- **Branch:** ${codeSpan(stripControlChars(source.branch))}`);
+  if (source.commitSha) head.push(`- **Commit:** ${codeSpan(stripControlChars(source.commitSha))}`);
+  const ci = source.ciUrl ? ciAutolink(stripControlChars(source.ciUrl)) : null;
+  if (ci) head.push(`- **Link CI:** ${ci}`);
 
-  let message = source.message === null ? null : stripControlChars(source.message);
+  const message = source.message === null ? null : stripControlChars(source.message);
   if (message === null || message.trim() === "") return assemble(head, null);
 
-  const full = assemble(head, message);
-  if (full.length > MAX_DESCRIPTION) {
-    // Hitung sisa ruang dengan pesan kosong; pagar hanya bisa mengecil setelah pesan dipotong, jadi hasilnya aman.
-    const room = MAX_DESCRIPTION - assemble(head, "").length - TRUNCATED.length;
-    let cut = message.slice(0, Math.max(0, room));
+  let result = assemble(head, message);
+  if (result.length <= MAX_DESCRIPTION) return result;
+
+  // Memotong sebanyak kelebihannya lalu menghitung ulang: pagar hanya bisa menyusut saat pesan memendek, jadi loop ini berakhir.
+  let cut = message.length;
+  while (result.length > MAX_DESCRIPTION && cut > 0) {
+    cut = Math.max(0, cut - Math.max(1, result.length - MAX_DESCRIPTION));
+    let kept = message.slice(0, cut);
     // Jangan menyisakan separuh pasangan surrogate.
-    if (/[\ud800-\udbff]$/.test(cut)) cut = cut.slice(0, -1);
-    message = cut + TRUNCATED;
+    if (/[\ud800-\udbff]$/.test(kept)) kept = kept.slice(0, -1);
+    result = assemble(head, kept + TRUNCATED);
   }
-  return assemble(head, message);
+  return result;
 }

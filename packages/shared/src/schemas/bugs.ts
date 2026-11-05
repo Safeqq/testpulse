@@ -1,16 +1,23 @@
 import { z } from "zod";
 import { RESULT_STATUSES } from "./result-status.js";
 
+const isControlCode = (code: number) =>
+  (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || (code >= 0x7f && code <= 0x9f);
+
 /**
  * Karakter kontrol selain tab, LF, dan CR (NUL, ESC, DEL, C1, dst.). Postgres menolak NUL pada kolom teks (500),
  * dan karakter kontrol lain tidak berguna di teks bug/komentar.
  */
 export function hasControlChars(value: string): boolean {
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i);
-    if ((code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || (code >= 0x7f && code <= 0x9f)) return true;
-  }
+  for (let i = 0; i < value.length; i++) if (isControlCode(value.charCodeAt(i))) return true;
   return false;
+}
+
+/** Membuang karakter yang ditolak `hasControlChars` (untuk teks yang disusun klien dari data pihak lain). */
+export function stripControlChars(value: string): string {
+  let out = "";
+  for (const char of value) if (!isControlCode(char.codePointAt(0)!)) out += char;
+  return out;
 }
 
 const CONTROL_CHARS_MESSAGE = "Teks tidak boleh mengandung karakter kontrol";

@@ -8,6 +8,7 @@ import {
 } from "@testpulse/shared";
 import { ArrowLeft, Loader2, LockKeyhole } from "lucide-react";
 import { useCallback, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Link, useNavigate, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { BugLabelsInput } from "@/components/BugLabelsInput";
 import { BugLinksInput, type LinkDraft } from "@/components/BugLinksInput";
@@ -16,11 +17,12 @@ import { FormError } from "@/components/FormError";
 import { FormField } from "@/components/FormField";
 import { LoadError } from "@/components/LoadError";
 import { Loading } from "@/components/Loading";
-import { MarkdownEditor } from "@/components/MarkdownEditor";
+import { MarkdownEditor, type EditorMode } from "@/components/MarkdownEditor";
 import { NativeSelect } from "@/components/NativeSelect";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { api, ApiError } from "@/lib/api";
+import { addLabels, remapLinkKeys } from "@/lib/bugForm";
 import { BUG_PRIORITY_LABEL, BUG_SEVERITY_LABEL } from "@/lib/bugs";
 import { focusField, serverErrorToForm } from "@/lib/forms";
 import { loginPathFor } from "@/lib/navigation";
@@ -45,6 +47,8 @@ function NewBug({ project }: { project: ProjectDto }) {
   const { pathname, search } = useLocation();
   const [params] = useSearchParams();
   const canWrite = project.myRole === "tester" || project.myRole === "admin";
+  // "Buat bug tanpa tautan test": beralih ke formulir kosong lewat state (render sinkron), lalu URL dibersihkan.
+  const [skipPrefill, setSkipPrefill] = useState(false);
   const testCaseId = params.get("testCaseId");
   // `runId` tanpa test ditolak server, jadi diabaikan; nilai yang bukan UUID juga (server memvalidasi sisanya).
   const validTestCaseId = testCaseId !== null && UUID.test(testCaseId) ? testCaseId : undefined;
@@ -71,15 +75,31 @@ function NewBug({ project }: { project: ProjectDto }) {
     );
   }
 
-  return validTestCaseId ? (
-    <WithPrefill key={`${validTestCaseId}:${runId ?? ""}`} slug={project.slug} testCaseId={validTestCaseId} runId={runId} />
+  return validTestCaseId && !skipPrefill ? (
+    <WithPrefill
+      key={`${validTestCaseId}:${runId ?? ""}`}
+      slug={project.slug}
+      testCaseId={validTestCaseId}
+      runId={runId}
+      onSkip={() => setSkipPrefill(true)}
+    />
   ) : (
     <BugForm slug={project.slug} prefill={null} />
   );
 }
 
+interface WithPrefillProps {
+  slug: string;
+  testCaseId: string;
+  runId: string | undefined;
+  /** Menyerah pada prefill dan membuka formulir kosong. */
+  onSkip: () => void;
+}
+
 /** Memuat data test (dan pesan error run) lebih dulu supaya formulir langsung tampil terisi. */
-function WithPrefill({ slug, testCaseId, runId }: { slug: string; testCaseId: string; runId: string | undefined }) {
+function WithPrefill({ slug, testCaseId, runId, onSkip }: WithPrefillProps) {
+  const navigate = useNavigate();
+  const plainPath = `/p/${encodeURIComponent(slug)}/bugs/new`;
   const fetchPrefill = useCallback(() => loadBugReportSource(slug, testCaseId, runId), [slug, testCaseId, runId]);
   const load = useLoad(fetchPrefill);
   if (load.state === "loading") return <Loading label="Menyiapkan formulir…" />;
@@ -89,7 +109,20 @@ function WithPrefill({ slug, testCaseId, runId }: { slug: string; testCaseId: st
         <h1 className="text-2xl font-semibold tracking-tight">Buat bug</h1>
         <LoadError error={load.error} fallback="Gagal memuat data test. Coba lagi." onRetry={load.reload} />
         <div>
-          <Link to={`/p/${encodeURIComponent(slug)}/bugs/new`} className={BACK_LINK_CLASS}>
+          <Link
+            to={plainPath}
+            className={BACK_LINK_CLASS}
+            onClick={(event) => {
+              // Klik biasa saja; Ctrl/Cmd/Shift/klik tengah tetap perilaku bawaan tautan (tab baru).
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              // Formulir dibuat oleh update state biasa, bukan oleh transition navigasi: <select> yang dibuat di render
+              // transition membuat WebKit melaporkan style-src-attr dengan target document, yang tidak termaklumi guard CSP.
+              // Setelah itu URL dibersihkan; formulir yang sama tetap terpasang karena posisinya di pohon tidak berubah.
+              onSkip();
+              navigate(plainPath, { replace: true });
+            }}
+          >
             Buat bug tanpa tautan test
           </Link>
         </div>
@@ -97,22 +130,6 @@ function WithPrefill({ slug, testCaseId, runId }: { slug: string; testCaseId: st
     );
   }
   return <BugForm slug={slug} prefill={load.data} />;
-}
-
-/** Kunci error server untuk label (`labels.2`) dipusatkan ke kolom label; selebihnya dipakai apa adanya. */
-function normalizeKey(key: string): string {
-  return key.startsWith("labels.") ? "labels" : key;
-}
-
-/** Peta kunci `links.<i>` (indeks daftar terkirim) ke indeks baris formulir; baris kosong tidak ikut terkirim. */
-function remapLinkKeys(fields: Record<string, string>, rowIndexes: number[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, message] of Object.entries(fields)) {
-    const match = /^links\.(\d+)(\..+)?$/.exec(key);
-    const mapped = match ? `links.${rowIndexes[Number(match[1])] ?? match[1]}${match[2] ?? ""}` : normalizeKey(key);
-    out[mapped] ??= message;
-  }
-  return out;
 }
 
 function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | null }) {
@@ -123,7 +140,9 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
   const [priority, setPriority] = useState<BugPriority>("medium");
   const [severity, setSeverity] = useState<BugSeverity>("major");
   const [assigneeId, setAssigneeId] = useState("");
+  const [descriptionMode, setDescriptionMode] = useState<EditorMode>("write");
   const [labels, setLabels] = useState<string[]>([]);
+  const [labelDraft, setLabelDraft] = useState("");
   const [links, setLinks] = useState<LinkDraft[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -135,12 +154,17 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
   function fail(fields: Record<string, string>, message: string | null) {
     setFieldErrors(fields);
     setFormError(message);
+    // Textarea tersembunyi saat pratinjau dan tidak bisa difokus: kembali ke Tulis dulu (sinkron) sebelum memindahkan fokus.
+    if (fields.description) flushSync(() => setDescriptionMode("write"));
     focusField(formRef.current, fields);
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (submitting) return;
+
+    // Teks label yang belum jadi chip: yang valid ikut terkirim, yang tidak valid menahan penyimpanan dengan pesannya.
+    const pendingLabels = addLabels(labels, labelDraft.split(","));
 
     // Baris link yang sama sekali kosong diabaikan; indeksnya dicatat untuk memetakan error ke baris formulir.
     const rowIndexes = links.flatMap((link, index) => (link.url.trim() === "" && link.title.trim() === "" ? [] : [index]));
@@ -149,18 +173,24 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
       description,
       priority,
       severity,
-      labels,
+      labels: pendingLabels.labels,
       links: rowIndexes.map((index) => ({ url: links[index]!.url.trim(), title: links[index]!.title })),
       ...(assigneeId !== "" ? { assigneeId } : {}),
       ...(prefill ? { testCaseId: prefill.testCaseId, ...(prefill.runId ? { runId: prefill.runId } : {}) } : {}),
     };
     const parsed = createBugBody.safeParse(body);
-    if (!parsed.success) {
+    if (!parsed.success || pendingLabels.error) {
       const fields: Record<string, string> = {};
-      for (const issue of parsed.error.issues) fields[issue.path.map(String).join(".") || "form"] ??= issue.message;
-      return fail(remapLinkKeys(fields, rowIndexes), null);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) fields[issue.path.map(String).join(".") || "form"] ??= issue.message;
+      }
+      const remapped = remapLinkKeys(fields, rowIndexes);
+      if (pendingLabels.error) remapped.labels = pendingLabels.error;
+      return fail(remapped, null);
     }
 
+    setLabels(pendingLabels.labels);
+    setLabelDraft("");
     setFieldErrors({});
     setFormError(null);
     setSubmitting(true);
@@ -206,6 +236,8 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
           value={description}
           onChange={setDescription}
           error={fieldErrors.description}
+          mode={descriptionMode}
+          onModeChange={setDescriptionMode}
           hint="Mendukung Markdown. Boleh dikosongkan."
           testId="bug-description"
         />
@@ -233,7 +265,13 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
             ))}
           </SelectField>
         </div>
-        <BugLabelsInput value={labels} onChange={setLabels} error={fieldErrors.labels} />
+        <BugLabelsInput
+          value={labels}
+          onChange={setLabels}
+          draft={labelDraft}
+          onDraftChange={setLabelDraft}
+          error={fieldErrors.labels}
+        />
         <BugLinksInput value={links} onChange={setLinks} errors={linkErrors} />
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={submitting} data-testid="bug-submit">

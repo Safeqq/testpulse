@@ -1,4 +1,5 @@
 import { lazy, Suspense, useId, useState } from "react";
+import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -17,17 +18,35 @@ interface MarkdownEditorProps {
   /** data-testid textarea; tab dan pratinjau memakai `<testId>-tab-write`, `-tab-preview`, `-preview`. */
   testId: string;
   rows?: number;
+  /** Mode tampilan; bila diisi, induk yang mengendalikannya (mis. kembali ke Tulis sebelum memfokuskan kolom yang salah). */
+  mode?: EditorMode;
+  onModeChange?: (mode: EditorMode) => void;
 }
+
+export type EditorMode = "write" | "preview";
 
 /**
  * Kolom teks Markdown dengan tab Tulis/Pratinjau (tanpa komponen tab Radix: dua tombol `aria-pressed`, seperti filter
  * lain di aplikasi). Isi tetap di textarea yang disembunyikan saat pratinjau, jadi isian tidak hilang.
  */
-export function MarkdownEditor({ name, label, value, onChange, error, hint, testId, rows = 8 }: MarkdownEditorProps) {
+export function MarkdownEditor({
+  name,
+  label,
+  value,
+  onChange,
+  error,
+  hint,
+  testId,
+  rows = 8,
+  mode: controlledMode,
+  onModeChange,
+}: MarkdownEditorProps) {
   const id = useId();
   const errorId = `${id}-error`;
   const hintId = `${id}-hint`;
-  const [mode, setMode] = useState<"write" | "preview">("write");
+  const [ownMode, setOwnMode] = useState<EditorMode>("write");
+  const mode = controlledMode ?? ownMode;
+  const setMode = onModeChange ?? setOwnMode;
   const describedBy = [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined;
 
   return (
@@ -83,9 +102,18 @@ export function MarkdownEditor({ name, label, value, onChange, error, hint, test
           {value.trim() === "" ? (
             <p className="m-0 text-muted-foreground">Tidak ada yang dipratinjau.</p>
           ) : (
-            <Suspense fallback={<p className="m-0 text-muted-foreground">Memuat pratinjau…</p>}>
-              <Markdown source={value} />
-            </Suspense>
+            // Kegagalan memuat chunk Markdown hanya mematikan pratinjau; formulir dan isinya tetap utuh.
+            <ChunkErrorBoundary
+              fallback={
+                <p role="alert" className="m-0 font-medium text-destructive" data-testid={`${testId}-preview-error`}>
+                  Pratinjau gagal dimuat. Isi tetap aman di kolom Tulis; periksa koneksi lalu muat ulang halaman setelah menyimpan.
+                </p>
+              }
+            >
+              <Suspense fallback={<p className="m-0 text-muted-foreground">Memuat pratinjau…</p>}>
+                <Markdown source={value} />
+              </Suspense>
+            </ChunkErrorBoundary>
           )}
         </div>
       ) : null}

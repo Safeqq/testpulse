@@ -53,7 +53,9 @@ export function RunPage() {
 
 function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
   const { slug } = project;
-  useEffect(() => preloadPages("test", "runs", "bugNew"), []);
+  // Tester/admin: menghapus run dan melaporkan bug (izin "bugs:write"); hanya mereka yang mungkin membuka formulir bug.
+  const canWriteBugs = project.myRole === "tester" || project.myRole === "admin";
+  useEffect(() => preloadPages("test", "runs", ...(canWriteBugs ? (["bugNew"] as const) : [])), [canWriteBugs]);
   const [filter, setFilter] = useState<Filter>("failed");
   // Ringkasan run ikut di setiap halaman hasil; disimpan agar header tetap tampil saat filter diganti.
   const [run, setRun] = useState<RunSummaryDto | null>(null);
@@ -85,7 +87,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
     return <Loading label="Memuat run…" />;
   }
 
-  const canDelete = project.myRole === "tester" || project.myRole === "admin";
+  const canDelete = canWriteBugs;
 
   return (
     <section aria-labelledby="run-title" className="grid min-w-0 grid-cols-1 gap-6">
@@ -121,7 +123,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
             </Button>
           ))}
         </div>
-        <Results filter={filter} slug={slug} runId={runId} branch={run.branch} canReport={canDelete} list={list} />
+        <Results filter={filter} slug={slug} runId={runId} branch={run.branch} canWriteBugs={canWriteBugs} list={list} />
       </div>
     </section>
   );
@@ -267,14 +269,14 @@ function Results({
   slug,
   runId,
   branch,
-  canReport,
+  canWriteBugs,
   list,
 }: {
   filter: Filter;
   slug: string;
   runId: string;
   branch: string;
-  canReport: boolean;
+  canWriteBugs: boolean;
   list: CursorList<TestResultDto>;
 }) {
   if (list.state === "loading") return <Loading label="Memuat hasil test…" />;
@@ -292,7 +294,7 @@ function Results({
     <div className="grid min-w-0 grid-cols-1 gap-4">
       <ul className="m-0 grid list-none divide-y divide-border rounded-lg border bg-card p-0">
         {list.items.map((result) => (
-          <ResultRow key={result.testCaseId} slug={slug} runId={runId} branch={branch} canReport={canReport} result={result} />
+          <ResultRow key={result.testCaseId} slug={slug} runId={runId} branch={branch} canWriteBugs={canWriteBugs} result={result} />
         ))}
       </ul>
       {list.moreError ? (
@@ -314,15 +316,15 @@ interface ResultRowProps {
   slug: string;
   runId: string;
   branch: string;
-  canReport: boolean;
+  canWriteBugs: boolean;
   result: TestResultDto;
 }
 
-function ResultRow({ slug, runId, branch, canReport, result }: ResultRowProps) {
+function ResultRow({ slug, runId, branch, canWriteBugs, result }: ResultRowProps) {
   return (
     <li className="grid min-w-0 gap-1.5 px-4 py-3" data-testid={`result-row-${result.testCaseId}`}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-        <Link to={withBranch(`/p/${slug}/tests/${result.testCaseId}`, branch)} className={`${TEXT_LINK_CLASS} min-w-0 text-sm [overflow-wrap:anywhere]`}>
+        <Link id={`result-name-${result.testCaseId}`} to={withBranch(`/p/${slug}/tests/${result.testCaseId}`, branch)} className={`${TEXT_LINK_CLASS} min-w-0 text-sm [overflow-wrap:anywhere]`}>
           {result.name}
         </Link>
         <RunStatus outcome={result.status} className="text-sm" />
@@ -333,7 +335,7 @@ function ResultRow({ slug, runId, branch, canReport, result }: ResultRowProps) {
         {result.flakyInRun ? <Badge variant="outline">Flaky</Badge> : null}
         {result.retries > 0 ? <span>{result.retries} percobaan ulang</span> : null}
       </p>
-      <ResultBugs slug={slug} runId={runId} canReport={canReport} result={result} />
+      <ResultBugs slug={slug} runId={runId} canWriteBugs={canWriteBugs} result={result} />
       {result.message ? (
         <details className="min-w-0">
           <summary className="w-fit cursor-pointer rounded-sm text-sm font-medium text-link outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring">
@@ -352,7 +354,7 @@ function ResultRow({ slug, runId, branch, canReport, result }: ResultRowProps) {
  * Bug yang tertaut ke test ini: badge untuk setiap bug yang belum ditutup (maks 5), atau tombol "Laporkan bug" bagi
  * tester/admin bila test gagal dan belum ada bug aktif. Badge menggantikan tombol, jadi laporan ganda tidak terdorong.
  */
-function ResultBugs({ slug, runId, canReport, result }: Omit<ResultRowProps, "branch">) {
+function ResultBugs({ slug, runId, canWriteBugs, result }: Omit<ResultRowProps, "branch">) {
   if (result.bugs.length > 0) {
     return (
       <p className="m-0 flex flex-wrap items-center gap-2">
@@ -362,7 +364,7 @@ function ResultBugs({ slug, runId, canReport, result }: Omit<ResultRowProps, "br
       </p>
     );
   }
-  if (!canReport || result.status !== "failed") return null;
+  if (!canWriteBugs || result.status !== "failed") return null;
   const query = new URLSearchParams({ testCaseId: result.testCaseId, runId });
   return (
     <p className="m-0">
@@ -370,6 +372,7 @@ function ResultBugs({ slug, runId, canReport, result }: Omit<ResultRowProps, "br
         <Link
           to={`/p/${encodeURIComponent(slug)}/bugs/new?${query.toString()}`}
           data-testid={`report-bug-${result.testCaseId}`}
+          aria-describedby={`result-name-${result.testCaseId}`}
         >
           <Bug aria-hidden="true" />
           Laporkan bug

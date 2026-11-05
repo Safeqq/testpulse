@@ -1,72 +1,54 @@
-import { bugLabel } from "@testpulse/shared";
 import { X } from "lucide-react";
 import { useId, useState, type KeyboardEvent } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-export const MAX_BUG_LABELS = 10;
+import { addLabels, MAX_BUG_LABELS } from "@/lib/bugForm";
 
 interface BugLabelsInputProps {
   value: string[];
   onChange: (labels: string[]) => void;
+  /** Teks yang sedang diketik tapi belum jadi label; dipegang induk agar saat simpan draf yang belum diterima ikut diperiksa. */
+  draft: string;
+  onDraftChange: (draft: string) => void;
   /** Error dari validasi form (mis. saat simpan); error saat menambah label ditampilkan lokal. */
   error?: string | undefined;
 }
 
 /**
- * Masukan label berupa chip. Teks diketik lalu dijadikan label dengan Enter, koma, tombol Tambah, atau saat fokus
- * pergi; setiap label dinormalisasi dan divalidasi dengan `bugLabel` (aturan yang sama dengan server).
+ * Masukan label berupa chip. Teks diketik lalu dijadikan label dengan Enter, koma, atau tombol Tambah (tidak saat fokus
+ * pergi: chip baru akan menggeser tombol di bawahnya dan menelan klik); draf yang belum jadi chip diperiksa saat simpan. Aturannya (`addLabels`) sama dengan server.
  */
-export function BugLabelsInput({ value, onChange, error }: BugLabelsInputProps) {
+export function BugLabelsInput({ value, onChange, draft, onDraftChange, error }: BugLabelsInputProps) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
-  const [draft, setDraft] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const shownError = addError ?? error;
 
-  /** Menambahkan tiap potongan; berhenti di potongan pertama yang tidak valid. Mengembalikan sisa draf yang belum diterima. */
+  /** Menerima potongan teks sebagai label; yang bermasalah tetap di kolom beserta pesannya. */
   function commit(pieces: string[]): string {
-    let labels = value;
-    for (const [index, raw] of pieces.entries()) {
-      if (raw.trim() === "") continue;
-      const parsed = bugLabel.safeParse(raw);
-      const problem = !parsed.success
-        ? (parsed.error.issues[0]?.message ?? "Label tidak valid")
-        : labels.includes(parsed.data)
-          ? null
-          : labels.length >= MAX_BUG_LABELS
-            ? `Maksimal ${MAX_BUG_LABELS} label`
-            : null;
-      if (problem) {
-        onChange(labels);
-        setAddError(problem);
-        return pieces.slice(index).join(",");
-      }
-      // Duplikat diabaikan tanpa pesan.
-      if (parsed.success && !labels.includes(parsed.data)) labels = [...labels, parsed.data];
-    }
-    onChange(labels);
-    setAddError(null);
-    return "";
+    const result = addLabels(value, pieces);
+    onChange(result.labels);
+    setAddError(result.error);
+    return result.rest;
   }
 
   function handleChange(text: string) {
     setAddError(null);
-    if (!text.includes(",")) return setDraft(text);
+    if (!text.includes(",")) return onDraftChange(text);
     const pieces = text.split(",");
-    const rest = pieces.pop() ?? "";
+    const last = pieces.pop() ?? "";
     const left = commit(pieces);
-    setDraft(left === "" ? rest : `${left},${rest}`);
+    onDraftChange(left === "" ? last : `${left},${last}`);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key !== "Enter") return;
     // Enter di kolom label menambah label, bukan mengirim form.
     event.preventDefault();
-    setDraft(commit([draft]));
+    onDraftChange(commit([draft]));
   }
 
   return (
@@ -83,9 +65,8 @@ export function BugLabelsInput({ value, onChange, error }: BugLabelsInputProps) 
           data-testid="bug-labels"
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          onBlur={() => draft.trim() !== "" && setDraft(commit([draft]))}
         />
-        <Button type="button" variant="outline" data-testid="bug-label-add" onClick={() => setDraft(commit([draft]))}>
+        <Button type="button" variant="outline" data-testid="bug-label-add" onClick={() => onDraftChange(commit([draft]))}>
           Tambah
         </Button>
       </div>

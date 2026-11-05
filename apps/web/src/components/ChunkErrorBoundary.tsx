@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 interface Props {
   /** Berubah (mis. pindah rute) → boundary mencoba merender anaknya lagi. */
   resetKey?: string;
+  /** Tampilan pengganti yang lebih kecil (mis. satu panel); tanpa ini kegagalan ditampilkan sebagai pesan muat ulang halaman. */
+  fallback?: ReactNode;
   children: ReactNode;
 }
 
@@ -24,6 +26,7 @@ export class ChunkErrorBoundary extends Component<Props, { failed: boolean }> {
 
   render() {
     if (!this.state.failed) return this.props.children;
+    if (this.props.fallback !== undefined) return this.props.fallback;
     return (
       <div
         role="alert"

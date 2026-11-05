@@ -11,6 +11,8 @@ import {
   bugListQuery,
   commentBody,
   createBugBody,
+  hasControlChars,
+  stripControlChars,
   updateBugBody,
 } from "../index.js";
 
@@ -298,5 +300,14 @@ describe("DTO bug", () => {
     };
     expect(ok(activityPageDto, { items: [comment, event], nextCursor: null })).toBe(true);
     expect(ok(activityPageDto, { items: [{ ...event, kind: "comment" }], nextCursor: null })).toBe(false);
+  });
+});
+
+describe("stripControlChars", () => {
+  it("membuang karakter kontrol (NUL, ESC, DEL, C1) tetapi mempertahankan tab, LF, CR, dan emoji", () => {
+    const input = "a\u0000b\tc\nd\re\u001bf\u007fg\u0085h 😀";
+    const out = stripControlChars(input);
+    expect(out).toBe("ab\tc\nd\refgh 😀");
+    expect(hasControlChars(out)).toBe(false);
   });
 });

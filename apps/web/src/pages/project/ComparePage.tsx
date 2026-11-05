@@ -11,7 +11,7 @@ import { NativeSelect } from "@/components/NativeSelect";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { api, ApiError, type CompareParams } from "@/lib/api";
-import { runLabel } from "@/lib/compareSummary";
+import { pairLabels, runLabel } from "@/lib/compareSummary";
 import { formatDateTime } from "@/lib/format";
 import { safeExternalUrl } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
@@ -82,23 +82,27 @@ function CompareView({ project }: { project: ProjectDto }) {
     // Dari URL sebenarnya, bukan `params` render terakhir: navigasi React Router bisa tertinggal dari perubahan cepat.
     const next = new URLSearchParams(window.location.search);
     next.set(role, runId);
+    // Target yang masih default dipasang di URL saat base diganti, supaya perbandingan tetap untuk target yang sama.
+    if (role === "base" && !next.has("target") && shown?.target) next.set("target", shown.target.id);
     setParams(next, { replace: true });
   }
 
+  // Judul dari perbandingan yang tampil (bukan yang sedang dimuat) agar tidak berkedip saat pemilih diganti.
+  const titleLabels = compare.state !== "error" && shown?.target ? pairLabels(shown.base, shown.target) : null;
   const baseValue = base || shown?.base?.id || "";
   const targetValue = target || shown?.target?.id || "";
 
   return (
     <section aria-labelledby="compare-title" className="grid min-w-0 grid-cols-1 gap-6">
       <h1 id="compare-title" className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">
-        {compare.state === "ready" && compare.data.target ? (
-          compare.data.base ? (
+        {titleLabels ? (
+          titleLabels.base ? (
             <>
-              <strong>{runLabel(compare.data.target)}</strong> dibanding <strong>{runLabel(compare.data.base)}</strong>
+              <strong>{titleLabels.target}</strong> dibanding <strong>{titleLabels.base}</strong>
             </>
           ) : (
             <>
-              Perbandingan <strong>{runLabel(compare.data.target)}</strong>
+              Perbandingan <strong>{titleLabels.target}</strong>
             </>
           )
         ) : (
@@ -112,7 +116,7 @@ function CompareView({ project }: { project: ProjectDto }) {
             title="Pembanding (sebelum)"
             run={shown.base}
             value={baseValue}
-            otherValue={targetValue}
+            disabledValue={targetValue}
             options={options.state === "ready" ? options.data : null}
             current={[shown.base, shown.target]}
             onChange={(id) => select("base", id)}
@@ -122,7 +126,7 @@ function CompareView({ project }: { project: ProjectDto }) {
             title="Target (sesudah)"
             run={shown.target}
             value={targetValue}
-            otherValue={baseValue}
+            disabledValue={base}
             options={options.state === "ready" ? options.data : null}
             current={[shown.base, shown.target]}
             onChange={(id) => select("target", id)}
@@ -209,13 +213,15 @@ function CompareBody({
 }) {
   const { base, target } = data;
   const [open, setOpen] = useState(DEFAULT_OPEN);
+  const short = base && target ? pairLabels(base, target, "short") : null;
+  const labels = short?.base ? { base: short.base, target: short.target } : null;
   const setGroupOpen = (group: CompareGroupName, value: boolean) => setOpen((prev) => ({ ...prev, [group]: value }));
   if (!target) return null;
 
   return (
     <>
       <CompareSummary data={data} slug={slug} onGroupLink={(group) => setGroupOpen(group, true)} />
-      {base && target ? (
+      {base && target && labels ? (
         <div className="grid min-w-0 grid-cols-1 gap-3">
           {COMPARE_GROUPS.map((group) => (
             <CompareGroup
@@ -226,6 +232,7 @@ function CompareBody({
               slug={slug}
               base={base}
               target={target}
+              labels={labels}
               canWriteBugs={canWriteBugs}
               open={open[group]}
               onOpenChange={(value) => setGroupOpen(group, value)}
@@ -248,8 +255,11 @@ interface RunPickerProps {
   /** Run yang sedang dipilih (untuk tanggal, commit, dan tautan CI); `null` bila belum ada pembanding. */
   run: RunSummaryDto | null;
   value: string;
-  /** Nilai pemilih lawannya: opsi itu dinonaktifkan karena base dan target tidak boleh run yang sama. */
-  otherValue: string;
+  /**
+   * Run yang tidak boleh dipilih di sini karena base dan target tidak boleh sama: untuk pemilih base, target yang tampil;
+   * untuk pemilih target, hanya base yang disematkan di URL (base default dihitung ulang untuk target baru).
+   */
+  disabledValue: string;
   options: RunOptions | null;
   /** Run yang sedang dibandingkan; ditambahkan ke daftar bila tidak termasuk pilihan branch (mis. base dari branch lain). */
   current: (RunSummaryDto | null)[];
@@ -268,7 +278,7 @@ function optionText(run: RunSummaryDto): string {
  * perbandingan pertama dimuat, lewat pembaruan state biasa: <select> yang dibuat di dalam subtree Suspense/transisi
  * router memicu artefak CSP WebKit (lihat BranchFilter).
  */
-function RunPicker({ role, title, run, value, otherValue, options, current, onChange }: RunPickerProps) {
+function RunPicker({ role, title, run, value, disabledValue, options, current, onChange }: RunPickerProps) {
   const id = `compare-${role}`;
   const versionRuns = options?.versionRuns ?? [];
   const versionIds = new Set(versionRuns.map((r) => r.id));
@@ -279,7 +289,7 @@ function RunPicker({ role, title, run, value, otherValue, options, current, onCh
 
   function renderOptions(runs: RunSummaryDto[]) {
     return runs.map((r) => (
-      <option key={r.id} value={r.id} disabled={r.id === otherValue}>
+      <option key={r.id} value={r.id} disabled={disabledValue !== "" && r.id === disabledValue}>
         {optionText(r)}
       </option>
     ));

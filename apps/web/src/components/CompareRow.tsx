@@ -7,7 +7,7 @@ import { RunStatus } from "@/components/RunStatus";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatDuration } from "@/lib/format";
-import { formatDurationChange, runLabel } from "@/lib/compareSummary";
+import { formatDurationChange } from "@/lib/compareSummary";
 import { withBranch } from "@/lib/navigation";
 
 type Side = CompareItemDto["base"];
@@ -15,8 +15,9 @@ type Side = CompareItemDto["base"];
 interface CompareRowProps {
   item: CompareItemDto;
   slug: string;
-  base: RunSummaryDto;
   target: RunSummaryDto;
+  /** Label ringkas kedua sisi (`pairLabels(..., "short")`), sudah dibedakan bila keduanya sama. */
+  labels: { base: string; target: string };
   /** Tester/admin: boleh melaporkan bug dari test yang gagal di target. */
   canWriteBugs: boolean;
 }
@@ -28,7 +29,7 @@ function SideStatus({ label, side }: { label: string; side: Side }) {
       <strong className="text-sm [overflow-wrap:anywhere]">{label}</strong>
       {side ? (
         <>
-          <RunStatus outcome={side.status} className="text-sm" />
+          <RunStatus outcome={side.status} className={side.status === "passed" ? "text-sm text-success" : "text-sm"} />
           {side.flakyInRun ? <Badge variant="outline">Flaky</Badge> : null}
         </>
       ) : (
@@ -49,15 +50,16 @@ function durationText(base: Side, target: Side): string | null {
  * sebelum → sesudah, perubahan durasi, pesan error dalam <details>, dan di kanan badge bug atau tombol "Laporkan bug".
  * Di layar sempit sisi sebelum dan sesudah bertumpuk.
  */
-export function CompareRow({ item, slug, base, target, canWriteBugs }: CompareRowProps) {
+export function CompareRow({ item, slug, target, labels, canWriteBugs }: CompareRowProps) {
   const nameId = `compare-name-${item.testCaseId}`;
-  const baseLabel = runLabel(base);
-  const targetLabel = runLabel(target);
+  const baseLabel = labels.base;
+  const targetLabel = labels.target;
   const duration = durationText(item.base, item.target);
+  // Dikunci per sisi (bukan label): label kedua sisi bisa mirip, dan key harus tetap unik.
   const messages = [
-    { label: baseLabel, message: item.base?.status === "failed" ? item.base.message : null },
-    { label: targetLabel, message: item.target?.status === "failed" ? item.target.message : null },
-  ].filter((entry): entry is { label: string; message: string } => entry.message !== null && entry.message !== "");
+    { side: "base", label: baseLabel, message: item.base?.status === "failed" ? item.base.message : null },
+    { side: "target", label: targetLabel, message: item.target?.status === "failed" ? item.target.message : null },
+  ].filter((entry): entry is { side: string; label: string; message: string } => entry.message !== null && entry.message !== "");
 
   return (
     <li
@@ -86,8 +88,8 @@ export function CompareRow({ item, slug, base, target, canWriteBugs }: CompareRo
             Durasi: <span className="font-mono tabular-nums">{duration}</span>
           </p>
         ) : null}
-        {messages.map(({ label, message }) => (
-          <details key={label} className="min-w-0">
+        {messages.map(({ side, label, message }) => (
+          <details key={side} className="min-w-0">
             <summary className="w-fit max-w-full cursor-pointer rounded-sm text-sm font-medium text-link outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring">
               Lihat pesan error {label}
             </summary>

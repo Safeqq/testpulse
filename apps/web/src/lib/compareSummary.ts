@@ -4,15 +4,42 @@ import { formatDateTime, formatDuration } from "./format";
 export type CompareCounts = CompareDto["summary"];
 export type SentenceTone = "warning" | "success" | "neutral";
 
-/** Versi sebagai label: "v1.0.1" untuk "1.0.1"; versi yang sudah diawali v/V dipakai apa adanya. */
+/** Versi sebagai label: "v1.0.1" untuk "1.0.1"; versi yang tidak diawali angka ("v1.0.1", "release-2") apa adanya. */
 export function versionLabel(version: string): string {
-  return /^[vV]/.test(version) ? version : `v${version}`;
+  return /^\d/.test(version) ? `v${version}` : version;
 }
 
+type LabelledRun = Pick<RunSummaryDto, "id" | "version" | "createdAt">;
+
 /** Label run untuk judul dan kalimat: versinya bila ada, selain itu "run #<8 karakter id> · <tanggal>". */
-export function runLabel(run: Pick<RunSummaryDto, "id" | "version" | "createdAt">): string {
+export function runLabel(run: LabelledRun): string {
   if (run.version !== null) return versionLabel(run.version);
   return `run #${run.id.slice(0, 8)} · ${formatDateTime(run.createdAt)}`;
+}
+
+/** Label ringkas untuk baris yang padat: seperti `runLabel`, tetapi run tanpa versi tanpa tanggal ("run #<8 karakter id>"). */
+export function shortRunLabel(run: LabelledRun): string {
+  return run.version !== null ? versionLabel(run.version) : `run #${run.id.slice(0, 8)}`;
+}
+
+/**
+ * Label pasangan base/target. Bila keduanya sama (dua run dari versi yang sama) masing-masing diberi " · run #<8 karakter
+ * id>" supaya judul, kalimat, dan baris tidak menampilkan "v1.0.0 dibanding v1.0.0".
+ */
+export function pairLabels(
+  base: LabelledRun | null,
+  target: LabelledRun,
+  style: "full" | "short" = "full",
+): { base: string | null; target: string } {
+  const label = style === "full" ? runLabel : shortRunLabel;
+  const targetLabel = label(target);
+  if (base === null) return { base: null, target: targetLabel };
+  const baseLabel = label(base);
+  if (baseLabel !== targetLabel) return { base: baseLabel, target: targetLabel };
+  return {
+    base: `${baseLabel} · run #${base.id.slice(0, 8)}`,
+    target: `${targetLabel} · run #${target.id.slice(0, 8)}`,
+  };
 }
 
 export const COMPARE_GROUP_LABEL: Record<CompareGroup, string> = {
@@ -46,8 +73,14 @@ export function compareSentence({ summary, baseLabel, targetLabel }: SentenceInp
   if (baseLabel === null) return { tone: "neutral", text: `Belum ada run pembanding untuk ${targetLabel}.` };
   const { regressions, fixed } = summary;
   if (regressions > 0) {
-    const head = `⚠ ${targetLabel} punya ${regressions} regresi baru dibanding ${baseLabel}. Periksa sebelum rilis`;
-    return { tone: "warning", text: fixed > 0 ? `${head}, ${fixed} test kini lulus.` : `${head}.` };
+    const head = `⚠ ${targetLabel} punya ${regressions} regresi baru dibanding ${baseLabel}`;
+    return {
+      tone: "warning",
+      text:
+        fixed > 0
+          ? `${head}, sementara ${fixed} test yang dulu gagal kini lulus. Periksa sebelum rilis.`
+          : `${head}. Periksa sebelum rilis.`,
+    };
   }
   if (fixed > 0) return { tone: "success", text: `✓ Tidak ada regresi. ${fixed} test yang dulu gagal kini lulus.` };
   return { tone: "success", text: `✓ Tidak ada regresi dibanding ${baseLabel}.` };

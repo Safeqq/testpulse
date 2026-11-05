@@ -87,7 +87,7 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
 }
 
 /** Pasangan run yang dibandingkan; kosong = default server (spec Tahap 3 §4.3). */
-export type CompareParams = Pick<CompareQuery, "base" | "target" | "branch">;
+export type CompareParams = Pick<CompareQuery, "base" | "target" | "branch" | "groups">;
 
 /**
  * Halaman berikutnya satu kelompok perbandingan. `cursor` terikat pada pasangan run, jadi `base` dan `target` harus

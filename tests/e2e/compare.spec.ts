@@ -73,7 +73,7 @@ async function seedVersions(api: TestApi, visibility?: "public"): Promise<Seed> 
 }
 
 const SENTENCE =
-  "⚠ v1.0.1 punya 2 regresi baru dibanding v1.0.0. Periksa sebelum rilis, 1 test kini lulus.";
+  "⚠ v1.0.1 punya 2 regresi baru dibanding v1.0.0, sementara 1 test yang dulu gagal kini lulus. Periksa sebelum rilis.";
 
 /** Buka semua kelompok yang tertutup (untuk pemindaian aksesibilitas isi lengkap). */
 async function openAllGroups(compare: ComparePage): Promise<void> {
@@ -94,10 +94,16 @@ test.describe("Kartu perbandingan di dashboard", () => {
     const { page } = await signedInPage(owner);
     const compare = new ComparePage(page);
 
+    // Kartu hanya butuh ringkasan angka: permintaannya memakai groups=none (tanpa daftar test).
+    const summaryRequest = page.waitForRequest((req) => /\/compare\?.*groups=none/.test(req.url()));
     await page.goto(`/p/${project.slug}`);
+    await summaryRequest;
     const card = page.getByTestId("version-card");
     await expect(card).toBeVisible();
     await expect(card.getByRole("heading", { level: 2 })).toHaveText("v1.0.1 vs v1.0.0");
+    // Regresi baru yang ada diberi warna peringatan; kelompok lain netral.
+    await expect(card.getByTestId("compare-count-regressions")).toHaveClass(/bg-destructive/);
+    await expect(card.getByTestId("compare-count-fixed")).not.toHaveClass(/bg-destructive/);
     await expect(card.getByTestId("compare-sentence")).toHaveText(SENTENCE);
     await expect(card.getByTestId("compare-sentence").locator("strong")).toHaveText("2 regresi baru");
     await expect(card.getByTestId("compare-count-regressions")).toHaveText("2 Regresi baru");
@@ -130,6 +136,55 @@ test.describe("Kartu perbandingan di dashboard", () => {
     await expect(card).toBeVisible();
     await expect(card.getByRole("heading", { level: 2 })).toHaveText(/^run #[0-9a-f]{8} · .+ vs run #[0-9a-f]{8} · .+$/);
     await expect(card.getByTestId("compare-sentence")).toContainText("punya 1 regresi baru dibanding run #");
+  });
+
+  test("dua run versi yang sama dibedakan dengan id run di kartu, judul, kalimat, dan baris", async ({
+    api,
+    signedInPage,
+  }) => {
+    const owner = await api.register();
+    const project = await api.createProject(owner);
+    const { token } = await api.createToken(owner, project.slug);
+    const first = await publish(api, token, project.slug, [{ name: "A" }, { name: "B" }], { version: "1.0.0" });
+    const second = await publish(api, token, project.slug, [{ name: "A" }, { name: "B", status: "failed" }], {
+      version: "1.0.0",
+    });
+    const ids = await testCaseIds(owner, project.slug, second);
+    const short = (id: string) => `v1.0.0 · run #${id.slice(0, 8)}`;
+    const { page } = await signedInPage(owner);
+    const compare = new ComparePage(page);
+
+    await page.goto(`/p/${project.slug}`);
+    const card = page.getByTestId("version-card");
+    await expect(card.getByRole("heading", { level: 2 })).toHaveText(`${short(second)} vs ${short(first)}`);
+    await expect(card.getByTestId("compare-sentence")).toContainText(
+      `${short(second)} punya 1 regresi baru dibanding ${short(first)}`,
+    );
+
+    await card.getByRole("link", { name: "Lihat perbandingan" }).click();
+    await expect(compare.title).toHaveText(`${short(second)} dibanding ${short(first)}`);
+    await expect(compare.row(ids["B"]!).locator("strong")).toHaveText([short(first), short(second)]);
+    await expect(compare.row(ids["B"]!).locator("details summary")).toHaveText(`Lihat pesan error ${short(second)}`);
+  });
+
+  test("ringkasan gagal dimuat: satu baris kesalahan dengan Coba lagi, dashboard tetap tampil", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedVersions(api);
+    const { page } = await signedInPage(owner);
+    const failing = /\/compare\?.*groups=none/;
+    await page.route(failing, (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+
+    await page.goto(`/p/${project.slug}`);
+    await expect(page.getByTestId("stat-last-status")).toBeVisible();
+    await expect(page.getByTestId("version-card")).toHaveCount(0);
+    const error = page.getByTestId("version-card-error");
+    await expect(error).toContainText("Gagal memuat perbandingan.");
+    await page.unroute(failing);
+    await error.getByRole("button", { name: "Coba lagi" }).click();
+    await expect(page.getByTestId("version-card")).toBeVisible();
+    await expect(page.getByTestId("version-card-error")).toHaveCount(0);
   });
 
   test("satu run saja: kartu tidak tampil dan halaman perbandingan menyatakan belum ada pembanding", async ({
@@ -204,9 +259,17 @@ test.describe("Halaman perbandingan", () => {
     await expect(regress).toContainText("checkout");
     const sides = regress.locator("strong");
     await expect(sides).toHaveText(["v1.0.0", "v1.0.1"]);
-    await expect(regress.getByText("Lulus", { exact: true })).toBeVisible();
-    await expect(regress.getByText("Gagal", { exact: true })).toBeVisible();
-    await expect(regress.locator("svg[aria-hidden='true']").first()).toBeVisible();
+    // Status = ikon + teks (+ warna): "Lulus" hijau, "Gagal" merah, ikon ada di elemen status itu sendiri.
+    const passed = regress.getByText("Lulus", { exact: true });
+    const failed = regress.getByText("Gagal", { exact: true });
+    await expect(passed).toBeVisible();
+    await expect(failed).toBeVisible();
+    await expect(passed.locator("svg[aria-hidden='true']")).toBeVisible();
+    await expect(failed.locator("svg[aria-hidden='true']")).toBeVisible();
+    await expect(passed).toHaveClass(/text-success/);
+    await expect(failed).toHaveClass(/text-destructive/);
+    await expect(compare.count("regressions")).toHaveClass(/bg-destructive/);
+    await expect(compare.count("fixed")).not.toHaveClass(/bg-destructive/);
     await expect(regress).toContainText("Durasi:");
     const error = regress.locator("details");
     await expect(error).toHaveCount(1);
@@ -318,12 +381,18 @@ test.describe("Halaman perbandingan", () => {
     await expect(compare.target.locator(`optgroup[label="Run terbaru"] option[value="${runTanpaVersi}"]`)).toContainText("run #");
     await expect(compare.target.locator(`option[value="${run090}"]`)).toContainText("v0.9.0");
 
-    // Base dan target tidak boleh run yang sama: opsi lawannya dinonaktifkan di kedua pemilih.
-    await expect(compare.target.locator(`option[value="${run100}"]`)).toBeDisabled();
+    // Pemilih base selalu menonaktifkan target yang tampil. Pemilih target hanya menonaktifkan base yang disematkan
+    // di URL: base default dihitung ulang untuk target baru, jadi memilih run yang kini menjadi base default boleh.
     await expect(compare.base.locator(`option[value="${run101}"]`)).toBeDisabled();
-    await expect(compare.target.locator(`option[value="${run101}"]`)).toBeEnabled();
-    await expect(compare.base.locator(`option[value="${run090}"]`)).toBeEnabled();
+    await expect(compare.base.locator(`option[value="${run100}"]`)).toBeEnabled();
+    await expect(compare.target.locator(`option[value="${run100}"]`)).toBeEnabled();
+    await compare.target.selectOption(run100);
+    await expect(compare.title).toHaveText("v1.0.0 dibanding v0.9.0");
+    expect(new URL(page.url()).searchParams.get("base")).toBeNull();
+    await compare.goto(`/p/${project.slug}/compare`);
+    await expect(compare.title).toHaveText("v1.0.1 dibanding v1.0.0");
 
+    // Mengganti base menyematkan target yang tampil di URL; sejak itu base yang disematkan nonaktif di pemilih target.
     await compare.base.focus();
     await compare.base.selectOption(run090);
     await expect(compare.title).toHaveText("v1.0.1 dibanding v0.9.0");
@@ -333,9 +402,10 @@ test.describe("Halaman perbandingan", () => {
     await expect(compare.sentence).toContainText("dibanding v0.9.0");
     const shared = new URL(page.url());
     expect(shared.searchParams.get("base")).toBe(run090);
-    // Setelah base diganti, opsi yang disabled di target ikut berganti.
+    expect(shared.searchParams.get("target")).toBe(run101);
     await expect(compare.target.locator(`option[value="${run090}"]`)).toBeDisabled();
     await expect(compare.target.locator(`option[value="${run100}"]`)).toBeEnabled();
+    await expect(compare.base.locator(`option[value="${run101}"]`)).toBeDisabled();
 
     // Memuat ulang URL yang sama menghasilkan perbandingan yang sama.
     await page.reload();
@@ -526,12 +596,38 @@ test.describe("Panel perbandingan di detail run", () => {
     await expect(compare.title).toHaveText("v1.0.1 dibanding v1.0.0");
     expect(new URL(page.url()).searchParams.get("base")).toBe(run100);
 
+    // Panel dimuat bersama halaman: setelah panel tampil, daftar hasil tidak lagi bergeser.
+    await run.goto(project.slug, run101);
+    await expect(panel).toBeVisible();
+    const rowTop = (await run.rows.first().boundingBox())!.y;
+    await page.waitForTimeout(300);
+    expect((await run.rows.first().boundingBox())!.y).toBe(rowTop);
+
     // Run pertama tidak punya pembanding: panel tidak tampil.
-    const answered = page.waitForResponse((res) => res.url().includes(`/compare?target=${run100}`));
+    const answered = page.waitForResponse((res) => res.url().includes("groups=none") && res.url().includes(`target=${run100}`));
     await run.goto(project.slug, run100);
     await answered;
     await expect(run.header).toBeVisible();
     await expect(page.getByTestId("run-compare-panel")).toHaveCount(0);
+  });
+
+  test("ringkasan gagal dimuat: satu baris kesalahan dengan Coba lagi, detail run tetap tampil", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project, run101 } = await seedVersions(api);
+    const { page } = await signedInPage(owner);
+    const run = new RunDetailPage(page);
+    const failing = /\/compare\?.*groups=none/;
+    await page.route(failing, (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+
+    await run.goto(project.slug, run101);
+    const panel = page.getByTestId("run-compare-panel");
+    await expect(panel).toContainText("Gagal memuat perbandingan.");
+    await expect(run.rows.first()).toBeVisible();
+    await page.unroute(failing);
+    await panel.getByRole("button", { name: "Coba lagi" }).click();
+    await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Dibanding v1.0.0");
   });
 });
 
@@ -631,7 +727,7 @@ test.describe("Layar 375 px", () => {
     newContext,
     expectNoA11yViolationsInBothThemes,
   }) => {
-    const { owner, project, ids } = await seedVersions(api);
+    const { owner, project, run101, ids } = await seedVersions(api);
     const page = await (await newContext(await mobileContextOptions(owner))).newPage();
     const compare = new ComparePage(page);
     const versions = new VersionsPage(page);
@@ -655,6 +751,12 @@ test.describe("Layar 375 px", () => {
     await versions.goto(project.slug);
     await expectNoOverflow(page);
     await expect(versions.row("1.0.1")).toContainText("▼ turun 4,7 poin");
+    await expectNoA11yViolationsInBothThemes(page);
+
+    // Detail run dengan panel perbandingan.
+    await page.goto(`/p/${project.slug}/runs/${run101}`);
+    await expect(page.getByTestId("run-compare-panel")).toBeVisible();
+    await expectNoOverflow(page);
     await expectNoA11yViolationsInBothThemes(page);
   });
 });

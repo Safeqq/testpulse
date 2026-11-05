@@ -234,7 +234,17 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
           await listCompareResults(db, pair.base.id),
           await listCompareResults(db, pair.target.id),
         );
-        // Respons utama: 200 item pertama tiap kelompok; `group` (+ `cursor`): 100 item satu kelompok.
+        // Respons utama: 200 item pertama tiap kelompok; `group` (+ `cursor`): 100 item satu kelompok;
+        // `groups=none`: hanya ringkasan angka, tanpa item sehingga pesan dan badge bug tidak perlu dibaca.
+        if (query.groups === "none") {
+          return {
+            ...pair,
+            groups: grouped,
+            pages: new Map<CompareGroup, EntryPage>(),
+            bugs: new Map<string, BugRefDto[]>(),
+            messages: new Map<string, string>(),
+          };
+        }
         const selected = query.group === undefined ? COMPARE_GROUPS : [query.group];
         const size = query.group === undefined ? COMPARE_FIRST_PAGE : COMPARE_PAGE_SIZE;
         const ids = { baseId: pair.base.id, targetId: pair.target.id };

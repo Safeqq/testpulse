@@ -72,9 +72,15 @@ export const compareQuery = z
     branch: branchName.optional(),
     group: z.enum(COMPARE_GROUPS).optional(),
     cursor: z.string().optional(),
+    // "none": hanya ringkasan angka (semua kelompok kosong) untuk kartu dashboard dan panel detail run.
+    groups: z.literal("none").optional(),
   })
   .refine((q) => q.cursor === undefined || q.group !== undefined, {
     message: "Kelompok wajib diisi bersama cursor",
     path: ["group"],
+  })
+  .refine((q) => q.groups === undefined || q.group === undefined, {
+    message: "groups=none tidak dapat dipakai bersama group",
+    path: ["groups"],
   });
 export type CompareQuery = z.infer<typeof compareQuery>;

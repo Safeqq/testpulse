@@ -87,6 +87,13 @@ describe("compareQuery", () => {
     expect(result.success).toBe(false);
     expect(result.error?.issues[0]?.path).toEqual(["group"]);
   });
+  it("groups=none (hanya ringkasan) tidak boleh bersama group atau cursor", () => {
+    expect(compareQuery.safeParse({ groups: "none" }).success).toBe(true);
+    expect(compareQuery.safeParse({ groups: "all" }).success).toBe(false);
+    const withGroup = compareQuery.safeParse({ groups: "none", group: "fixed" });
+    expect(withGroup.success).toBe(false);
+    expect(withGroup.error?.issues[0]?.path).toEqual(["groups"]);
+  });
   it("menolak group tidak dikenal dan branch tidak sah", () => {
     expect(compareQuery.safeParse({ group: "x" }).success).toBe(false);
     expect(compareQuery.safeParse({ branch: "a b" }).success).toBe(false);

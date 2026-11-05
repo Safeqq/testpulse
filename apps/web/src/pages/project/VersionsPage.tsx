@@ -103,6 +103,9 @@ function VersionsList({ slug, branch }: { slug: string; branch: string }) {
   return <VersionsTable slug={slug} branch={branch} versions={versions.data} />;
 }
 
+/** Batas daftar dari API (spec Tahap 3 §6); baris terakhir pada daftar sepenuh ini mungkin masih punya versi di bawahnya. */
+const VERSIONS_CAP = 100;
+
 const TH_CLASS = "px-4 py-2.5 text-left text-sm font-semibold text-muted-foreground";
 const TD_CLASS = "px-4 py-3 align-top text-sm";
 
@@ -136,7 +139,14 @@ function VersionsTable({ slug, branch, versions }: { slug: string; branch: strin
         <tbody className="divide-y divide-border">
           {versions.map((entry, index) => (
             // Daftar terbaru dulu: baris berikutnya adalah versi tepat di bawahnya.
-            <VersionRow key={entry.version} slug={slug} branch={branch} entry={entry} previous={versions[index + 1] ?? null} />
+            <VersionRow
+              key={entry.version}
+              slug={slug}
+              branch={branch}
+              entry={entry}
+              previous={versions[index + 1] ?? null}
+              capped={versions.length >= VERSIONS_CAP}
+            />
           ))}
         </tbody>
       </table>
@@ -164,11 +174,14 @@ function VersionRow({
   branch,
   entry,
   previous,
+  capped,
 }: {
   slug: string;
   branch: string;
   entry: VersionDto;
   previous: VersionDto | null;
+  /** Daftar terpotong di batas API: baris terakhir mungkin masih punya versi sebelumnya yang tidak terlihat. */
+  capped: boolean;
 }) {
   const { run } = entry;
   const date = formatDateTime(run.createdAt);
@@ -198,9 +211,10 @@ function VersionRow({
         <DeltaText delta={entry.passRateDelta} />
       </td>
       <td className={TD_CLASS}>
-        {previous ? (
+        {previous || capped ? (
           <Link
-            to={compareHref(slug, { base: previous.run.id, target: run.id, branch })}
+            // Tanpa baris sebelumnya di daftar terpotong, pembanding default (versi di bawahnya) dipilih server.
+            to={compareHref(slug, previous ? { base: previous.run.id, target: run.id, branch } : { target: run.id, branch })}
             className={INLINE_LINK_CLASS}
             data-testid={`version-compare-${entry.version}`}
           >

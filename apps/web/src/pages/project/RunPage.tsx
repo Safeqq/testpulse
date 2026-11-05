@@ -12,13 +12,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api";
-import { runLabel, versionLabel } from "@/lib/compareSummary";
+import { pairLabels, versionLabel } from "@/lib/compareSummary";
 import { errorMessage } from "@/lib/forms";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { safeExternalUrl, withBranch } from "@/lib/navigation";
 import { useCursorList, type CursorList } from "@/lib/useCursorList";
-import { useLoad } from "@/lib/useLoad";
-import { CompareSummary } from "./CompareSummary";
+import { useCompareSummary } from "@/lib/useCompareSummary";
+import type { LoadState } from "@/lib/useLoad";
+import { CompareSummary, CompareSummaryError } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
 import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
 
@@ -67,6 +68,8 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
     [slug, runId, filter],
   );
   const list = useCursorList(fetchPage);
+  // Panel perbandingan dimuat bersama halaman run (ringkasan saja), jadi hasilnya tidak mendorong isi halaman turun.
+  const compare = useCompareSummary(slug, { target: runId });
 
   if (run === null) {
     if (list.state === "error") {
@@ -84,6 +87,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
     }
     return <Loading label="Memuat run…" />;
   }
+  if (compare.state === "loading") return <Loading label="Memuat run…" />;
 
   const canDelete = canWriteBugs;
 
@@ -99,7 +103,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
         </Link>
       </div>
       <RunHeader run={run} />
-      <RunComparePanel slug={slug} runId={runId} />
+      <RunComparePanel slug={slug} compare={compare} />
       {canDelete ? <DeleteRun slug={slug} runId={runId} /> : null}
 
       <div className="grid min-w-0 grid-cols-1 gap-4">
@@ -183,22 +187,39 @@ function RunHeader({ run }: { run: RunSummaryDto }) {
 }
 
 /**
- * Panel "Dibanding {base}": ringkasan perbandingan run ini sebagai target (spec Tahap 3 §7.3). Bersifat tambahan:
- * tanpa pembanding, atau bila perbandingan gagal dimuat, panel tidak tampil dan detail run tetap dapat dipakai.
+ * Panel "Dibanding {base}": ringkasan perbandingan run ini sebagai target (spec Tahap 3 §7.3). Tidak tampil bila run ini
+ * tidak punya pembanding; bila perbandingan gagal dimuat, satu baris kesalahan dengan "Coba lagi" menggantikannya.
  */
-function RunComparePanel({ slug, runId }: { slug: string; runId: string }) {
-  const fetchCompare = useCallback((): Promise<CompareDto | null> => api.results.compare(slug, { target: runId }).catch(() => null), [slug, runId]);
-  const load = useLoad(fetchCompare);
-  if (load.state !== "ready" || load.data === null || !load.data.base || !load.data.target) return null;
+function RunComparePanel({
+  slug,
+  compare,
+}: {
+  slug: string;
+  compare: LoadState<CompareDto> & { reload: () => void };
+}) {
+  if (compare.state === "loading") return null;
+  if (compare.state === "error") {
+    return (
+      <Card data-testid="run-compare-panel">
+        <CardContent>
+          <CompareSummaryError onRetry={compare.reload} />
+        </CardContent>
+      </Card>
+    );
+  }
+  const { data } = compare;
+  if (!data.base || !data.target) return null;
   return (
     <Card data-testid="run-compare-panel">
       <CardHeader>
         <CardTitle>
-          <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">Dibanding {runLabel(load.data.base)}</h2>
+          <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">
+            Dibanding {pairLabels(data.base, data.target).base}
+          </h2>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <CompareSummary data={load.data} slug={slug} compact />
+        <CompareSummary data={data} slug={slug} compact />
       </CardContent>
     </Card>
   );

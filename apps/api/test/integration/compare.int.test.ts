@@ -300,6 +300,49 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       });
     });
 
+    it("groups=none: ringkasan angka sama, semua kelompok kosong, tanpa query pesan dan badge bug", async () => {
+      const fx = await setup();
+      await seedRun(fx, { at: 0, results: [result("a", "passed"), result("b", "failed"), result("gone", "passed")] });
+      await seedRun(fx, { at: 1, results: [result("a", "failed", { message: "boom" }), result("b", "passed"), result("new", "passed")] });
+      await createBug(fx, { title: "Bug a", testCaseId: await testCaseId(fx.project.id, "a") });
+
+      const full = await compare(fx);
+      const none = await compare(fx, "?groups=none");
+      expect(none.base).toEqual(full.base);
+      expect(none.target).toEqual(full.target);
+      expect(none.summary).toEqual(full.summary);
+      expect(none.summary).toEqual({ regressions: 1, fixed: 1, stillFailing: 0, slower: 0, added: 1, removed: 1 });
+      expect(none.groups).toEqual(emptyGroups);
+      // Contoh yang sama dengan item penuh membuktikan bahwa data yang dilewati memang ada di respons lengkap.
+      expect(full.groups.regressions.items[0]?.bugs).toHaveLength(1);
+
+      // Lebih sedikit query: pesan hasil dan badge bug dilewati (tetap ada query sesi, akses, run, dan hasil).
+      const queries = async (query: string) => {
+        queryCount = 0;
+        const res = await get(`/projects/${fx.project.slug}/compare${query}`, fx.admin.cookie, {}, countingApp);
+        expect(res.statusCode, res.body).toBe(200);
+        return queryCount;
+      };
+      const fullCount = await queries("");
+      const noneCount = await queries("?groups=none");
+      expect(noneCount).toBeLessThan(fullCount);
+    });
+
+    it("groups=none tanpa pembanding mengembalikan bentuk yang sama; nilai lain atau bersama group ditolak", async () => {
+      const fx = await setup();
+      await seedRun(fx, { at: 0 });
+      const single = await compare(fx, "?groups=none");
+      expect(single.base).toBeNull();
+      expect(single.summary).toEqual(emptySummary);
+      expect(single.groups).toEqual(emptyGroups);
+
+      for (const query of ["?groups=all", "?groups=none&group=fixed"]) {
+        const res = await get(`/projects/${fx.project.slug}/compare${query}`, fx.admin.cookie);
+        expect(res.statusCode, query).toBe(400);
+        expect(res.json().error.code).toBe("VALIDATION_ERROR");
+      }
+    });
+
     it("added 250 test → 200 item + nextCursor; ?group=added&cursor= → 50 sisanya", async () => {
       const fx = await setup();
       const base = await seedRun(fx, { at: 0, results: [result("keep", "passed")] });

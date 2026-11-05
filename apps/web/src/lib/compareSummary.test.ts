@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { compareSentence, formatDurationChange, formatPassRateDelta, runLabel, versionLabel } from "./compareSummary";
+import {
+  compareSentence,
+  formatDurationChange,
+  formatPassRateDelta,
+  pairLabels,
+  runLabel,
+  shortRunLabel,
+  versionLabel,
+} from "./compareSummary";
 import { formatDateTime } from "./format";
 
 const NONE = { regressions: 0, fixed: 0, stillFailing: 0, slower: 0, added: 0, removed: 0 };
@@ -17,7 +25,7 @@ describe("compareSentence", () => {
       compareSentence({ summary: { ...NONE, regressions: 1, fixed: 3 }, baseLabel: "v1.0.0", targetLabel: "v1.0.1" }),
     ).toEqual({
       tone: "warning",
-      text: "⚠ v1.0.1 punya 1 regresi baru dibanding v1.0.0. Periksa sebelum rilis, 3 test kini lulus.",
+      text: "⚠ v1.0.1 punya 1 regresi baru dibanding v1.0.0, sementara 3 test yang dulu gagal kini lulus. Periksa sebelum rilis.",
     });
   });
 
@@ -49,18 +57,52 @@ describe("compareSentence", () => {
 describe("versionLabel dan runLabel", () => {
   const run = { id: "0a1b2c3d-4e5f-6789-abcd-ef0123456789", createdAt: "2026-11-04T08:30:00.000Z" };
 
-  it("menambahkan awalan v pada versi yang belum memilikinya", () => {
+  it("menambahkan awalan v hanya pada versi yang diawali angka", () => {
     expect(versionLabel("1.0.1")).toBe("v1.0.1");
     expect(runLabel({ ...run, version: "1.0.1" })).toBe("v1.0.1");
+    expect(versionLabel("2024.11")).toBe("v2024.11");
   });
 
-  it("membiarkan versi yang sudah diawali v atau V", () => {
+  it("membiarkan versi yang diawali huruf apa adanya", () => {
     expect(versionLabel("v1.0.1")).toBe("v1.0.1");
     expect(runLabel({ ...run, version: "V2.0.0" })).toBe("V2.0.0");
+    expect(versionLabel("release-2")).toBe("release-2");
+    expect(versionLabel("beta.3")).toBe("beta.3");
   });
 
-  it("run tanpa versi diberi id pendek dan tanggal", () => {
+  it("run tanpa versi diberi id pendek dan tanggal; label singkat tanpa tanggal", () => {
     expect(runLabel({ ...run, version: null })).toBe(`run #0a1b2c3d · ${formatDateTime(run.createdAt)}`);
+    expect(shortRunLabel({ ...run, version: null })).toBe("run #0a1b2c3d");
+    expect(shortRunLabel({ ...run, version: "1.0.1" })).toBe("v1.0.1");
+  });
+});
+
+describe("pairLabels", () => {
+  const at = "2026-11-04T08:30:00.000Z";
+  const older = { id: "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa", createdAt: at, version: "1.0.0" };
+  const newer = { id: "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb", createdAt: at, version: "1.0.1" };
+
+  it("memakai label biasa bila berbeda", () => {
+    expect(pairLabels(older, newer)).toEqual({ base: "v1.0.0", target: "v1.0.1" });
+  });
+
+  it("membedakan keduanya dengan id run bila label sama (dua run versi yang sama)", () => {
+    const sameVersion = { ...newer, version: "1.0.0" };
+    expect(pairLabels(older, sameVersion)).toEqual({
+      base: "v1.0.0 · run #11111111",
+      target: "v1.0.0 · run #22222222",
+    });
+    expect(pairLabels(older, sameVersion, "short")).toEqual({
+      base: "v1.0.0 · run #11111111",
+      target: "v1.0.0 · run #22222222",
+    });
+  });
+
+  it("tanpa pembanding hanya target; run tanpa versi tidak perlu dibedakan lagi", () => {
+    expect(pairLabels(null, newer)).toEqual({ base: null, target: "v1.0.1" });
+    const a = { ...older, version: null };
+    const b = { ...newer, version: null };
+    expect(pairLabels(a, b, "short")).toEqual({ base: "run #11111111", target: "run #22222222" });
   });
 });
 

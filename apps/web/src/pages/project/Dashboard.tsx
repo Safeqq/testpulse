@@ -1,4 +1,4 @@
-import type { CompareDto, FlakyTestDto, RunSummaryDto, StatsDto } from "@testpulse/shared";
+import type { FlakyTestDto, RunSummaryDto, StatsDto } from "@testpulse/shared";
 import { useCallback, useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TrendChart } from "@/components/charts/TrendChart";
@@ -9,12 +9,13 @@ import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { runLabel } from "@/lib/compareSummary";
+import { pairLabels } from "@/lib/compareSummary";
 import { formatDateTime, formatDuration, formatPassRate } from "@/lib/format";
 import { FLAKY_API_LIMIT } from "@/lib/flaky";
 import { withBranch } from "@/lib/navigation";
+import { useCompareSummary } from "@/lib/useCompareSummary";
 import { useLoad } from "@/lib/useLoad";
-import { CompareSummary } from "./CompareSummary";
+import { CompareSummary, CompareSummaryError } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
 
 const RECENT_RUNS = 5;
@@ -40,19 +41,16 @@ interface Summary {
   stats: StatsDto;
   runs: RunSummaryDto[];
   flaky: FlakyTestDto[];
-  /** `null` bila perbandingan gagal dimuat; kartu perbandingan bersifat tambahan, dashboard tetap tampil tanpanya. */
-  compare: CompareDto | null;
 }
 
 function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
   const fetchSummary = useCallback(async (): Promise<Summary> => {
-    const [stats, runsPage, flaky, compare] = await Promise.all([
+    const [stats, runsPage, flaky] = await Promise.all([
       api.results.stats(slug, branch),
       api.results.runs(slug, { branch }),
       api.results.flaky(slug, branch),
-      api.results.compare(slug, { branch }).catch(() => null),
     ]);
-    return { stats, runs: runsPage.runs.slice(0, RECENT_RUNS), flaky, compare };
+    return { stats, runs: runsPage.runs.slice(0, RECENT_RUNS), flaky };
   }, [slug, branch]);
   const load = useLoad(fetchSummary);
 
@@ -63,7 +61,7 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
     return <LoadError error={load.error} fallback="Gagal memuat hasil test. Coba lagi." onRetry={load.reload} />;
   }
 
-  const { stats, runs, flaky, compare } = load.data;
+  const { stats, runs, flaky } = load.data;
   const { latest } = stats;
   if (!latest) {
     return <p className="text-sm text-muted-foreground">Belum ada hasil test untuk branch ini.</p>;
@@ -92,7 +90,7 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
         </StatCard>
       </dl>
 
-      {compare ? <ComparisonCard slug={slug} data={compare} /> : null}
+      <ComparisonCard slug={slug} branch={branch} />
 
       <Card>
         <CardHeader>
@@ -113,15 +111,31 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
   );
 }
 
-/** Kartu "{target} vs {base}": kesimpulan singkat perbandingan terbaru branch; hanya bila ada pembanding. */
-function ComparisonCard({ slug, data }: { slug: string; data: CompareDto }) {
+/**
+ * Kartu "{target} vs {base}": kesimpulan singkat perbandingan terbaru branch; hanya bila ada pembanding. Dimuat sendiri
+ * (ringkasan saja, `groups=none`) agar dashboard tidak menunggunya; kegagalan tampil sebagai satu baris dengan "Coba lagi".
+ */
+function ComparisonCard({ slug, branch }: { slug: string; branch: string }) {
+  const summary = useCompareSummary(slug, { branch });
+  if (summary.state === "loading") return <Loading label="Memuat perbandingan…" />;
+  if (summary.state === "error") {
+    return (
+      <Card data-testid="version-card-error">
+        <CardContent>
+          <CompareSummaryError onRetry={summary.reload} />
+        </CardContent>
+      </Card>
+    );
+  }
+  const { data } = summary;
   if (!data.base || !data.target) return null;
+  const labels = pairLabels(data.base, data.target);
   return (
     <Card data-testid="version-card">
       <CardHeader>
         <CardTitle>
           <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">
-            {runLabel(data.target)} vs {runLabel(data.base)}
+            {labels.target} vs {labels.base}
           </h2>
         </CardTitle>
       </CardHeader>

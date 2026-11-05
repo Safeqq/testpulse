@@ -15,6 +15,7 @@ interface CompareGroupProps {
   slug: string;
   base: RunSummaryDto;
   target: RunSummaryDto;
+  labels: { base: string; target: string };
   canWriteBugs: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -34,7 +35,7 @@ interface Extra {
  * Halaman berikutnya dimuat dengan id base/target dari perbandingan yang sedang tampil (cursor terikat pada pasangan
  * itu), bukan default yang bisa bergeser setelah upload baru.
  */
-export function CompareGroup({ group, count, page, slug, base, target, canWriteBugs, open, onOpenChange, onReload }: CompareGroupProps) {
+export function CompareGroup({ group, count, page, slug, base, target, labels, canWriteBugs, open, onOpenChange, onReload }: CompareGroupProps) {
   const label = COMPARE_GROUP_LABEL[group];
   const [extra, setExtra] = useState<Extra>({ items: [], nextCursor: page.nextCursor, loading: false, error: null });
 
@@ -88,7 +89,7 @@ export function CompareGroup({ group, count, page, slug, base, target, canWriteB
         <div className="grid min-w-0 gap-3 border-t">
           <ul className="m-0 grid list-none divide-y divide-border p-0">
             {items.map((item) => (
-              <CompareRow key={item.testCaseId} item={item} slug={slug} base={base} target={target} canWriteBugs={canWriteBugs} />
+              <CompareRow key={item.testCaseId} item={item} slug={slug} target={target} labels={labels} canWriteBugs={canWriteBugs} />
             ))}
           </ul>
           {extra.error !== null ? (

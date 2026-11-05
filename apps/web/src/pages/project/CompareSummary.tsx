@@ -2,7 +2,8 @@ import { COMPARE_GROUPS, type CompareDto, type CompareGroup } from "@testpulse/s
 import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { INLINE_LINK_CLASS } from "@/components/inlineLink";
-import { COMPARE_GROUP_LABEL, compareSentence, runLabel, type SentenceTone } from "@/lib/compareSummary";
+import { Button } from "@/components/ui/button";
+import { COMPARE_GROUP_LABEL, compareSentence, pairLabels, type SentenceTone } from "@/lib/compareSummary";
 import { compareHref } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
@@ -42,11 +43,8 @@ function EmphasizedSentence({ text }: { text: string }) {
 export function CompareSummary({ data, slug, compact = false, onGroupLink }: CompareSummaryProps) {
   const { base, target, summary } = data;
   if (!target) return null;
-  const sentence = compareSentence({
-    summary,
-    baseLabel: base ? runLabel(base) : null,
-    targetLabel: runLabel(target),
-  });
+  const labels = pairLabels(base, target);
+  const sentence = compareSentence({ summary, baseLabel: labels.base, targetLabel: labels.target });
 
   return (
     <div className="grid min-w-0 gap-3" data-testid="compare-summary">
@@ -88,7 +86,7 @@ export function CompareSummary({ data, slug, compact = false, onGroupLink }: Com
   );
 }
 
-const CELL_CLASS = "grid min-w-0 content-start gap-0.5 rounded-lg border bg-card px-3 py-2 text-card-foreground";
+const CELL_CLASS = "grid min-w-0 content-start gap-0.5 rounded-lg border px-3 py-2 text-card-foreground";
 
 function CountCell({
   group,
@@ -101,6 +99,8 @@ function CountCell({
   compact: boolean;
   onGroupLink: ((group: CompareGroup) => void) | undefined;
 }) {
+  // Regresi baru yang ada diberi warna peringatan; kelompok lain netral.
+  const tone = group === "regressions" && count > 0 ? "border-destructive/50 bg-destructive/10" : "bg-card";
   const content = (
     <>
       <span className={cn("font-mono font-semibold tabular-nums", compact ? "text-lg" : "text-2xl")}>{count}</span>{" "}
@@ -109,7 +109,7 @@ function CountCell({
   );
   if (compact) {
     return (
-      <div className={CELL_CLASS} data-testid={`compare-count-${group}`}>
+      <div className={cn(CELL_CLASS, tone)} data-testid={`compare-count-${group}`}>
         {content}
       </div>
     );
@@ -119,6 +119,7 @@ function CountCell({
       href={`#compare-group-${group}`}
       className={cn(
         CELL_CLASS,
+        tone,
         "h-full text-foreground no-underline outline-hidden hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring",
       )}
       data-testid={`compare-count-${group}`}
@@ -126,5 +127,17 @@ function CountCell({
     >
       {content}
     </a>
+  );
+}
+
+/** Kegagalan memuat ringkasan di kartu dashboard/panel run: satu baris, tidak menyembunyikan kartunya. */
+export function CompareSummaryError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm font-medium text-destructive">
+      <p className="m-0">Gagal memuat perbandingan.</p>
+      <Button type="button" variant="outline" size="sm" onClick={onRetry}>
+        Coba lagi
+      </Button>
+    </div>
   );
 }

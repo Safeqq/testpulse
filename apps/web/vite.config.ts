@@ -27,6 +27,8 @@ export default defineConfig({
       "@testpulse/shared > zod",
       "@radix-ui/react-dropdown-menu",
       "lucide-react",
+      "react-markdown",
+      "remark-gfm",
     ],
   },
   build: {

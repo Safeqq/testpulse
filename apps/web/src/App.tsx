@@ -11,7 +11,7 @@ import { NewProjectPage } from "./pages/NewProjectPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { ProjectPage } from "./pages/ProjectPage";
 import { RegisterPage } from "./pages/RegisterPage";
-import { FlakyPage, RunPage, RunsPage, TestHistoryPage } from "./pages/project/lazyPages";
+import { BugNewPage, BugsPage, FlakyPage, RunPage, RunsPage, TestHistoryPage } from "./pages/project/lazyPages";
 import { ProjectSettingsPage } from "./pages/settings/ProjectSettingsPage";
 
 /** Kerangka netral selama chunk halaman diunduh; kegagalan mengunduh ditangkap agar aplikasi tidak menjadi layar kosong. */
@@ -47,6 +47,8 @@ export function App() {
           <Route path="/p/:slug/runs/:runId" element={<RunPage />} />
           <Route path="/p/:slug/flaky" element={<FlakyPage />} />
           <Route path="/p/:slug/tests/:testCaseId" element={<TestHistoryPage />} />
+          <Route path="/p/:slug/bugs" element={<BugsPage />} />
+          <Route path="/p/:slug/bugs/new" element={<BugNewPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

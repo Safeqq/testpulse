@@ -5,13 +5,24 @@ const loadRunsPage = () => import("./RunsPage").then((m) => ({ default: m.RunsPa
 const loadRunPage = () => import("./RunPage").then((m) => ({ default: m.RunPage }));
 const loadFlakyPage = () => import("./FlakyPage").then((m) => ({ default: m.FlakyPage }));
 const loadTestHistoryPage = () => import("./TestHistoryPage").then((m) => ({ default: m.TestHistoryPage }));
+const loadBugsPage = () => import("./BugsPage").then((m) => ({ default: m.BugsPage }));
+const loadBugNewPage = () => import("./BugNewPage").then((m) => ({ default: m.BugNewPage }));
 
 export const RunsPage = lazy(loadRunsPage);
 export const RunPage = lazy(loadRunPage);
 export const FlakyPage = lazy(loadFlakyPage);
 export const TestHistoryPage = lazy(loadTestHistoryPage);
+export const BugsPage = lazy(loadBugsPage);
+export const BugNewPage = lazy(loadBugNewPage);
 
-const LOADERS = { runs: loadRunsPage, run: loadRunPage, flaky: loadFlakyPage, test: loadTestHistoryPage };
+const LOADERS = {
+  runs: loadRunsPage,
+  run: loadRunPage,
+  flaky: loadFlakyPage,
+  test: loadTestHistoryPage,
+  bugs: loadBugsPage,
+  bugNew: loadBugNewPage,
+};
 
 /**
  * Mengunduh chunk halaman tujuan yang mungkin dibuka berikutnya, supaya navigasi klien tidak menunggu unduhan

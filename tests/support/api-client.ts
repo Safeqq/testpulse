@@ -1,6 +1,10 @@
 import { request as playwrightRequest, type APIRequestContext, type APIResponse } from "@playwright/test";
 import type {
   AcceptInvitationDto,
+  BugDto,
+  CommentBody,
+  CommentDto,
+  CreateBugBody,
   CreateProjectBody,
   CreatedInvitationDto,
   CreatedTokenDto,
@@ -8,6 +12,7 @@ import type {
   ProjectDto,
   RegisterBody,
   Role,
+  UpdateBugBody,
   UserDto,
   Visibility,
 } from "@testpulse/shared";
@@ -100,6 +105,28 @@ export class TestApi {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/xml" },
       data: xml,
     });
+  }
+
+  /** Buat bug sebagai `user` (tester/admin); mengembalikan bug dengan `number` dari server. */
+  async createBug(user: TestUser, slug: string, body: CreateBugBody): Promise<BugDto> {
+    return expectStatus<BugDto>(await user.request.post(`${API}/projects/${slug}/bugs`, { data: body }), 201, "createBug");
+  }
+
+  /** Ubah bug; `body.version` harus versi terakhir bug itu (mulai 1, naik tiap perubahan). */
+  async updateBug(user: TestUser, slug: string, number: number, body: UpdateBugBody): Promise<BugDto> {
+    return expectStatus<BugDto>(
+      await user.request.patch(`${API}/projects/${slug}/bugs/${number}`, { data: body }),
+      200,
+      "updateBug",
+    );
+  }
+
+  async addComment(user: TestUser, slug: string, number: number, body: CommentBody): Promise<CommentDto> {
+    return expectStatus<CommentDto>(
+      await user.request.post(`${API}/projects/${slug}/bugs/${number}/comments`, { data: body }),
+      201,
+      "addComment",
+    );
   }
 
   /** Daftarkan user baru, undang, terima; role `admin` dicapai dengan mengubah role setelah bergabung. */

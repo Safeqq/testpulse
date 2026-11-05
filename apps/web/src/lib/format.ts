@@ -31,3 +31,22 @@ export function formatShortDate(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : shortDate.format(date);
 }
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * Waktu relatif singkat ("2 jam lalu"); lebih dari 30 hari menjadi tanggal lengkap. `now` bisa diinjeksi untuk test.
+ * Selisih negatif kecil (jam klien sedikit tertinggal dari server) dianggap "baru saja".
+ */
+export function formatRelativeTime(iso: string, now: number = Date.now()): string {
+  const time = new Date(iso).getTime();
+  if (Number.isNaN(time)) return iso;
+  const elapsed = now - time;
+  if (elapsed < MINUTE_MS) return "baru saja";
+  if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)} menit lalu`;
+  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)} jam lalu`;
+  if (elapsed < 30 * DAY_MS) return `${Math.floor(elapsed / DAY_MS)} hari lalu`;
+  return formatDateTime(iso);
+}

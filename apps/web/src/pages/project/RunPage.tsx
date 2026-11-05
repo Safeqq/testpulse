@@ -1,7 +1,8 @@
 import type { ProjectDto, RunSummaryDto, TestResultDto } from "@testpulse/shared";
-import { ArrowLeft, ExternalLink, FileSearch, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Bug, ExternalLink, FileSearch, Loader2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { BugBadge } from "@/components/BugBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { FormError } from "@/components/FormError";
 import { LoadError } from "@/components/LoadError";
@@ -52,7 +53,7 @@ export function RunPage() {
 
 function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
   const { slug } = project;
-  useEffect(() => preloadPages("test", "runs"), []);
+  useEffect(() => preloadPages("test", "runs", "bugNew"), []);
   const [filter, setFilter] = useState<Filter>("failed");
   // Ringkasan run ikut di setiap halaman hasil; disimpan agar header tetap tampil saat filter diganti.
   const [run, setRun] = useState<RunSummaryDto | null>(null);
@@ -120,7 +121,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
             </Button>
           ))}
         </div>
-        <Results filter={filter} slug={slug} branch={run.branch} list={list} />
+        <Results filter={filter} slug={slug} runId={runId} branch={run.branch} canReport={canDelete} list={list} />
       </div>
     </section>
   );
@@ -264,12 +265,16 @@ function DeleteRun({ slug, runId }: { slug: string; runId: string }) {
 function Results({
   filter,
   slug,
+  runId,
   branch,
+  canReport,
   list,
 }: {
   filter: Filter;
   slug: string;
+  runId: string;
   branch: string;
+  canReport: boolean;
   list: CursorList<TestResultDto>;
 }) {
   if (list.state === "loading") return <Loading label="Memuat hasil test…" />;
@@ -287,7 +292,7 @@ function Results({
     <div className="grid min-w-0 grid-cols-1 gap-4">
       <ul className="m-0 grid list-none divide-y divide-border rounded-lg border bg-card p-0">
         {list.items.map((result) => (
-          <ResultRow key={result.testCaseId} slug={slug} branch={branch} result={result} />
+          <ResultRow key={result.testCaseId} slug={slug} runId={runId} branch={branch} canReport={canReport} result={result} />
         ))}
       </ul>
       {list.moreError ? (
@@ -305,7 +310,15 @@ function Results({
   );
 }
 
-function ResultRow({ slug, branch, result }: { slug: string; branch: string; result: TestResultDto }) {
+interface ResultRowProps {
+  slug: string;
+  runId: string;
+  branch: string;
+  canReport: boolean;
+  result: TestResultDto;
+}
+
+function ResultRow({ slug, runId, branch, canReport, result }: ResultRowProps) {
   return (
     <li className="grid min-w-0 gap-1.5 px-4 py-3" data-testid={`result-row-${result.testCaseId}`}>
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
@@ -320,6 +333,7 @@ function ResultRow({ slug, branch, result }: { slug: string; branch: string; res
         {result.flakyInRun ? <Badge variant="outline">Flaky</Badge> : null}
         {result.retries > 0 ? <span>{result.retries} percobaan ulang</span> : null}
       </p>
+      <ResultBugs slug={slug} runId={runId} canReport={canReport} result={result} />
       {result.message ? (
         <details className="min-w-0">
           <summary className="w-fit cursor-pointer rounded-sm text-sm font-medium text-link outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring">
@@ -331,5 +345,36 @@ function ResultRow({ slug, branch, result }: { slug: string; branch: string; res
         </details>
       ) : null}
     </li>
+  );
+}
+
+/**
+ * Bug yang tertaut ke test ini: badge untuk setiap bug yang belum ditutup (maks 5), atau tombol "Laporkan bug" bagi
+ * tester/admin bila test gagal dan belum ada bug aktif. Badge menggantikan tombol, jadi laporan ganda tidak terdorong.
+ */
+function ResultBugs({ slug, runId, canReport, result }: Omit<ResultRowProps, "branch">) {
+  if (result.bugs.length > 0) {
+    return (
+      <p className="m-0 flex flex-wrap items-center gap-2">
+        {result.bugs.map((bug) => (
+          <BugBadge key={bug.number} bug={bug} slug={slug} />
+        ))}
+      </p>
+    );
+  }
+  if (!canReport || result.status !== "failed") return null;
+  const query = new URLSearchParams({ testCaseId: result.testCaseId, runId });
+  return (
+    <p className="m-0">
+      <Button asChild variant="outline" size="sm">
+        <Link
+          to={`/p/${encodeURIComponent(slug)}/bugs/new?${query.toString()}`}
+          data-testid={`report-bug-${result.testCaseId}`}
+        >
+          <Bug aria-hidden="true" />
+          Laporkan bug
+        </Link>
+      </Button>
+    </p>
   );
 }

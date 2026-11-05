@@ -2,6 +2,7 @@ import {
   branchName,
   COMPARE_GROUPS,
   compareQuery,
+  MAX_VERSIONS,
   type BugRefDto,
   type CompareDto,
   type CompareGroup,
@@ -39,10 +40,9 @@ import {
 } from "./read.routes.js";
 import { bugRefsForTests, findRun, latestBranch, type RunRecord } from "./repository.js";
 
-/** Batas daftar (spec Tahap 3 §6): 200 item pertama per kelompok, lalu 100 per halaman; maks 100 versi. */
+/** Batas daftar (spec Tahap 3 §6): 200 item pertama per kelompok, lalu 100 per halaman; maks `MAX_VERSIONS` versi. */
 export const COMPARE_FIRST_PAGE = 200;
 export const COMPARE_PAGE_SIZE = 100;
-export const MAX_VERSIONS = 100;
 
 const versionsQuery = z.object({ branch: branchName.optional() });
 

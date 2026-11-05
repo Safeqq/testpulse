@@ -1,10 +1,13 @@
 import { COMPARE_GROUPS, type CompareDto, type CompareGroup } from "@testpulse/shared";
-import { Fragment } from "react";
+import { Fragment, useRef, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { INLINE_LINK_CLASS } from "@/components/inlineLink";
+import { Loading } from "@/components/Loading";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { COMPARE_GROUP_LABEL, compareSentence, pairLabels, type SentenceTone } from "@/lib/compareSummary";
 import { compareHref } from "@/lib/navigation";
+import type { LoadState } from "@/lib/useLoad";
 import { cn } from "@/lib/utils";
 
 interface CompareSummaryProps {
@@ -139,5 +142,65 @@ export function CompareSummaryError({ onRetry }: { onRetry: () => void }) {
         Coba lagi
       </Button>
     </div>
+  );
+}
+
+interface CompareSummaryCardProps {
+  slug: string;
+  summary: LoadState<CompareDto> & { reload: () => void };
+  testId: string;
+  /** Judul kartu dari label pasangan (sudah dibedakan bila sama). */
+  title: (labels: { base: string; target: string }) => ReactNode;
+}
+
+/**
+ * Kartu ringkasan perbandingan di dashboard dan detail run. Tempatnya dipesan sejak awal: selama memuat kartu sudah
+ * ada (aria-busy, tinggi minimum ≈ kartu terisi di layar lebar) sehingga isi di bawahnya tidak bergeser saat ringkasan tiba; baru hilang bila
+ * ternyata tidak ada pembanding. Kegagalan dan "Coba lagi" tetap di dalam kartu yang sama, dan fokus dipindah ke kartu
+ * sebelum memuat ulang supaya tombol yang hilang tidak menjatuhkan fokus ke <body>.
+ */
+export function CompareSummaryCard({ slug, summary, testId, title }: CompareSummaryCardProps) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  if (summary.state === "ready" && (!summary.data.base || !summary.data.target)) return null;
+  const { data } = summary.state === "ready" ? summary : { data: null };
+  const labels = data?.base && data.target ? pairLabels(data.base, data.target) : null;
+
+  return (
+    <Card
+      ref={cardRef}
+      tabIndex={-1}
+      aria-busy={summary.state === "loading"}
+      data-testid={testId}
+      data-state={summary.state}
+      className="min-h-[15.25rem] min-w-0 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
+    >
+      {data && labels?.base ? (
+        <>
+          <CardHeader>
+            <CardTitle>
+              <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">
+                {title({ base: labels.base, target: labels.target })}
+              </h2>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CompareSummary data={data} slug={slug} compact />
+          </CardContent>
+        </>
+      ) : (
+        <CardContent>
+          {summary.state === "error" ? (
+            <CompareSummaryError
+              onRetry={() => {
+                cardRef.current?.focus();
+                summary.reload();
+              }}
+            />
+          ) : (
+            <Loading label="Memuat perbandingan…" />
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }

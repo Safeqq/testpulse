@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { ProjectDto } from "@testpulse/shared";
+import { MAX_VERSIONS, type ProjectDto, type VersionDto } from "@testpulse/shared";
 import { BugNewPage } from "../pages/BugNewPage.js";
 import { ComparePage, type CompareGroupId } from "../pages/ComparePage.js";
 import { RunDetailPage } from "../pages/RunDetailPage.js";
@@ -74,6 +74,16 @@ async function seedVersions(api: TestApi, visibility?: "public"): Promise<Seed> 
 
 const SENTENCE =
   "⚠ v1.0.1 punya 2 regresi baru dibanding v1.0.0, sementara 1 test yang dulu gagal kini lulus. Periksa sebelum rilis.";
+
+const SUMMARY_REQUEST = /\/compare\?.*groups=none/;
+
+/** Menunda permintaan ringkasan perbandingan (kartu dashboard/panel run) supaya keadaan memuat dapat diamati. */
+async function delaySummary(page: Page, ms = 1500): Promise<void> {
+  await page.route(SUMMARY_REQUEST, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    await route.continue();
+  });
+}
 
 /** Buka semua kelompok yang tertutup (untuk pemindaian aksesibilitas isi lengkap). */
 async function openAllGroups(compare: ComparePage): Promise<void> {
@@ -165,26 +175,59 @@ test.describe("Kartu perbandingan di dashboard", () => {
     await expect(compare.title).toHaveText(`${short(second)} dibanding ${short(first)}`);
     await expect(compare.row(ids["B"]!).locator("strong")).toHaveText([short(first), short(second)]);
     await expect(compare.row(ids["B"]!).locator("details summary")).toHaveText(`Lihat pesan error ${short(second)}`);
+    // Pemilih: dua run dengan versi sama dibedakan dengan id run.
+    await expect(compare.target.locator(`option[value="${first}"]`)).toContainText(`run #${first.slice(0, 8)}`);
+    await expect(compare.target.locator(`option[value="${second}"]`)).toContainText(`run #${second.slice(0, 8)}`);
   });
 
-  test("ringkasan gagal dimuat: satu baris kesalahan dengan Coba lagi, dashboard tetap tampil", async ({
+  test("dashboard tampil lebih dulu; kartu memesan tempat tanpa menggeser isi saat ringkasan tiba", async ({
     api,
     signedInPage,
   }) => {
     const { owner, project } = await seedVersions(api);
     const { page } = await signedInPage(owner);
-    const failing = /\/compare\?.*groups=none/;
-    await page.route(failing, (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+    await delaySummary(page);
+
+    await page.goto(`/p/${project.slug}`);
+    const card = page.getByTestId("version-card");
+    const trend = page.getByRole("heading", { name: "Tren pass rate" });
+    // Dashboard sudah utuh sementara ringkasan perbandingan masih dimuat; tempat kartu sudah dipesan.
+    await expect(page.getByTestId("stat-last-status")).toBeVisible();
+    await expect(trend).toBeVisible();
+    await expect(card).toHaveAttribute("aria-busy", "true");
+    await expect(card.getByRole("status")).toHaveText("Memuat perbandingan…");
+    const before = (await trend.boundingBox())!.y;
+
+    await expect(card).toHaveAttribute("aria-busy", "false");
+    await expect(card.getByRole("heading", { level: 2 })).toHaveText("v1.0.1 vs v1.0.0");
+    expect((await trend.boundingBox())!.y).toBe(before);
+  });
+
+  test("ringkasan gagal dimuat: kesalahan di dalam kartu, Coba lagi menjaga fokus di kartu", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedVersions(api);
+    const { page } = await signedInPage(owner);
+    await page.route(SUMMARY_REQUEST, (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+    );
 
     await page.goto(`/p/${project.slug}`);
     await expect(page.getByTestId("stat-last-status")).toBeVisible();
-    await expect(page.getByTestId("version-card")).toHaveCount(0);
-    const error = page.getByTestId("version-card-error");
-    await expect(error).toContainText("Gagal memuat perbandingan.");
-    await page.unroute(failing);
-    await error.getByRole("button", { name: "Coba lagi" }).click();
-    await expect(page.getByTestId("version-card")).toBeVisible();
-    await expect(page.getByTestId("version-card-error")).toHaveCount(0);
+    const card = page.getByTestId("version-card");
+    await expect(card).toHaveAttribute("data-state", "error");
+    await expect(card).toContainText("Gagal memuat perbandingan.");
+
+    await page.unroute(SUMMARY_REQUEST);
+    await delaySummary(page);
+    await card.getByRole("button", { name: "Coba lagi" }).click();
+    // Tombol hilang saat memuat ulang, tetapi fokus tetap di kartu (bukan jatuh ke <body>).
+    await expect(card).toHaveAttribute("data-state", "loading");
+    await expect(card).toBeFocused();
+    await expect(card).toHaveAttribute("data-state", "ready");
+    await expect(card.getByRole("heading", { level: 2 })).toHaveText("v1.0.1 vs v1.0.0");
+    await expect(card).toBeFocused();
   });
 
   test("satu run saja: kartu tidak tampil dan halaman perbandingan menyatakan belum ada pembanding", async ({
@@ -596,13 +639,6 @@ test.describe("Panel perbandingan di detail run", () => {
     await expect(compare.title).toHaveText("v1.0.1 dibanding v1.0.0");
     expect(new URL(page.url()).searchParams.get("base")).toBe(run100);
 
-    // Panel dimuat bersama halaman: setelah panel tampil, daftar hasil tidak lagi bergeser.
-    await run.goto(project.slug, run101);
-    await expect(panel).toBeVisible();
-    const rowTop = (await run.rows.first().boundingBox())!.y;
-    await page.waitForTimeout(300);
-    expect((await run.rows.first().boundingBox())!.y).toBe(rowTop);
-
     // Run pertama tidak punya pembanding: panel tidak tampil.
     const answered = page.waitForResponse((res) => res.url().includes("groups=none") && res.url().includes(`target=${run100}`));
     await run.goto(project.slug, run100);
@@ -611,23 +647,52 @@ test.describe("Panel perbandingan di detail run", () => {
     await expect(page.getByTestId("run-compare-panel")).toHaveCount(0);
   });
 
-  test("ringkasan gagal dimuat: satu baris kesalahan dengan Coba lagi, detail run tetap tampil", async ({
+  test("halaman tampil lebih dulu; panel memesan tempat tanpa menggeser hasil saat ringkasan tiba", async ({
     api,
     signedInPage,
   }) => {
     const { owner, project, run101 } = await seedVersions(api);
     const { page } = await signedInPage(owner);
     const run = new RunDetailPage(page);
-    const failing = /\/compare\?.*groups=none/;
-    await page.route(failing, (route) => route.fulfill({ status: 500, contentType: "application/json", body: "{}" }));
+    await delaySummary(page);
 
     await run.goto(project.slug, run101);
     const panel = page.getByTestId("run-compare-panel");
+    await expect(panel).toHaveAttribute("aria-busy", "true");
+    await expect(run.rows.first()).toBeVisible();
+    const before = (await run.rows.first().boundingBox())!.y;
+
+    await expect(panel).toHaveAttribute("aria-busy", "false");
+    await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Dibanding v1.0.0");
+    expect((await run.rows.first().boundingBox())!.y).toBe(before);
+  });
+
+  test("ringkasan gagal dimuat: kesalahan di dalam panel, Coba lagi menjaga fokus di panel", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project, run101 } = await seedVersions(api);
+    const { page } = await signedInPage(owner);
+    const run = new RunDetailPage(page);
+    await page.route(SUMMARY_REQUEST, (route) =>
+      route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+    );
+
+    await run.goto(project.slug, run101);
+    const panel = page.getByTestId("run-compare-panel");
+    await expect(panel).toHaveAttribute("data-state", "error");
     await expect(panel).toContainText("Gagal memuat perbandingan.");
     await expect(run.rows.first()).toBeVisible();
-    await page.unroute(failing);
+
+    await page.unroute(SUMMARY_REQUEST);
+    await delaySummary(page);
     await panel.getByRole("button", { name: "Coba lagi" }).click();
+    await expect(panel).toHaveAttribute("data-state", "loading");
+    await expect(panel).toBeFocused();
+    await expect(panel).toHaveAttribute("data-state", "ready");
     await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Dibanding v1.0.0");
+    await expect(panel).toBeFocused();
+    await expect(run.rows.first()).toBeVisible();
   });
 });
 
@@ -663,6 +728,32 @@ test.describe("Halaman versi", () => {
     const url = new URL(page.url());
     expect(url.searchParams.get("base")).toBe(run100);
     expect(url.searchParams.get("target")).toBe(run101);
+  });
+
+  test("daftar terpotong di batas API: baris terakhir menaut dengan target saja, bukan 'Versi pertama'", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project, run101 } = await seedVersions(api);
+    const { page } = await signedInPage(owner);
+    const versions = new VersionsPage(page);
+    // Semua baris sisipan memakai run terbaru (run101). API memotong daftar di MAX_VERSIONS: sisipkan jawaban seperti project yang punya lebih dari itu.
+    await page.route(/\/versions\?branch=/, async (route) => {
+      const [first] = (await (await route.fetch()).json()) as VersionDto[];
+      const capped = Array.from({ length: MAX_VERSIONS }, (_, i) => ({ ...first!, version: `${MAX_VERSIONS - i}.0.0` }));
+      await route.fulfill({ json: capped });
+    });
+
+    await versions.goto(project.slug);
+    await expect(versions.table.locator('[data-testid^="version-row-"]')).toHaveCount(MAX_VERSIONS);
+    const last = versions.compareLink("1.0.0");
+    await expect(last).toBeVisible();
+    const href = new URL((await last.getAttribute("href"))!, "http://x");
+    expect(href.searchParams.get("target")).toBe(run101);
+    expect(href.searchParams.has("base")).toBe(false);
+    await expect(versions.row("1.0.0")).not.toContainText("Versi pertama");
+    // Baris lain tetap memakai versi di bawahnya sebagai base.
+    expect(new URL((await versions.compareLink("2.0.0").getAttribute("href"))!, "http://x").searchParams.has("base")).toBe(true);
   });
 
   test("pemilih branch dan keadaan kosong tanpa versi", async ({ api, signedInPage }) => {

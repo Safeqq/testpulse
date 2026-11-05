@@ -1,4 +1,4 @@
-import type { VersionDto } from "@testpulse/shared";
+import { MAX_VERSIONS, type VersionDto } from "@testpulse/shared";
 import { Tag } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -103,9 +103,6 @@ function VersionsList({ slug, branch }: { slug: string; branch: string }) {
   return <VersionsTable slug={slug} branch={branch} versions={versions.data} />;
 }
 
-/** Batas daftar dari API (spec Tahap 3 §6); baris terakhir pada daftar sepenuh ini mungkin masih punya versi di bawahnya. */
-const VERSIONS_CAP = 100;
-
 const TH_CLASS = "px-4 py-2.5 text-left text-sm font-semibold text-muted-foreground";
 const TD_CLASS = "px-4 py-3 align-top text-sm";
 
@@ -145,7 +142,7 @@ function VersionsTable({ slug, branch, versions }: { slug: string; branch: strin
               branch={branch}
               entry={entry}
               previous={versions[index + 1] ?? null}
-              capped={versions.length >= VERSIONS_CAP}
+              capped={versions.length >= MAX_VERSIONS}
             />
           ))}
         </tbody>
@@ -180,7 +177,7 @@ function VersionRow({
   branch: string;
   entry: VersionDto;
   previous: VersionDto | null;
-  /** Daftar terpotong di batas API: baris terakhir mungkin masih punya versi sebelumnya yang tidak terlihat. */
+  /** Daftar terpotong di batas API (`MAX_VERSIONS`): baris terakhir mungkin masih punya versi sebelumnya yang tidak terlihat. */
   capped: boolean;
 }) {
   const { run } = entry;

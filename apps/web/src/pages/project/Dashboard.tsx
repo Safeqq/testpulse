@@ -9,13 +9,12 @@ import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { pairLabels } from "@/lib/compareSummary";
 import { formatDateTime, formatDuration, formatPassRate } from "@/lib/format";
 import { FLAKY_API_LIMIT } from "@/lib/flaky";
 import { withBranch } from "@/lib/navigation";
 import { useCompareSummary } from "@/lib/useCompareSummary";
 import { useLoad } from "@/lib/useLoad";
-import { CompareSummary, CompareSummaryError } from "./CompareSummary";
+import { CompareSummaryCard } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
 
 const RECENT_RUNS = 5;
@@ -53,6 +52,8 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
     return { stats, runs: runsPage.runs.slice(0, RECENT_RUNS), flaky };
   }, [slug, branch]);
   const load = useLoad(fetchSummary);
+  // Dimuat bersamaan dengan ringkasan branch (bukan setelahnya); kartunya sendiri tampil begitu dashboard siap.
+  const compare = useCompareSummary(slug, { branch });
 
   if (load.state === "loading") {
     return <Loading label="Memuat hasil test…" />;
@@ -90,7 +91,12 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
         </StatCard>
       </dl>
 
-      <ComparisonCard slug={slug} branch={branch} />
+      <CompareSummaryCard
+        slug={slug}
+        summary={compare}
+        testId="version-card"
+        title={(labels) => `${labels.target} vs ${labels.base}`}
+      />
 
       <Card>
         <CardHeader>
@@ -108,41 +114,6 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
         <TopFlaky slug={slug} branch={branch} flaky={flaky.slice(0, TOP_FLAKY)} />
       </div>
     </>
-  );
-}
-
-/**
- * Kartu "{target} vs {base}": kesimpulan singkat perbandingan terbaru branch; hanya bila ada pembanding. Dimuat sendiri
- * (ringkasan saja, `groups=none`) agar dashboard tidak menunggunya; kegagalan tampil sebagai satu baris dengan "Coba lagi".
- */
-function ComparisonCard({ slug, branch }: { slug: string; branch: string }) {
-  const summary = useCompareSummary(slug, { branch });
-  if (summary.state === "loading") return <Loading label="Memuat perbandingan…" />;
-  if (summary.state === "error") {
-    return (
-      <Card data-testid="version-card-error">
-        <CardContent>
-          <CompareSummaryError onRetry={summary.reload} />
-        </CardContent>
-      </Card>
-    );
-  }
-  const { data } = summary;
-  if (!data.base || !data.target) return null;
-  const labels = pairLabels(data.base, data.target);
-  return (
-    <Card data-testid="version-card">
-      <CardHeader>
-        <CardTitle>
-          <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">
-            {labels.target} vs {labels.base}
-          </h2>
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <CompareSummary data={data} slug={slug} compact />
-      </CardContent>
-    </Card>
   );
 }
 

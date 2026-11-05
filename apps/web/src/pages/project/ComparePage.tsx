@@ -266,9 +266,11 @@ interface RunPickerProps {
   onChange: (runId: string) => void;
 }
 
-function optionText(run: RunSummaryDto): string {
+/** Teks opsi; `duplicate` (ada run lain dengan label sama, mis. dua run versi yang sama) menambahkan id run pendek. */
+function optionText(run: RunSummaryDto, duplicate: boolean): string {
   const parts = [runLabel(run)];
   if (run.version !== null) parts.push(formatDateTime(run.createdAt));
+  if (duplicate) parts.push(`run #${run.id.slice(0, 8)}`);
   if (run.commitSha) parts.push(run.commitSha.slice(0, 7));
   return parts.join(" · ");
 }
@@ -287,10 +289,15 @@ function RunPicker({ role, title, run, value, disabledValue, options, current, o
   const extra = current.filter((r): r is RunSummaryDto => r !== null && !listed.has(r.id));
   const ciUrl = run ? safeExternalUrl(run.ciUrl) : null;
 
+  const labelCounts = new Map<string, number>();
+  for (const r of [...versionRuns, ...recentRuns, ...extra]) {
+    labelCounts.set(runLabel(r), (labelCounts.get(runLabel(r)) ?? 0) + 1);
+  }
+
   function renderOptions(runs: RunSummaryDto[]) {
     return runs.map((r) => (
       <option key={r.id} value={r.id} disabled={disabledValue !== "" && r.id === disabledValue}>
-        {optionText(r)}
+        {optionText(r, (labelCounts.get(runLabel(r)) ?? 0) > 1)}
       </option>
     ));
   }

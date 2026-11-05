@@ -7,6 +7,9 @@ import { RESULT_STATUSES } from "./result-status.js";
 export const COMPARE_GROUPS = ["regressions", "fixed", "stillFailing", "slower", "added", "removed"] as const;
 export type CompareGroup = (typeof COMPARE_GROUPS)[number];
 
+// Batas daftar versi yang dijawab API (terbaru dulu); klien memakainya untuk mengenali daftar yang terpotong.
+export const MAX_VERSIONS = 100;
+
 const compareSideDto = z.object({
   status: z.enum(RESULT_STATUSES),
   durationMs: z.number(),

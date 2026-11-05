@@ -6,6 +6,7 @@ import { HistoryStrip } from "@/components/charts/HistoryStrip";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadError } from "@/components/LoadError";
 import { BugBadge } from "@/components/BugBadge";
+import { INLINE_LINK_CLASS } from "@/components/inlineLink";
 import { Loading } from "@/components/Loading";
 import { Badge } from "@/components/ui/badge";
 import { api, ApiError } from "@/lib/api";
@@ -13,8 +14,6 @@ import { useLoad } from "@/lib/useLoad";
 import { preloadPages } from "./lazyPages";
 import { ProjectFrame } from "./ProjectFrame";
 
-const LINK_CLASS =
-  "rounded-sm font-medium text-link underline underline-offset-4 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring";
 
 /** `/p/:slug/tests/:testCaseId`: riwayat 20 hasil terakhir satu test (`?branch=` opsional; bawaan: branch run terbaru). */
 export function TestHistoryPage() {
@@ -39,7 +38,7 @@ function HistoryView({ slug, testCaseId }: { slug: string; testCaseId: string })
       return (
         <EmptyState icon={FileSearch} title="Test tidak ditemukan" headingLevel="h1" data-testid="test-not-found">
           <p>Test ini tidak ada di project ini.</p>
-          <Link to={`/p/${slug}/flaky`} className={LINK_CLASS}>
+          <Link to={`/p/${slug}/flaky`} className={INLINE_LINK_CLASS}>
             Ke daftar test flaky
           </Link>
         </EmptyState>

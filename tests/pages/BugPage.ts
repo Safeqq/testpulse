@@ -36,6 +36,10 @@ export class BugPage {
   readonly testRunLink: Locator;
   readonly activity: Locator;
   readonly activityMore: Locator;
+  readonly activityLive: Locator;
+  readonly activityRefreshError: Locator;
+  readonly activityRefreshRetry: Locator;
+  readonly statusLive: Locator;
   readonly comments: Locator;
   readonly events: Locator;
   readonly commentInput: Locator;
@@ -81,6 +85,11 @@ export class BugPage {
     this.testHistoryLink = page.getByTestId("bug-test-history-link");
     this.testRunLink = page.getByTestId("bug-test-run-link");
     this.activity = page.getByTestId("bug-activity");
+    this.activityLive = page.getByTestId("bug-activity-live");
+    this.activityRefreshError = page.getByTestId("bug-activity-refresh-error");
+    this.activityRefreshRetry = page.getByTestId("bug-activity-refresh-retry");
+    this.statusLive = page.getByTestId("bug-status-live");
+    this.actionError = page.getByTestId("form-error");
     this.activityMore = page.getByTestId("bug-activity-more");
     this.comments = this.activity.getByTestId(new RegExp(`^comment-${UUID}$`));
     this.events = this.activity.getByTestId(/^event-\d+$/);
@@ -91,9 +100,13 @@ export class BugPage {
     this.deleteButton = page.getByTestId("bug-delete");
     this.deleteConfirm = page.getByTestId("bug-delete-confirm");
     this.deleteCancel = page.getByTestId("bug-delete-cancel");
-    this.actionError = page.getByTestId("form-error");
     this.bugNotFound = page.getByTestId("bug-not-found");
     this.notFound = page.getByTestId("project-not-found");
+  }
+
+  /** Pesan galat di bawah pilihan assignee/prioritas/severity di panel samping. */
+  fieldError(field: "assignee" | "priority" | "severity"): Locator {
+    return this.page.getByTestId(`bug-${field}-error`);
   }
 
   transition(status: "open" | "in_progress" | "resolved" | "closed"): Locator {

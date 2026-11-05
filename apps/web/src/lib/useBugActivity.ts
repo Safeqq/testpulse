@@ -12,12 +12,14 @@ type ActivityState =
 
 export interface BugActivity {
   state: ActivityState;
-  /** Memuat halaman berikutnya; mengembalikan galatnya (bila ada) agar tombol bisa menampilkannya. */
+  /** Memuat halaman berikutnya; kegagalannya dicatat di `moreError` (bukan dilempar) agar tombol bisa menampilkannya. */
   loadMore: () => Promise<void>;
   loadingMore: boolean;
   moreError: unknown;
-  /** Memuat ulang linimasa dari awal sampai akhir (setelah perubahan bug atau komentar baru). */
+  /** Memuat ulang linimasa dari awal sampai akhir (setelah perubahan bug atau komentar baru); kegagalannya dicatat di `refreshError`. */
   refresh: () => Promise<void>;
+  /** Galat pemuatan ulang terakhir (linimasa lama tetap tampil); `null` setelah pemuatan ulang berhasil. */
+  refreshError: unknown;
   /** Mengganti satu komentar di tempat (setelah diedit atau dihapus) tanpa memuat ulang. */
   replaceComment: (comment: CommentDto) => void;
   retry: () => void;
@@ -34,6 +36,7 @@ export function useBugActivity(slug: string, number: number): BugActivity {
   const [state, setState] = useState<ActivityState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<unknown>(null);
+  const [refreshError, setRefreshError] = useState<unknown>(null);
   const [attempt, setAttempt] = useState(0);
   const generation = useRef(0);
 
@@ -87,10 +90,16 @@ export function useBugActivity(slug: string, number: number): BugActivity {
         if (nextCursor === null) break;
         cursor = nextCursor;
       }
-      if (generation.current === mine) setState({ status: "ready", items, nextCursor });
+      if (generation.current === mine) {
+        setState({ status: "ready", items, nextCursor });
+        setRefreshError(null);
+      }
     } catch (error) {
-      // Linimasa yang sudah tampil dibiarkan; hanya bila belum ada isi, galatnya ditampilkan.
-      if (generation.current === mine) setState((current) => (current.status === "ready" ? current : { status: "error", error }));
+      // Linimasa yang sudah tampil dibiarkan dan galatnya ditampilkan bersama tombol coba lagi.
+      if (generation.current === mine) {
+        setRefreshError(error);
+        setState((current) => (current.status === "ready" ? current : { status: "error", error }));
+      }
     }
   }, [slug, number]);
 
@@ -112,5 +121,5 @@ export function useBugActivity(slug: string, number: number): BugActivity {
     setAttempt((n) => n + 1);
   }, []);
 
-  return { state, loadMore, loadingMore, moreError, refresh, replaceComment, retry };
+  return { state, loadMore, loadingMore, moreError, refresh, refreshError, replaceComment, retry };
 }

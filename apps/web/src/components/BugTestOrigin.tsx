@@ -1,11 +1,10 @@
 import type { BugDto } from "@testpulse/shared";
 import { FlaskConical } from "lucide-react";
 import { Link } from "react-router-dom";
+import { INLINE_LINK_CLASS as LINK_CLASS } from "@/components/inlineLink";
 import { describeTestHint } from "@/lib/bugTransitions";
 import { withBranch } from "@/lib/navigation";
 
-const LINK_CLASS =
-  "rounded-sm font-medium text-link underline underline-offset-4 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring";
 
 /**
  * Kartu "Test asal" untuk bug yang tertaut ke test: nama dan suite test, petunjuk status terbarunya (hanya informasi,

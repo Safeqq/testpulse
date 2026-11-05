@@ -17,12 +17,14 @@ interface BugCommentProps {
   canEdit: boolean;
   canDelete: boolean;
   onChanged: (comment: CommentDto) => void;
+  /** Pengumuman singkat untuk pembaca layar (daerah live di linimasa), mis. "Komentar dihapus". */
+  onAnnounce: (message: string) => void;
   /** Komentar sudah tidak ada di server (mis. dihapus orang lain): linimasa dimuat ulang. */
   onGone: () => void;
 }
 
 /** Satu komentar di linimasa: Markdown aman, penanda "diedit", edit inline, dan hapus dengan konfirmasi inline. */
-export function BugComment({ slug, number, comment, canEdit, canDelete, onChanged, onGone }: BugCommentProps) {
+export function BugComment({ slug, number, comment, canEdit, canDelete, onChanged, onAnnounce, onGone }: BugCommentProps) {
   const [mode, setMode] = useState<"view" | "edit" | "confirm-delete">("view");
   const [draft, setDraft] = useState("");
   const [editorMode, setEditorMode] = useState<EditorMode>("write");
@@ -33,6 +35,7 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
   const editButton = useRef<HTMLButtonElement>(null);
   const deleteButton = useRef<HTMLButtonElement>(null);
   const cancelDelete = useRef<HTMLButtonElement>(null);
+  const article = useRef<HTMLElement>(null);
   const previous = useRef(mode);
 
   // Fokus mengikuti langkah: ke kolom saat edit, ke "Batal" (aksi aman) saat konfirmasi hapus, dan kembali ke pemicunya.
@@ -40,7 +43,8 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
     if (mode === "edit") form.current?.querySelector("textarea")?.focus();
     else if (mode === "confirm-delete") cancelDelete.current?.focus();
     else if (previous.current === "edit") editButton.current?.focus();
-    else if (previous.current === "confirm-delete") deleteButton.current?.focus();
+    // Komentar yang baru dihapus tidak punya tombol lagi: fokus ke komentarnya sendiri agar tidak jatuh ke awal halaman.
+    else if (previous.current === "confirm-delete") (deleteButton.current ?? article.current)?.focus();
     previous.current = mode;
   }, [mode]);
 
@@ -67,6 +71,7 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
     setError(null);
     try {
       onChanged(await api.comments.update(slug, number, comment.id, parsed.data));
+      onAnnounce("Komentar diubah");
       setMode("view");
     } catch (err) {
       if (err instanceof ApiError && err.code === "COMMENT_NOT_FOUND") return onGone();
@@ -83,6 +88,7 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
     try {
       await api.comments.remove(slug, number, comment.id);
       onChanged({ ...comment, body: null, deletedAt: new Date().toISOString() });
+      onAnnounce("Komentar dihapus");
       setMode("view");
     } catch (err) {
       if (err instanceof ApiError && err.code === "COMMENT_NOT_FOUND") return onGone();
@@ -93,9 +99,16 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
   }
 
   const deleted = comment.deletedAt !== null;
+  const headerId = `comment-header-${comment.id}`;
   return (
-    <article className="grid min-w-0 gap-2 rounded-lg border bg-card px-4 py-3" data-testid={`comment-${comment.id}`}>
-      <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
+    <article
+      ref={article}
+      tabIndex={-1}
+      aria-labelledby={headerId}
+      className="grid min-w-0 gap-2 rounded-lg border bg-card px-4 py-3 outline-hidden"
+      data-testid={`comment-${comment.id}`}
+    >
+      <header id={headerId} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
         <strong className="min-w-0 font-semibold [overflow-wrap:anywhere]">{comment.author.name}</strong>
         <span className="text-muted-foreground">
           <time dateTime={comment.createdAt} title={formatDateTime(comment.createdAt)}>
@@ -163,6 +176,7 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
               size="sm"
               variant="outline"
               aria-label="Ubah komentar"
+              aria-describedby={headerId}
               data-testid={`comment-edit-${comment.id}`}
               onClick={startEdit}
             >
@@ -177,6 +191,7 @@ export function BugComment({ slug, number, comment, canEdit, canDelete, onChange
               size="sm"
               variant="outline"
               aria-label="Hapus komentar"
+              aria-describedby={headerId}
               data-testid={`comment-delete-${comment.id}`}
               onClick={() => setMode("confirm-delete")}
             >

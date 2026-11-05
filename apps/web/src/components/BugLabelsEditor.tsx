@@ -23,8 +23,10 @@ export function BugLabelsEditor({ labels, canEdit, onSave }: BugLabelsEditorProp
   const [error, setError] = useState<string | undefined>();
   const [pending, setPending] = useState(false);
 
+  // Fokus mengikuti mode: ke kolom label saat edit dimulai, kembali ke tombol Ubah saat selesai atau dibatalkan.
   useEffect(() => {
-    if (!editing && wasEditing.current) editButton.current?.focus();
+    if (editing) editor.current?.querySelector<HTMLInputElement>('input[name="labels"]')?.focus();
+    else if (wasEditing.current) editButton.current?.focus();
     wasEditing.current = editing;
   }, [editing]);
 

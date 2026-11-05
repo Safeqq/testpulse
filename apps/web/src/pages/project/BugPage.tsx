@@ -21,6 +21,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { BugPatch } from "@/lib/bugForm";
 import { toSaveFailure, type SaveResult } from "@/lib/bugSave";
+import { BUG_STATUS_LABEL } from "@/lib/bugs";
 import { errorMessage, useDocumentTitle } from "@/lib/forms";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { useBugActivity } from "@/lib/useBugActivity";
@@ -83,6 +84,9 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
   const [epoch, setEpoch] = useState(0);
   const [actionError, setActionError] = useState<string | null>(null);
   const saving = useRef(false);
+  // Versi terakhir yang dilihat, diperbarui sinkron dari respons PATCH (bukan menunggu render) agar simpan berikutnya tidak memakai versi lama.
+  const versionRef = useRef(initial.version);
+  const [statusAnnouncement, setStatusAnnouncement] = useState("");
   const headingRef = useRef<HTMLHeadingElement>(null);
   const statusRef = useRef<HTMLSpanElement>(null);
   const activity = useBugActivity(slug, number);
@@ -104,7 +108,9 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
     saving.current = true;
     setActionError(null);
     try {
-      setBug(await api.bugs.update(slug, number, { ...patch, version: bug.version }));
+      const next = await api.bugs.update(slug, number, { ...patch, version: versionRef.current });
+      versionRef.current = next.version;
+      setBug(next);
       void activity.refresh();
       return { ok: true };
     } catch (err) {
@@ -117,23 +123,30 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
   }
 
   /** Seperti `save`, untuk kontrol tanpa tempat menampilkan galat sendiri: pesannya tampil di atas halaman. */
-  async function saveShowingErrors(patch: BugPatch): Promise<SaveResult> {
+  async function saveShowingErrors(patch: BugPatch, handledFields: readonly string[]): Promise<SaveResult> {
     const result = await save(patch);
-    if (!result.ok && !result.conflict && !result.fields) setActionError(result.message ?? "Gagal menyimpan perubahan.");
+    const handled = Object.keys(result.ok ? {} : (result.fields ?? {})).some((key) => handledFields.includes(key));
+    if (!result.ok && !result.conflict && !handled) setActionError(result.message ?? "Gagal menyimpan perubahan.");
     return result;
   }
 
   async function transition(to: BugStatus, resolution: BugDto["resolution"] | undefined): Promise<SaveResult> {
-    const result = await saveShowingErrors({ status: to, ...(resolution ? { resolution } : {}) });
-    // Tombol yang diklik hilang setelah status berubah: fokus pindah ke status agar tidak jatuh ke awal halaman.
-    if (result.ok) statusRef.current?.focus();
+    // Galat `resolution` ditampilkan oleh pilihan resolusi sendiri; selebihnya (mis. transisi ditolak) di atas halaman.
+    const result = await saveShowingErrors({ status: to, ...(resolution ? { resolution } : {}) }, ["resolution"]);
+    if (result.ok) {
+      // Tombol yang diklik hilang setelah status berubah: fokus pindah ke status agar tidak jatuh ke awal halaman.
+      statusRef.current?.focus();
+      setStatusAnnouncement(`Status diubah menjadi ${BUG_STATUS_LABEL[to]}`);
+    }
     return result;
   }
 
   async function reload() {
     setReloading(true);
     try {
-      setBug(await api.bugs.get(slug, number));
+      const latest = await api.bugs.get(slug, number);
+      versionRef.current = latest.version;
+      setBug(latest);
       setConflict(false);
       setActionError(null);
       setEpoch((n) => n + 1);
@@ -196,8 +209,12 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
         <BugTitleEditor key={`title-${epoch}`} title={bug.title} canEdit={canWrite} headingRef={headingRef} onSave={save} />
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <span ref={statusRef} tabIndex={-1} className="outline-hidden" data-testid="bug-status">
+            <span className="sr-only">Status: </span>
             <BugStatusLabel status={bug.status} resolution={bug.resolution} />
           </span>
+          <p role="status" aria-live="polite" className="sr-only" data-testid="bug-status-live">
+            {statusAnnouncement}
+          </p>
         </div>
         {canWrite ? <BugTransitions key={`transitions-${epoch}`} status={bug.status} onTransition={transition} /> : null}
       </div>
@@ -215,7 +232,7 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
             bug={bug}
             members={members.state === "ready" ? members.data : []}
             canEdit={canWrite}
-            onSave={saveShowingErrors}
+            onSave={save}
           />
           <div className="border-t pt-4">
             <BugLabelsEditor key={`labels-${epoch}`} labels={bug.labels} canEdit={canWrite} onSave={save} />

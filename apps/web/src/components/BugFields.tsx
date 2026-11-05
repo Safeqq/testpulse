@@ -28,6 +28,7 @@ export function BugFields({ bug, members, canEdit, onSave }: BugFieldsProps) {
       <Field
         label="Assignee"
         testId="bug-assignee"
+        fieldKey="assigneeId"
         value={assignee?.id ?? ""}
         options={options}
         canEdit={canEdit}
@@ -36,6 +37,7 @@ export function BugFields({ bug, members, canEdit, onSave }: BugFieldsProps) {
       <Field
         label="Prioritas"
         testId="bug-priority"
+        fieldKey="priority"
         value={bug.priority}
         options={BUG_PRIORITIES.map((value) => ({ value, label: BUG_PRIORITY_LABEL[value] }))}
         canEdit={canEdit}
@@ -44,6 +46,7 @@ export function BugFields({ bug, members, canEdit, onSave }: BugFieldsProps) {
       <Field
         label="Severity"
         testId="bug-severity"
+        fieldKey="severity"
         value={bug.severity}
         options={BUG_SEVERITIES.map((value) => ({ value, label: BUG_SEVERITY_LABEL[value] }))}
         canEdit={canEdit}
@@ -56,16 +59,20 @@ export function BugFields({ bug, members, canEdit, onSave }: BugFieldsProps) {
 interface FieldProps {
   label: string;
   testId: string;
+  /** Kunci galat dari server untuk kolom ini (`fields.<fieldKey>` pada 400). */
+  fieldKey: "assigneeId" | "priority" | "severity";
   value: string;
   options: { value: string; label: string }[];
   canEdit: boolean;
   onChange: (value: string) => Promise<SaveResult>;
 }
 
-function Field({ label, testId, value, options, canEdit, onChange }: FieldProps) {
+function Field({ label, testId, fieldKey, value, options, canEdit, onChange }: FieldProps) {
   const id = useId();
   // Nilai yang baru dipilih tampil segera; setelah simpan selesai nilai kembali mengikuti bug (berhasil atau ditolak).
   const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const errorId = `${id}-error`;
 
   if (!canEdit) {
     return (
@@ -89,10 +96,16 @@ function Field({ label, testId, value, options, canEdit, onChange }: FieldProps)
           value={pending ?? value}
           data-testid={testId}
           className="w-full"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           onChange={async (event) => {
-            setPending(event.target.value);
+            const chosen = event.target.value;
+            setPending(chosen);
+            setError(null);
             try {
-              await onChange(event.target.value);
+              const result = await onChange(chosen);
+              // Ditolak server (mis. assignee sudah bukan anggota): nilai kembali ke semula dan alasannya tampil di sini.
+              if (!result.ok && !result.conflict) setError(result.fields?.[fieldKey] ?? result.message ?? "Gagal menyimpan perubahan.");
             } finally {
               setPending(null);
             }
@@ -104,6 +117,11 @@ function Field({ label, testId, value, options, canEdit, onChange }: FieldProps)
             </option>
           ))}
         </NativeSelect>
+        {error ? (
+          <p id={errorId} role="alert" className="m-0 mt-1.5 text-sm font-medium text-destructive" data-testid={`${testId}-error`}>
+            {error}
+          </p>
+        ) : null}
       </dd>
     </div>
   );

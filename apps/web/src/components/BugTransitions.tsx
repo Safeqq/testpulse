@@ -23,6 +23,7 @@ export function BugTransitions({ status, onTransition }: BugTransitionsProps) {
   const errorId = `${selectId}-error`;
   const triggers = useRef(new Map<BugStatus, HTMLButtonElement>());
   const selectRef = useRef<HTMLSelectElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
   const [choosing, setChoosing] = useState<TransitionOption | null>(null);
   const [resolution, setResolution] = useState<BugResolution | "">("");
   const [error, setError] = useState<string | null>(null);
@@ -47,17 +48,21 @@ export function BugTransitions({ status, onTransition }: BugTransitionsProps) {
     if (result.fields?.resolution) {
       setError(result.fields.resolution);
       selectRef.current?.focus();
+    } else if (!result.conflict) {
+      // Galat lain (mis. transisi ditolak) tampil di atas halaman; fokus tetap di kontrol yang baru ditekan.
+      (choosing ? confirmRef.current : triggers.current.get(option.to))?.focus();
     }
   }
 
   function start(option: TransitionOption) {
+    if (pending) return;
     if (!option.needsResolution) return void run(option, undefined);
     setError(null);
     setChoosing(option);
   }
 
   function confirm() {
-    if (!choosing) return;
+    if (!choosing || pending) return;
     if (resolution === "") {
       setError("Pilih resolusi lebih dulu");
       selectRef.current?.focus();
@@ -67,6 +72,7 @@ export function BugTransitions({ status, onTransition }: BugTransitionsProps) {
   }
 
   function cancel() {
+    if (pending) return;
     const trigger = choosing ? triggers.current.get(choosing.to) : undefined;
     setChoosing(null);
     setResolution("");
@@ -89,7 +95,7 @@ export function BugTransitions({ status, onTransition }: BugTransitionsProps) {
             size="sm"
             variant={option.to === "in_progress" || option.to === "resolved" ? "default" : "outline"}
             aria-expanded={option.needsResolution ? choosing?.to === option.to : undefined}
-            disabled={pending && choosing === null}
+            aria-disabled={pending || undefined}
             data-testid={`bug-transition-${option.to}`}
             onClick={() => start(option)}
           >
@@ -129,11 +135,11 @@ export function BugTransitions({ status, onTransition }: BugTransitionsProps) {
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={confirm} disabled={pending} data-testid="bug-resolution-confirm">
+            <Button ref={confirmRef} type="button" size="sm" onClick={confirm} aria-disabled={pending || undefined} data-testid="bug-resolution-confirm">
               {pending ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : null}
               Konfirmasi
             </Button>
-            <Button type="button" size="sm" variant="outline" onClick={cancel} disabled={pending} data-testid="bug-resolution-cancel">
+            <Button type="button" size="sm" variant="outline" onClick={cancel} aria-disabled={pending || undefined} data-testid="bug-resolution-cancel">
               Batal
             </Button>
           </div>

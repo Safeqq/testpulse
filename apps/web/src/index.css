@@ -31,6 +31,7 @@
   /* Cincin fokus memakai biru tautan (oranye di atas latar terang hanya ~2,4:1). */
   --ring: #0051c3;
   --link: #0051c3;
+  --success: #15803d;
   --radius: 0.5rem;
   color-scheme: light;
 }
@@ -57,6 +58,7 @@
   --input: #6b7680;
   --ring: #34d59a;
   --link: #6ee7b7;
+  --success: #4ade80;
 }
 
 @theme inline {
@@ -80,6 +82,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-link: var(--link);
+  --color-success: var(--success);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

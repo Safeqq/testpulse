@@ -95,12 +95,13 @@ export class TestApi {
     token: string,
     slug: string,
     xml: string,
-    query: { branch: string; commit?: string; ciUrl?: string; name?: string },
+    query: { branch: string; commit?: string; ciUrl?: string; name?: string; version?: string },
   ): Promise<APIResponse> {
     const params = new URLSearchParams({ branch: query.branch });
     if (query.commit !== undefined) params.set("commit", query.commit);
     if (query.ciUrl !== undefined) params.set("ciUrl", query.ciUrl);
     if (query.name !== undefined) params.set("name", query.name);
+    if (query.version !== undefined) params.set("version", query.version);
     return (await this.anonymous()).post(`${API}/projects/${slug}/runs?${params.toString()}`, {
       headers: { authorization: `Bearer ${token}`, "content-type": "application/xml" },
       data: xml,

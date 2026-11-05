@@ -1,4 +1,4 @@
-import type { ProjectDto, RunSummaryDto, TestResultDto } from "@testpulse/shared";
+import type { CompareDto, ProjectDto, RunSummaryDto, TestResultDto } from "@testpulse/shared";
 import { ArrowLeft, Bug, ExternalLink, FileSearch, Loader2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -10,12 +10,15 @@ import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError } from "@/lib/api";
+import { runLabel, versionLabel } from "@/lib/compareSummary";
 import { errorMessage } from "@/lib/forms";
 import { formatDateTime, formatDuration } from "@/lib/format";
-import { withBranch } from "@/lib/navigation";
+import { safeExternalUrl, withBranch } from "@/lib/navigation";
 import { useCursorList, type CursorList } from "@/lib/useCursorList";
+import { useLoad } from "@/lib/useLoad";
+import { CompareSummary } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
 import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
 
@@ -36,11 +39,6 @@ const EMPTY_TEXT: Record<Filter, string> = {
 const TEXT_LINK_CLASS =
   "rounded-sm font-medium text-link underline underline-offset-4 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring";
 
-/** Hanya URL http(s) yang dijadikan tautan; server sudah memvalidasi, tetapi nilai ini tetap diperlakukan sebagai teks tak tepercaya. */
-function safeExternalUrl(url: string | null): string | null {
-  return url !== null && /^https?:\/\//i.test(url) ? url : null;
-}
-
 /** `/p/:slug/runs/:runId`: ringkasan satu run dan hasil test-nya (filter Gagal/Flaky/Semua). */
 export function RunPage() {
   const { slug = "", runId = "" } = useParams();
@@ -55,7 +53,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
   const { slug } = project;
   // Tester/admin: menghapus run dan melaporkan bug (izin "bugs:write"); hanya mereka yang mungkin membuka formulir bug.
   const canWriteBugs = project.myRole === "tester" || project.myRole === "admin";
-  useEffect(() => preloadPages("test", "runs", "bug", ...(canWriteBugs ? (["bugNew"] as const) : [])), [canWriteBugs]);
+  useEffect(() => preloadPages("test", "runs", "bug", "compare", ...(canWriteBugs ? (["bugNew"] as const) : [])), [canWriteBugs]);
   const [filter, setFilter] = useState<Filter>("failed");
   // Ringkasan run ikut di setiap halaman hasil; disimpan agar header tetap tampil saat filter diganti.
   const [run, setRun] = useState<RunSummaryDto | null>(null);
@@ -101,6 +99,7 @@ function RunView({ project, runId }: { project: ProjectDto; runId: string }) {
         </Link>
       </div>
       <RunHeader run={run} />
+      <RunComparePanel slug={slug} runId={runId} />
       {canDelete ? <DeleteRun slug={slug} runId={runId} /> : null}
 
       <div className="grid min-w-0 grid-cols-1 gap-4">
@@ -158,6 +157,13 @@ function RunHeader({ run }: { run: RunSummaryDto }) {
             <span className="text-muted-foreground">Tanpa commit</span>
           )}
         </Meta>
+        {run.version !== null ? (
+          <Meta label="Versi">
+            <span className="font-mono [overflow-wrap:anywhere]" data-testid="run-version">
+              {versionLabel(run.version)}
+            </span>
+          </Meta>
+        ) : null}
         {run.name ? (
           <Meta label="Nama">
             <span className="[overflow-wrap:anywhere]">{run.name}</span>
@@ -172,6 +178,28 @@ function RunHeader({ run }: { run: RunSummaryDto }) {
           </span>
         </Meta>
       </dl>
+    </Card>
+  );
+}
+
+/**
+ * Panel "Dibanding {base}": ringkasan perbandingan run ini sebagai target (spec Tahap 3 §7.3). Bersifat tambahan:
+ * tanpa pembanding, atau bila perbandingan gagal dimuat, panel tidak tampil dan detail run tetap dapat dipakai.
+ */
+function RunComparePanel({ slug, runId }: { slug: string; runId: string }) {
+  const fetchCompare = useCallback((): Promise<CompareDto | null> => api.results.compare(slug, { target: runId }).catch(() => null), [slug, runId]);
+  const load = useLoad(fetchCompare);
+  if (load.state !== "ready" || load.data === null || !load.data.base || !load.data.target) return null;
+  return (
+    <Card data-testid="run-compare-panel">
+      <CardHeader>
+        <CardTitle>
+          <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">Dibanding {runLabel(load.data.base)}</h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <CompareSummary data={load.data} slug={slug} compact />
+      </CardContent>
     </Card>
   );
 }

@@ -28,3 +28,19 @@ export function registerPathFor(target: string): string {
 export function withBranch(path: string, branch: string | null | undefined): string {
   return branch ? `${path}?${new URLSearchParams({ branch }).toString()}` : path;
 }
+
+/** Hanya URL http(s) yang dijadikan tautan; nilai dari server tetap diperlakukan sebagai teks tak tepercaya. */
+export function safeExternalUrl(url: string | null): string | null {
+  return url !== null && /^https?:\/\//i.test(url) ? url : null;
+}
+
+/** Jalur halaman perbandingan; id run disematkan agar tautan yang dibagikan selalu membuka pasangan yang sama. */
+export function compareHref(slug: string, pair: { base?: string; target?: string; branch?: string | null }): string {
+  const params = new URLSearchParams();
+  if (pair.base) params.set("base", pair.base);
+  if (pair.target) params.set("target", pair.target);
+  if (pair.branch) params.set("branch", pair.branch);
+  const query = params.toString();
+  const path = `/p/${encodeURIComponent(slug)}/compare`;
+  return query === "" ? path : `${path}?${query}`;
+}

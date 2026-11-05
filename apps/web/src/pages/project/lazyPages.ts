@@ -7,6 +7,8 @@ const loadFlakyPage = () => import("./FlakyPage").then((m) => ({ default: m.Flak
 const loadTestHistoryPage = () => import("./TestHistoryPage").then((m) => ({ default: m.TestHistoryPage }));
 const loadBugsPage = () => import("./BugsPage").then((m) => ({ default: m.BugsPage }));
 const loadBugNewPage = () => import("./BugNewPage").then((m) => ({ default: m.BugNewPage }));
+const loadComparePage = () => import("./ComparePage").then((m) => ({ default: m.ComparePage }));
+const loadVersionsPage = () => import("./VersionsPage").then((m) => ({ default: m.VersionsPage }));
 const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage }));
 
 export const RunsPage = lazy(loadRunsPage);
@@ -16,6 +18,8 @@ export const TestHistoryPage = lazy(loadTestHistoryPage);
 export const BugsPage = lazy(loadBugsPage);
 export const BugNewPage = lazy(loadBugNewPage);
 export const BugPage = lazy(loadBugPage);
+export const ComparePage = lazy(loadComparePage);
+export const VersionsPage = lazy(loadVersionsPage);
 
 const LOADERS = {
   runs: loadRunsPage,
@@ -25,6 +29,8 @@ const LOADERS = {
   bugs: loadBugsPage,
   bugNew: loadBugNewPage,
   bug: loadBugPage,
+  compare: loadComparePage,
+  versions: loadVersionsPage,
 };
 
 /**

@@ -10,6 +10,7 @@ import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
+import { versionLabel } from "@/lib/compareSummary";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import { useCursorList } from "@/lib/useCursorList";
 import { useLoad } from "@/lib/useLoad";
@@ -125,6 +126,11 @@ function RunRow({ slug, run }: { slug: string; run: RunSummaryDto }) {
         <Badge variant="outline" className="max-w-full font-mono">
           <span className="min-w-0 truncate">{run.branch}</span>
         </Badge>
+        {run.version !== null ? (
+          <Badge variant="secondary" className="max-w-full font-mono" data-testid="run-version">
+            <span className="min-w-0 truncate">{versionLabel(run.version)}</span>
+          </Badge>
+        ) : null}
         {run.name ? <span className="min-w-0 text-sm [overflow-wrap:anywhere]">{run.name}</span> : null}
       </span>
       <span className="text-xs text-muted-foreground">

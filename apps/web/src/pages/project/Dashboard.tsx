@@ -1,4 +1,4 @@
-import type { FlakyTestDto, RunSummaryDto, StatsDto } from "@testpulse/shared";
+import type { CompareDto, FlakyTestDto, RunSummaryDto, StatsDto } from "@testpulse/shared";
 import { useCallback, useEffect, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { TrendChart } from "@/components/charts/TrendChart";
@@ -9,10 +9,12 @@ import { Loading } from "@/components/Loading";
 import { RunStatus, runOutcome } from "@/components/RunStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { runLabel } from "@/lib/compareSummary";
 import { formatDateTime, formatDuration, formatPassRate } from "@/lib/format";
 import { FLAKY_API_LIMIT } from "@/lib/flaky";
 import { withBranch } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
+import { CompareSummary } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
 
 const RECENT_RUNS = 5;
@@ -29,7 +31,7 @@ interface DashboardProps {
 /** Ringkasan hasil test satu branch: kartu angka, tren, run terbaru, dan test paling flaky. */
 export function Dashboard({ slug, branch }: DashboardProps) {
   // Tujuan "Lihat semua" dan tautan item: unduh chunk-nya selagi pengguna membaca dashboard.
-  useEffect(() => preloadPages("runs", "run", "flaky", "test"), []);
+  useEffect(() => preloadPages("runs", "run", "flaky", "test", "compare"), []);
   // key: pindah branch memulai muat baru dengan status loading, bukan menampilkan angka branch sebelumnya.
   return <BranchSummary key={branch} slug={slug} branch={branch} />;
 }
@@ -38,16 +40,19 @@ interface Summary {
   stats: StatsDto;
   runs: RunSummaryDto[];
   flaky: FlakyTestDto[];
+  /** `null` bila perbandingan gagal dimuat; kartu perbandingan bersifat tambahan, dashboard tetap tampil tanpanya. */
+  compare: CompareDto | null;
 }
 
 function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
   const fetchSummary = useCallback(async (): Promise<Summary> => {
-    const [stats, runsPage, flaky] = await Promise.all([
+    const [stats, runsPage, flaky, compare] = await Promise.all([
       api.results.stats(slug, branch),
       api.results.runs(slug, { branch }),
       api.results.flaky(slug, branch),
+      api.results.compare(slug, { branch }).catch(() => null),
     ]);
-    return { stats, runs: runsPage.runs.slice(0, RECENT_RUNS), flaky };
+    return { stats, runs: runsPage.runs.slice(0, RECENT_RUNS), flaky, compare };
   }, [slug, branch]);
   const load = useLoad(fetchSummary);
 
@@ -58,7 +63,7 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
     return <LoadError error={load.error} fallback="Gagal memuat hasil test. Coba lagi." onRetry={load.reload} />;
   }
 
-  const { stats, runs, flaky } = load.data;
+  const { stats, runs, flaky, compare } = load.data;
   const { latest } = stats;
   if (!latest) {
     return <p className="text-sm text-muted-foreground">Belum ada hasil test untuk branch ini.</p>;
@@ -87,6 +92,8 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
         </StatCard>
       </dl>
 
+      {compare ? <ComparisonCard slug={slug} data={compare} /> : null}
+
       <Card>
         <CardHeader>
           <CardTitle>
@@ -103,6 +110,25 @@ function BranchSummary({ slug, branch }: { slug: string; branch: string }) {
         <TopFlaky slug={slug} branch={branch} flaky={flaky.slice(0, TOP_FLAKY)} />
       </div>
     </>
+  );
+}
+
+/** Kartu "{target} vs {base}": kesimpulan singkat perbandingan terbaru branch; hanya bila ada pembanding. */
+function ComparisonCard({ slug, data }: { slug: string; data: CompareDto }) {
+  if (!data.base || !data.target) return null;
+  return (
+    <Card data-testid="version-card">
+      <CardHeader>
+        <CardTitle>
+          <h2 className="text-lg font-semibold tracking-tight [overflow-wrap:anywhere]">
+            {runLabel(data.target)} vs {runLabel(data.base)}
+          </h2>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <CompareSummary data={data} slug={slug} compact />
+      </CardContent>
+    </Card>
   );
 }
 

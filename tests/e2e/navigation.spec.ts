@@ -123,6 +123,67 @@ test.describe("Tab navigasi project", () => {
     await expect(tabs.current).toHaveCount(0);
   });
 
+  test("halaman Pengaturan menampilkan tab dengan Pengaturan aktif", async ({ api, signedInPage }) => {
+    const { owner, project } = await seed(api);
+    const { page } = await signedInPage(owner);
+    const tabs = new ProjectTabsNav(page);
+
+    const settings = new SettingsPage(page);
+    await settings.goto(project.slug);
+    await expect(settings.name).toBeVisible();
+    await expect(tabs.tabs).toHaveText(MEMBER_LABELS);
+    await expectCurrentTab(tabs, "Pengaturan");
+    await expect(tabs.tab("pengaturan")).toHaveAttribute("aria-current", "page");
+
+    await tabs.tab("run").click();
+    await expect(page).toHaveURL(`/p/${project.slug}/runs`);
+    await expectCurrentTab(tabs, "Run");
+  });
+
+  test("?branch= di URL ikut dibawa tab Ringkasan, Run, Versi, dan Flaky; Bug dan Pengaturan tidak", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seed(api);
+    const { token } = await api.createToken(owner, project.slug);
+    const branch = "fitur/tab";
+    const res = await api.uploadRun(token, project.slug, buildJUnit([{ name: "A" }]), { branch });
+    expect(res.status(), await res.text()).toBe(201);
+    const { page } = await signedInPage(owner);
+    const tabs = new ProjectTabsNav(page);
+    const base = `/p/${project.slug}`;
+    const query = `?branch=${encodeURIComponent(branch)}`;
+
+    await new RunsPage(page).goto(project.slug, branch);
+    await expectCurrentTab(tabs, "Run");
+    await expect(tabs.tab("ringkasan")).toHaveAttribute("href", `${base}${query}`);
+    await expect(tabs.tab("run")).toHaveAttribute("href", `${base}/runs${query}`);
+    await expect(tabs.tab("versi")).toHaveAttribute("href", `${base}/versions${query}`);
+    await expect(tabs.tab("flaky")).toHaveAttribute("href", `${base}/flaky${query}`);
+    await expect(tabs.tab("bug")).toHaveAttribute("href", `${base}/bugs`);
+    await expect(tabs.tab("pengaturan")).toHaveAttribute("href", `${base}/settings`);
+
+    // Branch terbawa sampai halaman tujuan: Versi lalu Ringkasan membuka branch yang sama.
+    await tabs.tab("versi").click();
+    await expect(page).toHaveURL(`${base}/versions${query}`);
+    await expectCurrentTab(tabs, "Versi");
+    await tabs.tab("ringkasan").click();
+    await expect(page).toHaveURL(`${base}${query}`);
+    const summary = new ProjectPage(page);
+    await summary.expectDashboard();
+    await expect(summary.dashboardBranch).toHaveValue(branch);
+
+    // Memilih branch di Ringkasan memperbarui URL, jadi tab berikutnya ikut branch itu.
+    await summary.dashboardBranch.selectOption("main");
+    await expect(page).toHaveURL(`${base}?branch=main`);
+    await expect(tabs.tab("flaky")).toHaveAttribute("href", `${base}/flaky?branch=main`);
+
+    // Tanpa ?branch= tautan tab polos.
+    await new RunsPage(page).goto(project.slug);
+    await expect(tabs.tab("ringkasan")).toHaveAttribute("href", base);
+    await expect(tabs.tab("flaky")).toHaveAttribute("href", `${base}/flaky`);
+  });
+
   test("Pengaturan hanya untuk anggota: pengunjung bukan anggota dan anonim tidak melihatnya", async ({
     api,
     signedInPage,

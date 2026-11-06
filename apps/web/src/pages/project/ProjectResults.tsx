@@ -1,7 +1,7 @@
 import type { BranchDto, ProjectDto } from "@testpulse/shared";
 import { BarChart3, Terminal } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { lazy, Suspense, useCallback, useEffect } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { ChunkErrorBoundary } from "@/components/ChunkErrorBoundary";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadError } from "@/components/LoadError";
@@ -56,9 +56,12 @@ export function defaultBranch(branches: BranchDto[]): string {
  * Pemilih branch tetap di bundle utama, di luar Suspense. WebKit melaporkan style-src-attr palsu untuk setiap <select>
  * (artefak mesin yang dimaklumi penjaga CSP E2E bila target event-nya <select>); bila select dibuat di dalam subtree
  * Suspense, WebKit mengarahkan event itu ke document sehingga artefaknya tak lagi bisa dibedakan dari pelanggaran asli.
+ * Branch terpilih disimpan di `?branch=` (seperti Run, Versi, Flaky) agar tab project membawanya ke halaman lain.
  */
 function BranchDashboard({ slug, branches }: { slug: string; branches: BranchDto[] }) {
-  const [branch, setBranch] = useState(() => defaultBranch(branches));
+  const [params, setParams] = useSearchParams();
+  const branch = params.get("branch") || defaultBranch(branches);
+  const setBranch = (next: string) => setParams({ branch: next }, { replace: true });
   return (
     <div className="grid min-w-0 grid-cols-1 gap-6">
       <BranchFilter

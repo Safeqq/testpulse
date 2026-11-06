@@ -1,5 +1,6 @@
 import { useEffect, useRef, type FocusEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
+import { withBranch } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
 export type ProjectTab = "ringkasan" | "run" | "versi" | "bug" | "flaky" | "pengaturan";
@@ -9,14 +10,16 @@ interface TabDef {
   label: string;
   /** Path di bawah `/p/:slug` ("" = ringkasan). */
   path: string;
+  /** Halaman per branch (membaca `?branch=`): tautannya membawa branch dari URL saat ini. */
+  branchScoped?: true;
 }
 
 const TABS: readonly TabDef[] = [
-  { id: "ringkasan", label: "Ringkasan", path: "" },
-  { id: "run", label: "Run", path: "/runs" },
-  { id: "versi", label: "Versi", path: "/versions" },
+  { id: "ringkasan", label: "Ringkasan", path: "", branchScoped: true },
+  { id: "run", label: "Run", path: "/runs", branchScoped: true },
+  { id: "versi", label: "Versi", path: "/versions", branchScoped: true },
   { id: "bug", label: "Bug", path: "/bugs" },
-  { id: "flaky", label: "Flaky", path: "/flaky" },
+  { id: "flaky", label: "Flaky", path: "/flaky", branchScoped: true },
   { id: "pengaturan", label: "Pengaturan", path: "/settings" },
 ];
 
@@ -54,10 +57,12 @@ interface ProjectTabsProps {
 /**
  * Navigasi antarhalaman project (spec Tahap 3 §7.1). Di layar sempit tab bisa digeser mendatar di dalam wadahnya
  * sendiri (`min-w-0` + `overflow-x-auto`), jadi halaman tidak ikut bergulir; setiap tab adalah tautan biasa yang
- * bisa difokus dengan keyboard, dan fokus menggulirkan tab ke dalam tampilan.
+ * bisa difokus dengan keyboard, dan fokus menggulirkan tab ke dalam tampilan. Bila URL saat ini memuat `?branch=`, tab
+ * halaman per branch (Ringkasan, Run, Versi, Flaky) membawanya agar pindah tab tetap di branch yang sama.
  */
 export function ProjectTabs({ slug, active, canSeeSettings }: ProjectTabsProps) {
   const tabs = TABS.filter((tab) => tab.id !== "pengaturan" || canSeeSettings);
+  const branch = new URLSearchParams(useLocation().search).get("branch");
   const list = useRef<HTMLUListElement>(null);
   useEffect(() => {
     if (list.current) revealActive(list.current);
@@ -70,7 +75,7 @@ export function ProjectTabs({ slug, active, canSeeSettings }: ProjectTabsProps) 
           return (
             <li key={tab.id} className="shrink-0">
               <Link
-                to={`/p/${encodeURIComponent(slug)}${tab.path}`}
+                to={withBranch(`/p/${encodeURIComponent(slug)}${tab.path}`, tab.branchScoped ? branch : null)}
                 data-testid={`tab-${tab.id}`}
                 aria-current={isActive ? "page" : undefined}
                 onFocus={revealOnFocus}

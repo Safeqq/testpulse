@@ -1,17 +1,19 @@
 /**
- * Menghasilkan screenshot dokumentasi (landing, halaman project publik yang masih kosong, dan dashboard hasil test,
- * masing-masing di tema terang dan gelap) dari stack lokal.
+ * Menghasilkan screenshot dokumentasi (landing, halaman project publik yang masih kosong, dashboard hasil test,
+ * perbandingan versi, dan daftar bug, masing-masing di tema terang dan gelap) dari stack lokal.
  *
  * Bukan test: berkas ini berada di luar `testDir` Playwright (`e2e`, `api`, `smoke`) sehingga tidak ikut ditemukan.
  * Data disiapkan lewat API: satu user sekali pakai dan satu project publik berslug `testpulse`. Setelah screenshot
  * project yang masih kosong diambil, skrip membuat token CI dan mengunggah beberapa run JUnit (dibangun dengan
- * `buildJUnit`) agar dashboard terisi. Jalankan hanya terhadap stack lokal yang baru dan kosong
+ * `buildJUnit`; tiga di antaranya berversi 0.1.0, 0.2.0, dan 0.3.0 dengan regresi, perbaikan, test lebih lambat, dan
+ * test baru di versi terakhir) agar dashboard dan perbandingan terisi, lalu membuat beberapa bug (dua tertaut ke
+ * regresi). Jalankan hanya terhadap stack lokal yang baru dan kosong
  * (`docker compose up -d --build --wait`), bukan production.
  *
  *   BASE_URL=http://localhost:8080 pnpm --filter @testpulse/tests screenshots
  *
- * Keluaran: docs/images/{landing,project,dashboard}-{light,dark}.png (lebar 1280; landing dan project 1280x800,
- * dashboard 1280x1280; bukan full page).
+ * Keluaran: docs/images/{landing,project,dashboard,compare,bugs}-{light,dark}.png (lebar 1280; landing dan project
+ * 1280x800, dashboard 1280x1280, compare 1280x1400, bugs 1280x960; bukan full page).
  */
 import { chromium, type Browser, type Locator, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
@@ -24,6 +26,13 @@ const OUT_DIR = fileURLToPath(new URL("../../docs/images/", import.meta.url));
 const SLUG = "testpulse";
 const MAX_BYTES = 400 * 1024;
 const RUN_COUNT = 12;
+/** Run (indeks) yang diunggah dengan `version`; run lain tanpa versi, seperti sebelum Tahap 3. */
+const VERSIONS = new Map([
+  [3, "0.1.0"],
+  [9, "0.2.0"],
+  [11, "0.3.0"],
+]);
+const LAST_RUN = RUN_COUNT - 1;
 
 async function api(path: string, init: { method: string; body?: unknown; cookie?: string }): Promise<Response> {
   return fetch(`${BASE_URL}/api/v1${path}`, {
@@ -63,12 +72,25 @@ const SUITES: Array<{ suite: string; tests: string[] }> = [
   { suite: "checkout.spec.ts", tests: ["menghitung total keranjang", "menerapkan kupon", "pembayaran berhasil", "stok habis"] },
 ];
 
-/** Hasil satu run: hampir semua lulus; dua test flaky bergantian lulus/gagal, satu test gagal pada dua run berurutan. */
+/**
+ * Hasil satu run: hampir semua lulus; dua test flaky bergantian lulus/gagal, satu test gagal pada dua run berurutan.
+ * Run terakhir (versi 0.3.0) dibanding run versi 0.2.0 memuat dua regresi (kupon dan stok), satu perbaikan (filter
+ * hasil gagal), satu test jadi lebih lambat (tren), dan satu test baru.
+ */
 function casesForRun(index: number): JUnitCase[] {
-  return SUITES.flatMap(({ suite, tests }) =>
+  const cases = SUITES.flatMap(({ suite, tests }) =>
     tests.map((name): JUnitCase => {
       const key = `${suite} ${name}`;
       const timeSec = 0.2 + ((key.length * 37 + index * 11) % 90) / 100;
+      if (index >= 10 && key === "checkout.spec.ts menerapkan kupon") {
+        return { suite, name, status: "failed", message: "Kupon HEMAT10 ditolak: diskon tidak diterapkan ke total", timeSec };
+      }
+      if (index === LAST_RUN && key === "checkout.spec.ts stok habis") {
+        return { suite, name, status: "failed", message: "Expected pesan 'Stok habis' tampil, received tombol Bayar aktif", timeSec };
+      }
+      if (index === LAST_RUN && key === "results.spec.ts dashboard menampilkan tren") {
+        return { suite, name, timeSec: 3.4 };
+      }
       if (key === "checkout.spec.ts pembayaran berhasil") {
         // Flaky: pada run genap gagal dulu lalu lulus pada percobaan ulang; gagal total pada satu run.
         if (index === 7) return { suite, name, status: "failed", message: "Timeout 5000ms menunggu tombol Bayar", timeSec };
@@ -84,14 +106,17 @@ function casesForRun(index: number): JUnitCase[] {
       return { suite, name, timeSec };
     }),
   );
+  if (index === LAST_RUN) cases.push({ suite: "checkout.spec.ts", name: "kupon kedaluwarsa ditolak", timeSec: 0.4 });
+  return cases;
 }
 
-/** Membuat token CI lalu mengunggah beberapa run ke branch `main`, dari yang lama ke yang baru. */
-async function seedRuns(cookie: string): Promise<void> {
+/** Membuat token CI lalu mengunggah beberapa run ke branch `main`, dari yang lama ke yang baru; mengembalikan id run terakhir. */
+async function seedRuns(cookie: string): Promise<string> {
   const created = await api(`/projects/${SLUG}/tokens`, { method: "POST", cookie, body: { name: "CI GitHub Actions" } });
   await expectOk(created, "buat token CI");
   const { token } = (await created.json()) as { token: string };
 
+  let lastRunId = "";
   for (let index = 0; index < RUN_COUNT; index++) {
     const params = new URLSearchParams({
       branch: "main",
@@ -99,12 +124,90 @@ async function seedRuns(cookie: string): Promise<void> {
       ciUrl: `https://github.com/Safeqq/testpulse/actions/runs/${1000 + index}`,
       name: `CI #${1000 + index}`,
     });
+    const version = VERSIONS.get(index);
+    if (version !== undefined) params.set("version", version);
     const res = await fetch(`${BASE_URL}/api/v1/projects/${SLUG}/runs?${params.toString()}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/xml" },
       body: buildJUnit(casesForRun(index)),
     });
     await expectOk(res, `unggah run ${index + 1}`);
+    lastRunId = ((await res.json()) as { runId: string }).runId;
+  }
+  return lastRunId;
+}
+
+interface SeedBug {
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  severity: "minor" | "major" | "critical" | "blocker";
+  labels: string[];
+  /** Nama test gagal di run terakhir yang ditautkan, bila ada. */
+  test?: string;
+  /** Status akhir; tanpa nilai bug dibiarkan `open`. */
+  status?: "in_progress" | "resolved";
+}
+
+const BUGS: SeedBug[] = [
+  {
+    title: "Kupon HEMAT10 tidak mengurangi total pembayaran",
+    description: "Setelah kupon diterapkan, total di keranjang tetap sama.\n\n**Langkah:** tambahkan barang, masukkan kupon `HEMAT10`.",
+    priority: "urgent",
+    severity: "critical",
+    labels: ["checkout", "regresi"],
+    test: "checkout.spec.ts menerapkan kupon",
+    status: "in_progress",
+  },
+  {
+    title: "Tombol Bayar tetap aktif saat stok habis",
+    description: "Pelanggan bisa menekan Bayar padahal stok barang 0.",
+    priority: "high",
+    severity: "major",
+    labels: ["checkout", "regresi"],
+    test: "checkout.spec.ts stok habis",
+  },
+  {
+    title: "Pembayaran berhasil kadang timeout di CI",
+    description: "Gagal sesekali dengan `Timeout 5000ms`, lulus setelah retry.",
+    priority: "medium",
+    severity: "major",
+    labels: ["flaky", "checkout"],
+  },
+  {
+    title: "Filter hasil gagal menampilkan jumlah baris salah",
+    description: "Diperbaiki di 0.3.0.",
+    priority: "medium",
+    severity: "minor",
+    labels: ["results"],
+    status: "resolved",
+  },
+  {
+    title: "Undangan kedaluwarsa tidak punya pesan yang jelas",
+    description: "Halaman hanya menampilkan 'tidak ditemukan'.",
+    priority: "low",
+    severity: "minor",
+    labels: ["tim"],
+  },
+];
+
+/** Membuat beberapa bug contoh (dua tertaut ke regresi di run terakhir) sebagai pemilik project. */
+async function seedBugs(cookie: string, lastRunId: string): Promise<void> {
+  const failed = await api(`/projects/${SLUG}/runs/${lastRunId}?status=failed`, { method: "GET" });
+  await expectOk(failed, "hasil gagal run terakhir");
+  const { results } = (await failed.json()) as { results: Array<{ testCaseId: string; suite: string; name: string }> };
+  const testId = (test: string) => results.find((result) => `${result.suite} ${result.name}` === test)?.testCaseId;
+
+  for (const { test, status, ...bug } of BUGS) {
+    const testCaseId = test === undefined ? undefined : testId(test);
+    if (test !== undefined && testCaseId === undefined) throw new Error(`test gagal tidak ditemukan: ${test}`);
+    const link = testCaseId === undefined ? {} : { testCaseId, runId: lastRunId };
+    const created = await api(`/projects/${SLUG}/bugs`, { method: "POST", cookie, body: { ...bug, ...link } });
+    await expectOk(created, `buat bug "${bug.title}"`);
+    if (status === undefined) continue;
+    const { number, version } = (await created.json()) as { number: number; version: number };
+    const patch = { version, status, ...(status === "resolved" ? { resolution: "fixed" } : {}) };
+    await expectOk(await api(`/projects/${SLUG}/bugs/${number}`, { method: "PATCH", cookie, body: patch }), `ubah status bug #${number}`);
   }
 }
 
@@ -149,13 +252,21 @@ async function main(): Promise<void> {
     // Landing dan project publik yang masih kosong (sebelum ada run); dashboard setelah run diunggah.
     await capture(browser, { name: "landing", path: "/", height: 800, ready: heading });
     await capture(browser, { name: "project", path: `/p/${SLUG}`, height: 800, ready: heading });
-    await seedRuns(cookie);
+    const lastRunId = await seedRuns(cookie);
+    await seedBugs(cookie, lastRunId);
     await capture(browser, {
       name: "dashboard",
       path: `/p/${SLUG}`,
       height: 1280,
       ready: (page) => page.getByTestId("top-flaky"),
     });
+    await capture(browser, {
+      name: "compare",
+      path: `/p/${SLUG}/compare`,
+      height: 1400,
+      ready: (page) => page.getByTestId("compare-sentence"),
+    });
+    await capture(browser, { name: "bugs", path: `/p/${SLUG}/bugs`, height: 960, ready: (page) => page.getByTestId("bugs-list") });
   } finally {
     await browser.close();
   }

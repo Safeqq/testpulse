@@ -2,17 +2,18 @@
 
 [![CI](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml)
 
-**TestPulse** adalah aplikasi web untuk tim QA/dev: satu tempat untuk memantau kesehatan testing, mulai dari hasil automated test dan deteksi test flaky, project dan tim, hingga (di tahap berikutnya) bug report, test case manual, dan crowdtesting. Kategori produk yang serupa: TestRail, Qase, ReportPortal, Allure TestOps.
+**TestPulse** adalah aplikasi web untuk tim QA/dev: satu tempat untuk memantau kesehatan testing, mulai dari hasil automated test dan deteksi test flaky, project dan tim, bug tracker dan deteksi regresi antar versi, hingga (di tahap berikutnya) test case manual dan crowdtesting. Kategori produk yang serupa: TestRail, Qase, ReportPortal, Allure TestOps.
 
 - **Tahap 1** adalah fondasinya: akun, project (privat atau publik), tim dengan role `admin`/`tester`/`viewer`, dan undangan lewat link, lengkap dengan seluruh pipeline QA di bawahnya.
 - **Tahap 2** menghadirkan fitur inti: CI mengunggah hasil test (JUnit XML) dengan token CI, lalu **dashboard** menampilkan tren, riwayat run, dan **test flaky** beserta skornya. Ada reporter CLI, gate performa k6, dan **dogfooding**: hasil test TestPulse sendiri dilaporkan ke project publik `testpulse` ([lihat di production](https://testpulse-d2p.pages.dev/p/testpulse)).
+- **Tahap 3** menambahkan **bug tracker** (bug manual atau dari test yang gagal, status, prioritas, assignee, label, komentar, dan riwayat) dan **deteksi regresi antar versi**: run boleh membawa `version`, dan TestPulse otomatis membandingkan versi terbaru dengan versi sebelumnya dalam satu kalimat kesimpulan. Lapisan QA baru: **visual regression** dengan Playwright. TestPulse mengirim hasil CI-nya sendiri dengan versi `0.3.0`.
 
 | | |
 |---|---|
 | Laporan test (Allure, live) | <https://safeqq.github.io/testpulse/> |
 | CI (GitHub Actions) | [ci.yml](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml) |
 | Demo live | <https://testpulse-d2p.pages.dev> · project publik: <https://testpulse-d2p.pages.dev/p/testpulse> (API di Render free tier: request pertama setelah idle bisa ±1 menit) |
-| Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [Test plan tahap 2](docs/test-plans/tahap-2.md) · [ADR](docs/adr/) |
+| Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [Test plan tahap 2](docs/test-plans/tahap-2.md) · [Test plan tahap 3](docs/test-plans/tahap-3.md) · [ADR](docs/adr/) |
 
 ## Kenapa proyek ini ada
 
@@ -21,7 +22,7 @@ TestPulse punya dua tujuan sekaligus:
 1. **Produk yang berguna** untuk tim QA/dev.
 2. **Portfolio QA/SDET**: TestPulse sendiri diuji dengan test pyramid lengkap yang berjalan otomatis di CI, dengan quality gate dan laporan publik.
 
-Sejak tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding): setelah setiap deploy, [deploy.yml](.github/workflows/deploy.yml) mengunggah JUnit dari run CI yang memicunya ke project publik `testpulse`, sehingga dashboard kualitas yang nyata bisa dilihat lewat <https://testpulse-d2p.pages.dev/p/testpulse> tanpa perlu mendaftar. Dashboard di production terisi setelah pemilik repo memasang secret `TESTPULSE_TOKEN` (langkahnya ada di [docs/deploy.md](docs/deploy.md), Langkah 12).
+Sejak tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding), dan sejak tahap 3 dengan versi aplikasinya (`version` di `package.json` root, kini `0.3.0`): setelah setiap deploy, [deploy.yml](.github/workflows/deploy.yml) mengunggah JUnit dari run CI yang memicunya ke project publik `testpulse`, sehingga dashboard kualitas yang nyata bisa dilihat lewat <https://testpulse-d2p.pages.dev/p/testpulse> tanpa perlu mendaftar. Dashboard di production terisi setelah pemilik repo memasang secret `TESTPULSE_TOKEN` (langkahnya ada di [docs/deploy.md](docs/deploy.md), Langkah 12).
 
 ## Tampilan
 
@@ -34,8 +35,10 @@ Pengunjung yang belum masuk melihat **landing page** di `/` (sebelumnya langsung
 | **Landing page** (`/`) | ![Landing page, tema terang](docs/images/landing-light.png) | ![Landing page, tema gelap](docs/images/landing-dark.png) |
 | **Project publik** (`/p/testpulse`), belum ada run | ![Halaman project publik tanpa run, tema terang](docs/images/project-light.png) | ![Halaman project publik tanpa run, tema gelap](docs/images/project-dark.png) |
 | **Dashboard hasil test** (`/p/testpulse`, setelah run diunggah) | ![Dashboard hasil test, tema terang](docs/images/dashboard-light.png) | ![Dashboard hasil test, tema gelap](docs/images/dashboard-dark.png) |
+| **Perbandingan versi** (`/p/testpulse/compare`) | ![Perbandingan versi 0.3.0 dengan 0.2.0, tema terang](docs/images/compare-light.png) | ![Perbandingan versi 0.3.0 dengan 0.2.0, tema gelap](docs/images/compare-dark.png) |
+| **Daftar bug** (`/p/testpulse/bugs`) | ![Daftar bug, tema terang](docs/images/bugs-light.png) | ![Daftar bug, tema gelap](docs/images/bugs-dark.png) |
 
-Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/scripts/screenshots.ts`](tests/scripts/screenshots.ts): `pnpm --filter @testpulse/tests screenshots` dengan `BASE_URL=http://localhost:8080`. Skrip itu membuat user, project publik, token CI, dan 12 run JUnit contoh (dibangun dengan helper `buildJUnit`) di database lokal yang kosong; datanya buatan, bukan hasil test sungguhan.
+Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/scripts/screenshots.ts`](tests/scripts/screenshots.ts): `pnpm --filter @testpulse/tests screenshots` dengan `BASE_URL=http://localhost:8080`. Skrip itu membuat user, project publik, token CI, 12 run JUnit contoh (tiga berversi 0.1.0, 0.2.0, 0.3.0; dibangun dengan helper `buildJUnit`), dan beberapa bug di database lokal yang kosong; datanya buatan, bukan hasil test sungguhan.
 
 ## Fitur Tahap 2: hasil test dan deteksi flaky
 
@@ -51,13 +54,14 @@ Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/script
 curl -X POST "https://testpulse-d2p.pages.dev/api/v1/projects/<slug>/runs" \
   --url-query "branch=main" --url-query "commit=<sha>" \
   --url-query "ciUrl=<url-run-ci>" --url-query "name=<nama-run>" \
+  --url-query "version=1.2.0" \
   -H "Authorization: Bearer $TESTPULSE_TOKEN" \
   -H "Content-Type: application/xml" \
   --data-binary @junit.xml
 # 201 {"runId":"...","url":"https://.../p/<slug>/runs/<runId>","totals":{"total":..,"passed":..,"failed":..,"skipped":..,"flaky":..}}
 ```
 
-`branch` wajib (1 sampai 200 karakter `A-Za-z0-9._/-`); `commit` (hex 7 sampai 40), `ciUrl` (http/https), dan `name` opsional. Nilai query harus di-URL-encode (`ciUrl` sendiri memuat `:`, `/`, dan sering `?`/`&`; `name` bisa berspasi): `--url-query` (curl 7.87 ke atas) melakukannya otomatis; pada curl yang lebih lama, encode sendiri, mis. `ciUrl=https%3A%2F%2Fci.example.com%2Frun%2F42`. Batas: body 5 MB, 20.000 testcase per laporan, 60 unggahan per jam per token, dan 200 run terbaru per project disimpan. Hanya token Bearer yang diterima di endpoint ini (cookie sesi tidak), dan laporan dengan `<!DOCTYPE` ditolak.
+`branch` wajib (1 sampai 200 karakter `A-Za-z0-9._/-`); `commit` (hex 7 sampai 40), `ciUrl` (http/https), `name`, dan `version` (versi aplikasi yang diuji, 1 sampai 50 karakter `A-Za-z0-9._+-`; Tahap 3) opsional. Nilai query harus di-URL-encode (`ciUrl` sendiri memuat `:`, `/`, dan sering `?`/`&`; `name` bisa berspasi): `--url-query` (curl 7.87 ke atas) melakukannya otomatis; pada curl yang lebih lama, encode sendiri, mis. `ciUrl=https%3A%2F%2Fci.example.com%2Frun%2F42`. Batas: body 5 MB, 20.000 testcase per laporan, 60 unggahan per jam per token, dan 200 run terbaru per project disimpan. Hanya token Bearer yang diterima di endpoint ini (cookie sesi tidak), dan laporan dengan `<!DOCTYPE` ditolak.
 
 ### Mengunggah dengan reporter CLI
 
@@ -69,13 +73,28 @@ read -rs TESTPULSE_TOKEN && export TESTPULSE_TOKEN   # ketik atau tempel token: 
 node packages/reporter/dist/cli.js \
   --url https://testpulse-d2p.pages.dev --project <slug> --branch main \
   --commit "$(git rev-parse HEAD)" --ci-url "$RUN_URL" --name "CI #42" \
+  --app-version "$(node -p "require('./package.json').version")" \
   'allure-results/junit-*.xml'
 # Laporan terkirim (N berkas): 1171 test, 1170 lulus, 0 gagal, 1 dilewati, 0 flaky
 ```
 
 Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `node packages/reporter/dist/cli.js ...` dalam satu baris. Jangan menaruh token langsung di baris perintah.
 
-Dogfooding memakai perintah yang sama di [deploy.yml](.github/workflows/deploy.yml).
+`--app-version` (bukan `--version`, yang lazim berarti versi tool) mengirim versi aplikasi yang diuji dan divalidasi sama dengan server (exit `2` bila salah). Dogfooding memakai perintah yang sama di [deploy.yml](.github/workflows/deploy.yml), dengan versi dari `package.json` root yang dinaikkan setiap rilis tahap.
+
+## Fitur Tahap 3: bug tracker dan perbandingan versi
+
+**Bug tracker** (`/p/:slug/bugs`; tester dan admin menulis, semua anggota dan pengunjung project publik membaca):
+
+- Bug dibuat manual atau dari test yang gagal lewat tombol **Laporkan bug** (judul, deskripsi, severity, serta tautan ke test dan run terisi otomatis) di detail run, perbandingan, dan riwayat test. Test yang punya bug aktif menampilkan badge **Bug #12 · Open** di halaman hasil test.
+- Status tetap `open` → `in_progress` → `resolved` → `closed` (plus buka ulang) dengan resolusi (`fixed`, `wont_fix`, `duplicate`, `cannot_reproduce`), prioritas, severity, assignee, label, link, komentar Markdown, dan riwayat perubahan. Edit bersamaan dijaga (`409 BUG_CONFLICT`); status bug tidak pernah berubah otomatis.
+- Markdown aman: HTML mentah tidak dirender, tautan hanya `http`, `https`, `mailto`, dan gambar tampil sebagai tautan, sehingga CSP tidak dilonggarkan ([ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md)).
+
+**Versi dan perbandingan** (`/p/:slug/versions`, `/p/:slug/compare`):
+
+- Run yang diunggah dengan `version` diurutkan per branch (semver bila semua semver, selain itu menurut waktu). Dashboard menampilkan kartu "**v0.3.0 vs v0.2.0**" dengan kalimat kesimpulan, mis. "⚠ v0.3.0 punya **2 regresi baru** dibanding v0.2.0, sementara 1 test yang dulu gagal kini lulus. Periksa sebelum rilis.", dan detail run punya panel yang sama.
+- Halaman perbandingan mengelompokkan test menjadi **regresi baru**, **diperbaiki**, **masih gagal**, **lebih lambat** (lebih dari 1,5 kali dan lebih dari 1 detik), **test baru**, dan **test hilang**, dengan pilihan base dan target, dan tombol Laporkan bug di tiap baris. Halaman Versi memuat pass rate dan perubahannya per versi.
+- Navigasi project berupa tab: Ringkasan, Run, Versi, Bug, Flaky, dan Pengaturan (anggota).
 
 ## Highlights untuk recruiter
 
@@ -90,10 +109,14 @@ Dogfooding memakai perintah yang sama di [deploy.yml](.github/workflows/deploy.y
 - **E2E di 3 browser** (Chromium, Firefox, WebKit) dengan Page Object Model, custom fixtures, pengguna di context terpisah, dan pemeriksaan aksesibilitas axe di **tema terang dan gelap** pada landing, halaman masuk/daftar, daftar dan buat project, ringkasan, pengaturan, serta undangan.
 - **Gate CSP di E2E**: setiap test gagal bila ada pelanggaran Content Security Policy (event dan console, gagal tertutup), sehingga tampilan baru terbukti tidak melonggarkan CSP production.
 - **CI penuh dengan Allure**: lint, typecheck, unit + coverage gate, integration, contract, API + E2E (sharding), ZAP, laporan gabungan di GitHub Pages; deploy otomatis (menunggu revisi API baru aktif, lalu deploy web) diikuti smoke test production.
-- **Dogfooding.** TestPulse memantau kualitas dirinya sendiri: JUnit dari CI diunggah ke project publik `testpulse` di production setelah smoke lulus, tanpa menggagalkan deploy bila token tidak ada ([ADR 0004](docs/adr/0004-ingest-sinkron-dan-definisi-flaky.md), [test plan tahap 2](docs/test-plans/tahap-2.md)).
+- **Dogfooding.** TestPulse memantau kualitas dirinya sendiri: JUnit dari CI diunggah ke project publik `testpulse` di production setelah smoke lulus, tanpa menggagalkan deploy bila token tidak ada ([ADR 0004](docs/adr/0004-ingest-sinkron-dan-definisi-flaky.md), [test plan tahap 2](docs/test-plans/tahap-2.md), dan sejak tahap 3 berversi).
 - **Rumus flaky dibuktikan dua kali.** Skor dihitung sebagai fungsi murni dan sebagai query SQL; integration test dengan Postgres asli menuntut keduanya identik pada pola hasil acak-terkendali.
 - **Ingest yang aman dan berbatas.** Token CI di-hash dan hanya berlaku untuk upload, parser menolak `<!DOCTYPE` (XXE), batas ukuran/jumlah/laju/retensi diuji, dan upload paralel tidak menghasilkan duplikat.
-- **Reporter CLI sebagai consumer kontrak kedua** (Pact) dan **gate performa k6** (p95 upload < 1500 ms, p95 baca < 300 ms) di CI.
+- **Reporter CLI sebagai consumer kontrak kedua** (Pact) dan **gate performa k6** (p95 upload < 1500 ms, p95 baca < 300 ms; baca mencakup bug, versi, dan perbandingan) di CI.
+- **Bug tracker yang tahan race condition.** Nomor bug berurutan walau 20 bug dibuat paralel, dua penyunting yang bentrok menghasilkan tepat satu `409 BUG_CONFLICT`, dan setiap perubahan menulis riwayatnya dalam transaksi yang sama (dibuktikan di Postgres asli).
+- **Deteksi regresi antar versi** dengan aturan tegas dan diuji tepat di batas (urutan semver, pre-release, pembanding default, ambang "lebih lambat" 1,5x dan 1000 ms) serta kalimat kesimpulan yang jelas; keputusannya dicatat di [ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md).
+- **Markdown pengguna tanpa melonggarkan CSP**: HTML mentah, `javascript:`, dan gambar eksternal tampil inert, dibuktikan E2E di bawah gate CSP.
+- **Visual regression** Playwright di container resmi (render sama di lokal dan CI), dengan toleransi ketat yang dibuktikan bisa gagal; **gate k6** kini juga mencakup daftar bug, versi, dan perbandingan pada 55 run berversi dan 120 bug.
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
 
 ## Roadmap
@@ -102,16 +125,16 @@ Dogfooding memakai perintah yang sama di [deploy.yml](.github/workflows/deploy.y
 |---|---|---|
 | **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai dan live (status CI: lihat badge di atas) |
 | **2** | Dashboard hasil test, deteksi flaky, reporter CLI, token CI, dogfooding, test performa (k6) | ✅ Selesai dan live (dashboard production terisi setelah `TESTPULSE_TOKEN` dipasang) |
-| 3 | Bug tracker (bug dari test yang gagal), visual regression | Direncanakan |
+| **3** | Bug tracker (bug dari test yang gagal), deteksi regresi antar versi, visual regression, k6 untuk bug dan perbandingan | ✅ Selesai dan live (`/p/testpulse` menampilkan run berversi `0.3.0`) |
 | 4 | Test case management dan test run manual, mutation testing | Direncanakan |
 | 5 | Crowdtesting: test cycle publik, crowd tester mengirim bug, triase, reputasi dan leaderboard (aplikasi berupa link, tanpa pembayaran) | Direncanakan |
 | 6 (opsional) | Aplikasi desktop Electron (notifikasi build gagal, tray) yang diuji dengan Playwright | Opsional |
 
-Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec: [tahap 1](docs/superpowers/specs/2026-10-23-testpulse-tahap1-design.md), [tahap 2](docs/superpowers/specs/2026-10-28-testpulse-tahap2-design.md).
+Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec: [tahap 1](docs/superpowers/specs/2026-10-23-testpulse-tahap1-design.md), [tahap 2](docs/superpowers/specs/2026-10-28-testpulse-tahap2-design.md), [tahap 3](docs/superpowers/specs/2026-11-04-testpulse-tahap3-design.md).
 
 ## Arsitektur
 
-Modular monolith: satu API Fastify + PostgreSQL, SPA React, dan paket bersama untuk schema. Alasannya ada di [ADR 0001](docs/adr/0001-modular-monolith.md); model sesi di [ADR 0002](docs/adr/0002-cookie-session.md); pilihan Tailwind + shadcn dan kendala CSP di [ADR 0003](docs/adr/0003-tailwind-shadcn.md); ingest sinkron dan definisi flaky di [ADR 0004](docs/adr/0004-ingest-sinkron-dan-definisi-flaky.md).
+Modular monolith: satu API Fastify + PostgreSQL, SPA React, dan paket bersama untuk schema. Alasannya ada di [ADR 0001](docs/adr/0001-modular-monolith.md); model sesi di [ADR 0002](docs/adr/0002-cookie-session.md); pilihan Tailwind + shadcn dan kendala CSP di [ADR 0003](docs/adr/0003-tailwind-shadcn.md); ingest sinkron dan definisi flaky di [ADR 0004](docs/adr/0004-ingest-sinkron-dan-definisi-flaky.md); urutan versi, definisi regresi, dan Markdown aman di [ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md).
 
 ```mermaid
 flowchart LR
@@ -143,11 +166,12 @@ Seluruh lapisan berjalan otomatis di [CI](.github/workflows/ci.yml); detail dan 
 | Contract (web dan reporter sebagai consumer) | Pact JS | `apps/web/test/contract`, `packages/reporter/test/contract`, `apps/api/test/contract` |
 | E2E (3 browser) + aksesibilitas dua tema + gate CSP | Playwright (POM) + axe | `tests/e2e`, `tests/pages`, `tests/support` |
 | Proxy dan paritas header | Vitest | `apps/web/test/functions` |
-| Performa (gate p95 upload dan baca) | k6 | `tests/perf` |
+| Visual regression (5 halaman, dua tema, desktop dan HP) | Playwright `toHaveScreenshot()` di container resmi | `tests/visual`, `scripts/visual.sh` |
+| Performa (gate p95 upload dan baca, termasuk bug, versi, perbandingan) | k6 | `tests/perf` |
 | Security (0 temuan High) | OWASP ZAP, `pnpm audit`, Dependabot | `tests/security`, `.github/` |
 | Smoke production (`@smoke`, read-only; termasuk dashboard `/p/testpulse`) | Playwright | `tests/smoke` |
 
-Jumlah test per lapisan (snapshot per commit `0606543`, 2026-10-31; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-0606543-2026-10-31).
+Jumlah test per lapisan (snapshot per commit `e58be5f`, 2026-11-06; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-e58be5f-2026-11-06).
 
 ## Menjalankan secara lokal
 
@@ -188,6 +212,7 @@ pnpm --filter @testpulse/api exec vitest run --project unit --coverage   # unit 
 
 pnpm test:int                                    # integration (butuh Docker untuk Testcontainers)
 pnpm test:contract                               # contract: consumer (web, reporter) lalu provider (API); butuh Docker
+pnpm test:visual                                 # visual regression di container Playwright (butuh Docker dan stack Compose hidup); :update bila perubahan disengaja
 ```
 
 Test API dan E2E berjalan terhadap stack yang sudah hidup. Cara paling mirip CI: jalankan Compose (Opsi A), lalu arahkan `BASE_URL` ke sana.
@@ -208,11 +233,11 @@ Tanpa `BASE_URL`, Playwright menyalakan `pnpm dev` sendiri (butuh Postgres seper
 **Performa (k6)**, terhadap stack Compose yang hidup (sama dengan job `perf` di [ci.yml](.github/workflows/ci.yml); image `grafana/k6` dijalankan di jaringan Compose):
 
 ```bash
-BASE_URL=http://localhost:8080 node tests/perf/setup.mjs      # user, project, token, dan 55 run contoh (state di tests/perf/.state, tidak masuk git)
+BASE_URL=http://localhost:8080 node tests/perf/setup.mjs      # user, project, token, 55 run berversi, dan 120 bug (state di tests/perf/.state, tidak masuk git)
 mkdir -p perf-results
 docker run --rm --network testpulse_default -v "$PWD/tests/perf:/scripts:ro" -v "$PWD/perf-results:/results" \
   grafana/k6:1.3.0 run /scripts/ingest.js -e BASE_URL=http://web:8080 --summary-export /results/ingest-summary.json
-# ganti ingest.js dengan read.js untuk skenario baca
+# ganti ingest.js dengan read.js untuk skenario baca (stats, runs, flaky, bugs, compare, compare?groups=none, versions)
 ```
 
 **OWASP ZAP baseline** (terhadap stack Compose yang hidup; sama dengan job `zap` di [ci.yml](.github/workflows/ci.yml)):
@@ -236,7 +261,7 @@ BASE_URL=https://<url-production> SMOKE_EMAIL=... SMOKE_PASSWORD=... SMOKE_PUBLI
 
 ```
 apps/
-  api/            Fastify + Drizzle; src/modules/{auth,projects,invitations,tokens,results}, test/{integration,contract}
+  api/            Fastify + Drizzle; src/modules/{auth,projects,invitations,tokens,results,bugs}, test/{integration,contract}
   web/            React + Vite SPA; functions/ (Cloudflare Pages Function), test/{contract,functions}
 packages/
   shared/         Schema Zod, tipe, enum role, kode error
@@ -264,6 +289,6 @@ Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy
 ## Keterbatasan yang diketahui
 
 - Render free tier tidur saat idle; request pertama bisa lambat sekitar 30 sampai 60 detik.
-- Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, perbandingan dua run, atau mute test flaky; hanya 200 run terbaru per project yang disimpan.
+- Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, atau mute test flaky; hanya 200 run terbaru per project yang disimpan. Tahap 3 tidak memuat notifikasi email, mention, lampiran bug (hanya link), integrasi GitHub Issues, atau perubahan status bug otomatis.
 - Unggahan diproses sinkron (ADR 0004): laporan sangat besar (mendekati 5 MB) memegang request lebih lama, terutama setelah cold start Render.
 - Hal yang sengaja tidak diuji (performa free tier, mutation testing, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).

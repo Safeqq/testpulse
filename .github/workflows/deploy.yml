@@ -148,6 +148,8 @@ jobs:
         run: echo "::warning::Could not download the artifacts of the triggering CI run (expired after 7 days, or missing); skipping the upload of CI results to TestPulse"
 
       # Only the JUnit XML files go up (junit-*.xml); the rest of allure-results is Allure's own JSON.
+      # --app-version is the root package.json version (spec Tahap 3 section 8), so /p/testpulse lists versioned runs
+      # and compares each release with the previous one. Bump it with every release.
       - name: Upload CI test results to TestPulse
         if: ${{ steps.dogfood.outputs.enabled == 'true' && steps.dogfood-download.outcome == 'success' }}
         continue-on-error: true
@@ -168,6 +170,7 @@ jobs:
               --commit "$DEPLOY_SHA" \
               --ci-url "$CI_RUN_URL" \
               --name "$run_name" \
+              --app-version "$(node -p "require('./package.json').version")" \
               'ci-results/junit-*.xml'
           } || { code=$?; echo "::warning::Building the reporter or uploading CI results to TestPulse failed (exit code ${code}); the deploy itself is unaffected"; exit "$code"; }
 

@@ -238,6 +238,7 @@ Mulai Tahap 2, `deploy.yml` mengunggah hasil test CI TestPulse **ke TestPulse se
 Catatan:
 
 - Kegagalan unggah (token dicabut, jaringan, laporan ditolak) **tidak menggagalkan deploy**: langkahnya `continue-on-error` dan menulis `::warning::` beserta exit code reporter (1 = unggah gagal, 2 = berkas atau argumen salah).
+- Mulai Tahap 3, run yang diunggah membawa versi aplikasi: `--app-version` diambil dari `version` di `package.json` root (`0.3.0`). Naikkan nilainya setiap rilis tahap (atau rilis lain yang ingin dibandingkan); run dengan versi sama dianggap versi yang sama, dan `/p/testpulse` membandingkan versi terbaru dengan versi tepat di bawahnya ([ADR 0005](./adr/0005-perbandingan-versi-dan-markdown-aman.md)).
 - Token hanya berlaku untuk mengunggah ke project `testpulse`. Batasnya 60 unggahan per jam per token, jauh di atas satu unggahan per deploy.
 - Memutar token: buat token baru di **Token CI**, perbarui secret `TESTPULSE_TOKEN`, lalu cabut token lama. Run yang sudah diunggah tetap ada.
 - Reporter bisa dicoba dari komputer sendiri tanpa GitHub: `pnpm --filter @testpulse/reporter build`, lalu `node packages/reporter/dist/cli.js --url <URL> --project <slug> --branch main <berkas.xml>` dengan `TESTPULSE_TOKEN` di environment. Terhadap production itu menambah run sungguhan di project publik, jadi lakukan dengan sengaja.

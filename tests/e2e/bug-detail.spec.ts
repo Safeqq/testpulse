@@ -805,6 +805,28 @@ test.describe("Detail bug: galat per field, fokus, dan pengumuman", () => {
     await expect(page.getByTestId("bug-link-url-0")).toBeFocused();
   });
 
+  test("10 link (Tambah link nonaktif): galat tingkat daftar dari server memfokuskan pesan galat, bukan tombol nonaktif", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await newProject(api);
+    const links = Array.from({ length: 10 }, (_, i) => ({ url: `https://tracker.example.com/${i + 1}` }));
+    await api.createBug(owner, project.slug, { title: "Sepuluh link", links });
+    const { page } = await signedInPage(owner);
+    const bug = new BugPage(page);
+    await bug.goto(project.slug, 1);
+
+    await bug.linksEdit.click();
+    await expect(page.getByTestId("bug-link-add")).toBeDisabled();
+    await failPatch(page, 500, { code: "INTERNAL_ERROR", message: "Terjadi kesalahan pada server" });
+    await bug.linksSave.click();
+
+    const listError = page.getByTestId("field-error-links");
+    await expect(listError).toHaveText("Terjadi kesalahan pada server");
+    await expect(listError).toBeFocused();
+    await page.unroute("**/api/v1/projects/*/bugs/*");
+  });
+
   test("hapus komentar: fokus ke komentar, pengumuman 'Komentar dihapus'; tombol tiap komentar punya deskripsi unik", async ({
     api,
     signedInPage,

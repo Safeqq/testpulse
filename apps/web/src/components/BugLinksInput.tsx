@@ -70,7 +70,8 @@ export function BugLinksInput({ value, onChange, errors }: BugLinksInputProps) {
         />
       ))}
       {errors.links ? (
-        <p className="m-0 text-sm font-medium text-destructive" data-testid="field-error-links">
+        // tabIndex -1: editor memfokuskan pesan ini bila galatnya untuk seluruh daftar (tidak ada kolom yang bisa difokus).
+        <p tabIndex={-1} className="m-0 text-sm font-medium text-destructive outline-hidden" data-testid="field-error-links">
           {errors.links}
         </p>
       ) : null}

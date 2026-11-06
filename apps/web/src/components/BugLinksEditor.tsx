@@ -25,14 +25,25 @@ export function BugLinksEditor({ links, canEdit, onSave }: BugLinksEditorProps) 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
   const editor = useRef<HTMLDivElement>(null);
+  /** `data-testid` yang difokus setelah galat baru dirender (pesan galat daftar baru ada di DOM setelah render). */
+  const focusAfterErrors = useRef<string | null>(null);
 
-  /** Memfokuskan kolom pertama yang bermasalah (`links.<i>.url|title`), atau tombol Tambah untuk galat daftar. */
+  /**
+   * Memfokuskan kolom pertama yang bermasalah (`links.<i>.url|title`), atau pesan galat daftar itu sendiri: tombol
+   * Tambah bisa nonaktif (10 link), dan fokus pada tombol nonaktif tidak terjadi sehingga galatnya tak diumumkan.
+   */
   function focusFirstInvalid(found: Record<string, string>) {
     const first = Object.keys(found)[0];
     const match = first ? /^links\.(\d+)\.(url|title)$/.exec(first) : null;
-    const target = match ? `bug-link-${match[2]}-${match[1]}` : "bug-link-add";
-    editor.current?.querySelector<HTMLElement>(`[data-testid="${target}"]`)?.focus();
+    focusAfterErrors.current = match ? `bug-link-${match[2]}-${match[1]}` : "field-error-links";
   }
+
+  useEffect(() => {
+    const target = focusAfterErrors.current;
+    if (target === null) return;
+    focusAfterErrors.current = null;
+    editor.current?.querySelector<HTMLElement>(`[data-testid="${target}"]`)?.focus();
+  }, [errors]);
 
   // Fokus mengikuti mode: ke URL link pertama (atau tombol Tambah bila belum ada) saat edit dimulai, kembali ke Ubah saat selesai.
   useEffect(() => {

@@ -9,7 +9,11 @@
 # ini: render font di host berbeda. Versi image mengikuti @playwright/test di pnpm-lock.yaml.
 #
 # Dependensi dipasang di dalam container (node_modules host dibuat untuk OS lain dan tidak bisa dipakai), ke volume
-# bernama agar run berikutnya cepat dan node_modules host tidak tersentuh.
+# bernama agar run berikutnya cepat dan node_modules host tidak tersentuh. Mengosongkan volume bila instalasi rusak:
+# docker volume rm testpulse-visual-nm-root testpulse-visual-nm-tests testpulse-visual-nm-shared testpulse-visual-pnpm-store
+#
+# Windows: jalankan dari Git Bash (script ini memakai bash, `pwd -W`, dan MSYS_NO_PATHCONV); `pnpm test:visual` memanggil
+# `bash`, jadi Git Bash harus lebih dulu di PATH daripada bash.exe milik WSL.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,19 +47,21 @@ esac
 
 echo "Image: $IMAGE (pnpm $PNPM_VERSION)"
 
-# Skrip di dalam container. Status test disimpan agar `chown` tetap berjalan: file yang ditulis container (baseline,
-# test-results) dimiliki root, dan di Linux itu menyulitkan pengguna host mengubah atau menghapusnya.
+# Skrip di dalam container. File yang ditulis container (baseline, test-results) dimiliki root; trap EXIT mengembalikan
+# kepemilikannya ke pengguna host apa pun hasilnya (install gagal, test gagal, atau dihentikan), supaya di Linux file itu
+# tetap bisa diubah atau dihapus tanpa sudo.
 read -r -d '' INNER <<'EOF' || true
 set -uo pipefail
+trap 'chown -R "$HOST_UID:$HOST_GID" /work/tests/test-results /work/tests/visual /work/tests/allure-results /work/tests/playwright-report 2>/dev/null || true' EXIT
 npm install --global --silent "pnpm@$PNPM_VERSION" || exit 1
 cd /work
 pnpm install --frozen-lockfile --ignore-scripts --reporter=silent --store-dir /pnpm-store --filter "@testpulse/tests..." || exit 1
 cd tests
 npx playwright test --project=visual "$@"
-status=$?
-chown -R "$HOST_UID:$HOST_GID" /work/tests/test-results /work/tests/visual /work/tests/allure-results /work/tests/playwright-report 2>/dev/null || true
-exit $status
 EOF
+
+# Titik mount dibuat lebih dulu oleh pengguna host; bila tidak, Docker membuatnya sebagai root.
+mkdir -p node_modules tests/node_modules packages/shared/node_modules
 
 # node_modules dari volume bernama menutupi node_modules host pada tiga lokasi yang disentuh `pnpm install --filter`.
 exec docker run --rm \

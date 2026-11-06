@@ -48,7 +48,7 @@ export default defineConfig({
       testDir: "visual",
       retries: 0,
       use: { browserName: "chromium" },
-      snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
+      snapshotPathTemplate: "{testDir}/__screenshots__/{testFileName}/{arg}{ext}",
       expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: "disabled" } },
     },
   ],

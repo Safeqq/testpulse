@@ -1,7 +1,9 @@
 import { faker } from "@faker-js/faker";
 import type { RunDetailDto } from "@testpulse/shared";
+import type { BrowserContextOptions } from "@playwright/test";
 import { TestApi, type TestUser } from "../support/api-client.js";
 import { buildJUnit, type JUnitCase } from "../support/junit.js";
+import type { RunDates } from "./timestamps.js";
 
 /**
  * Data uji visual regression. Semua yang tampil di layar bernilai tetap (nama, versi, judul bug, pesan error, durasi),
@@ -10,7 +12,11 @@ import { buildJUnit, type JUnitCase } from "../support/junit.js";
  */
 
 export const SEED_USER_NAME = "Penguji Visual";
+export const SEED_TESTER_NAME = "Tester Visual";
 export const SEED_PROJECT_NAME = "Aplikasi Demo";
+
+/** Waktu tetap run (ditulis ulang di respons API, lihat timestamps.ts): dua hari berbeda agar grafik tren punya dua titik. */
+const RUN_TIMES = { "1.0.0": "2026-01-13T10:00:00.000Z", "1.0.1": "2026-01-14T10:00:00.000Z" } as const;
 
 const COMMIT = "abcdef1234567890abcdef1234567890abcdef12";
 const CI_URL = "https://ci.example.com/builds/42";
@@ -41,6 +47,10 @@ export interface VisualSeed {
   slug: string;
   /** Bug dengan deskripsi, label, tautan, test asal, komentar, dan riwayat perubahan. */
   detailBugNumber: number;
+  /** Id run -> waktu tetap, untuk `freezeApiTimestamps`. */
+  runDates: RunDates;
+  /** Sesi tester project (bisa menulis bug): pakai sebagai `storageState` context. */
+  testerState: NonNullable<BrowserContextOptions["storageState"]>;
 }
 
 async function ok(res: { status(): number; text(): Promise<string> }, expected: number, what: string): Promise<void> {
@@ -70,7 +80,7 @@ export async function seedVisualData(baseURL: string): Promise<VisualSeed> {
     await api.setVisibility(owner, slug, "public");
     const { token } = await api.createToken(owner, slug);
 
-    await publish(api, token, slug, V100, "1.0.0");
+    const run100 = await publish(api, token, slug, V100, "1.0.0");
     const run101 = await publish(api, token, slug, V101, "1.0.1");
     const ids = await testCaseIds(owner, slug, run101);
 
@@ -109,7 +119,17 @@ export async function seedVisualData(baseURL: string): Promise<VisualSeed> {
     });
     await api.updateBug(owner, slug, third.number, { version: third.version, status: "resolved", resolution: "fixed" });
 
-    return { slug, detailBugNumber: first.number };
+    // Tester: kontrol tulis (buat bug, ubah, komentar) tampil, berbeda dari pengunjung anonim.
+    const tester = await api.register({ name: SEED_TESTER_NAME });
+    const invitation = await api.createInvitation(owner, slug, "tester");
+    await api.acceptInvitation(tester, invitation.url.slice(invitation.url.lastIndexOf("/") + 1));
+
+    return {
+      slug,
+      detailBugNumber: first.number,
+      runDates: { [run100]: RUN_TIMES["1.0.0"], [run101]: RUN_TIMES["1.0.1"] },
+      testerState: await tester.request.storageState(),
+    };
   } finally {
     await api.dispose();
   }

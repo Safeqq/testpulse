@@ -244,6 +244,7 @@ packages/
 tests/
   api/            Playwright request + matriks otorisasi
   e2e/ pages/     Playwright E2E dan Page Object Model
+  visual/         Regresi visual (screenshot, baseline di __screenshots__); jalankan lewat pnpm test:visual (Docker)
   smoke/          Smoke test production (@smoke)
   perf/           Skenario k6 (ingest, read) dan penyiapan datanya
   security/       Gate hasil ZAP
@@ -252,6 +253,7 @@ tests/
 docs/
   TEST_STRATEGY.md   test-plans/   adr/   images/ (screenshot)   deploy.md   superpowers/ (spec dan rencana)
 .github/          Workflow CI dan deploy, Dependabot
+scripts/          visual.sh: menjalankan regresi visual di container Playwright resmi
 docker-compose.yml  render.yaml
 ```
 
@@ -264,4 +266,4 @@ Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy
 - Render free tier tidur saat idle; request pertama bisa lambat sekitar 30 sampai 60 detik.
 - Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, perbandingan dua run, atau mute test flaky; hanya 200 run terbaru per project yang disimpan.
 - Unggahan diproses sinkron (ADR 0004): laporan sangat besar (mendekati 5 MB) memegang request lebih lama, terutama setelah cold start Render.
-- Hal yang sengaja tidak diuji (performa free tier, visual regression, mutation testing, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).
+- Hal yang sengaja tidak diuji (performa free tier, mutation testing, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).

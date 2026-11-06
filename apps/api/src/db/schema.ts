@@ -204,7 +204,11 @@ export const bugs = pgTable(
     unique("bugs_project_number_unique").on(t.projectId, t.number),
     index("bugs_project_status_updated_idx").on(t.projectId, t.status, sql`${t.updatedAt} desc`),
     index("bugs_project_assignee_idx").on(t.projectId, t.assigneeId),
-    // Lencana bug per test hanya menghitung bug yang belum ditutup.
+    // FK `ON DELETE SET NULL`: hapus run/test mencari bug lewat kolom ini (bug tertutup juga, jadi bukan indeks parsial).
+    index("bugs_run_idx").on(t.runId),
+    index("bugs_test_case_idx").on(t.testCaseId),
+    // Lencana bug per test hanya menghitung bug yang belum ditutup. Tetap dipakai walau ada `bugs_test_case_idx`:
+    // EXPLAIN pada data uji (90% bug closed) memilih indeks parsial ini dan membaca ~3× lebih sedikit blok.
     index("bugs_test_case_open_idx")
       .on(t.testCaseId)
       .where(sql`${t.status} <> 'closed'`),
@@ -229,15 +233,20 @@ export const bugLabels = pgTable(
   (t) => [primaryKey({ columns: [t.bugId, t.label] })],
 );
 
-export const bugLinks = pgTable("bug_links", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  bugId: uuid("bug_id")
-    .notNull()
-    .references(() => bugs.id, { onDelete: "cascade" }),
-  position: integer("position").notNull(),
-  url: text("url").notNull(),
-  title: text("title"),
-});
+export const bugLinks = pgTable(
+  "bug_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    bugId: uuid("bug_id")
+      .notNull()
+      .references(() => bugs.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    url: text("url").notNull(),
+    title: text("title"),
+  },
+  // Detail bug membaca link urut posisi; juga dipakai CASCADE saat bug dihapus.
+  (t) => [index("bug_links_bug_position_idx").on(t.bugId, t.position)],
+);
 
 export const bugComments = pgTable(
   "bug_comments",

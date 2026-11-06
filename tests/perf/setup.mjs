@@ -19,8 +19,6 @@ const BASE_URL = (process.env.BASE_URL ?? "http://localhost:8080").replace(/\/$/
 const ORIGIN = process.env.APP_ORIGIN ?? new URL(BASE_URL).origin;
 const SEED_RUNS = Number(process.env.SEED_RUNS ?? 55);
 const SEED_BUGS = Number(process.env.SEED_BUGS ?? 120);
-// How many of the seeded bugs are linked to a failing test of the latest run (exercises bug badges on compare/runs).
-const LINKED_BUGS = 25;
 const RESOLVED_BUGS = 20;
 const INGEST_TOKENS = Number(process.env.INGEST_TOKENS ?? 5);
 const STATE_FILE = process.env.STATE_FILE ?? join(dirname(fileURLToPath(import.meta.url)), ".state", "state.json");
@@ -82,7 +80,9 @@ const SEVERITIES = ["minor", "major", "critical", "blocker"];
 /** Creates SEED_BUGS bugs through the API (tester/admin session cookie + Origin, like the web app). */
 async function seedBugs(slug, lastRunId) {
   const failed = await expect(await api("GET", `/projects/${slug}/runs/${lastRunId}?status=failed`), 200, "failed results");
-  const linkable = failed.results.slice(0, LINKED_BUGS);
+  // One bug per failing test of the latest run (as many as the first page of failed results holds), so bug badges on
+  // compare/runs are exercised; the remaining bugs have no test link. The real count is printed at the end.
+  const linkable = failed.results.slice(0, SEED_BUGS - RESOLVED_BUGS);
   for (let i = 0; i < SEED_BUGS; i += 1) {
     const link = i < linkable.length ? { testCaseId: linkable[i].testCaseId, runId: lastRunId } : {};
     const bug = await expect(
@@ -108,6 +108,7 @@ async function seedBugs(slug, lastRunId) {
       );
     }
   }
+  return linkable.length;
 }
 
 const suffix = randomBytes(4).toString("hex");
@@ -125,7 +126,7 @@ let lastRunId = "";
 for (let i = 0; i < SEED_RUNS; i += 1) {
   lastRunId = await upload(seedToken, readSlug, buildReport(500, i % 13), i);
 }
-await seedBugs(readSlug, lastRunId);
+const linkedBugs = await seedBugs(readSlug, lastRunId);
 
 const ingestSlug = await createProject(`Perf ingest ${suffix}`, "private");
 const ingestTokens = [];
@@ -133,5 +134,5 @@ for (let i = 0; i < INGEST_TOKENS; i += 1) ingestTokens.push(await createToken(i
 
 mkdirSync(dirname(STATE_FILE), { recursive: true });
 writeFileSync(STATE_FILE, JSON.stringify({ readSlug, ingestSlug, ingestTokens }), { mode: 0o600 });
-console.log(`perf setup done: read project "${readSlug}" with ${SEED_RUNS} versioned runs and ${SEED_BUGS} bugs, ingest project "${ingestSlug}" with ${INGEST_TOKENS} tokens`);
+console.log(`perf setup done: read project "${readSlug}" with ${SEED_RUNS} versioned runs and ${SEED_BUGS} bugs (${linkedBugs} linked to failing tests), ingest project "${ingestSlug}" with ${INGEST_TOKENS} tokens`);
 console.log(`state written to ${STATE_FILE}`);

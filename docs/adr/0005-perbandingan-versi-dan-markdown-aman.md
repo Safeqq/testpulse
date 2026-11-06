@@ -55,7 +55,7 @@ Aturan satu: membandingkan `1.0.1` dengan `1.0.0` (bukan dengan run `1.0.1` sebe
 
 ### 4. Mode ringkasan (`GET /compare?groups=none`)
 
-Dashboard dan panel detail run hanya perlu angka dan kalimat, bukan baris per test. `groups=none` menjawab dengan bentuk respons yang sama (`base`, `target`, `summary`) dan **semua kelompok kosong**, dan melewati query pesan galat serta badge bug. Tidak dapat digabung dengan `group` (400). Halaman perbandingan tetap memakai mode penuh: 200 item pertama per kelompok, lalu 100 per halaman dengan cursor yang terikat pada pasangan run (cursor basi setelah upload baru: 400, UI menawarkan muat ulang). Biayanya satu mode tambahan di API dan kontrak; manfaatnya kartu dashboard tetap murah walau perbandingan besar, dan itu dijaga gate k6 (skenario `read` memanggil keduanya).
+Dashboard dan panel detail run hanya perlu angka dan kalimat, bukan baris per test. `groups=none` menjawab dengan bentuk respons yang sama (`base`, `target`, `summary`) dan **semua kelompok kosong**, dan melewati query pesan galat serta badge bug (hemat query dan ukuran respons). Yang tidak dihemat: kedua run tetap dimuat hasilnya untuk menghitung angka ringkasan, jadi biaya utamanya tetap ada. Tidak dapat digabung dengan `group` (400). Halaman perbandingan tetap memakai mode penuh: 200 item pertama per kelompok, lalu 100 per halaman dengan cursor yang terikat pada pasangan run (cursor basi setelah upload baru: 400, UI menawarkan muat ulang). Biayanya satu mode tambahan di API dan kontrak; manfaatnya kartu dashboard tidak membayar query pesan dan badge serta payload ribuan baris, dan latensinya dijaga gate k6 (skenario `read` memanggil keduanya).
 
 ### 5. Kalimat kesimpulan (disusun di klien, fungsi murni)
 

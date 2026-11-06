@@ -189,7 +189,7 @@ Angka ini adalah **snapshot**: hasil menjalankan suite secara lokal pada commit 
 
 ### 5.1 Performa (k6)
 
-Job CI `perf` (setelah `stack-tests`) menjalankan dua skenario k6 terhadap stack Docker Compose, bukan production. Image dipin (`grafana/k6:1.3.0`) agar versi baru tidak mengubah gate diam-diam. Data disiapkan oleh [`tests/perf/setup.mjs`](../tests/perf/setup.mjs) lewat API: satu pengguna, satu project publik berisi 55 run (500 test per run) untuk skenario baca, dan (Tahap 3) 55 run berversi `0.1.0` sampai `0.55.0` dengan 120 bug di project baca (25 tertaut ke test gagal run terakhir, 20 diselesaikan), serta satu project untuk skenario upload dengan beberapa token yang dipakai bergiliran per VU, sehingga batas upload per token tidak tercapai dan tidak ada 429.
+Job CI `perf` (setelah `stack-tests`) menjalankan dua skenario k6 terhadap stack Docker Compose, bukan production. Image dipin (`grafana/k6:1.3.0`) agar versi baru tidak mengubah gate diam-diam. Data disiapkan oleh [`tests/perf/setup.mjs`](../tests/perf/setup.mjs) lewat API: satu pengguna, satu project publik berisi 55 run (500 test per run) untuk skenario baca, dan (Tahap 3) 55 run berversi `0.1.0` sampai `0.55.0` dengan 120 bug di project baca (satu bug per test gagal di run terakhir, jumlah persisnya dicetak `setup.mjs`; 20 bug lainnya diselesaikan), serta satu project untuk skenario upload dengan beberapa token yang dipakai bergiliran per VU, sehingga batas upload per token tidak tercapai dan tidak ada 429.
 
 | Skenario | Beban | Threshold (gate) |
 |---|---|---|

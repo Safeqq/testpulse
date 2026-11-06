@@ -273,7 +273,8 @@ jobs:
         run: docker compose up -d --build --wait
 
       # Creates the user, the projects, several ingest tokens (round-robin per VU, so the per-token upload limit is not hit)
-      # and >= 50 seeded runs. Writes tests/perf/.state/state.json (gitignored, holds the tokens, never printed).
+      # and >= 50 seeded runs (one app version each, 0.1.0 ...) plus >= 100 bugs for the bugs/compare/versions read
+      # scenarios. Writes tests/perf/.state/state.json (gitignored, holds the tokens, never printed).
       - name: Prepare perf data
         id: setup
         env:

@@ -61,7 +61,7 @@ curl -X POST "https://testpulse-d2p.pages.dev/api/v1/projects/<slug>/runs" \
 # 201 {"runId":"...","url":"https://.../p/<slug>/runs/<runId>","totals":{"total":..,"passed":..,"failed":..,"skipped":..,"flaky":..}}
 ```
 
-`branch` wajib (1 sampai 200 karakter `A-Za-z0-9._/-`); `commit` (hex 7 sampai 40), `ciUrl` (http/https), `name`, dan `version` (versi aplikasi yang diuji, 1 sampai 50 karakter `A-Za-z0-9._+-`; Tahap 3) opsional. Nilai query harus di-URL-encode (`ciUrl` sendiri memuat `:`, `/`, dan sering `?`/`&`; `name` bisa berspasi): `--url-query` (curl 7.87 ke atas) melakukannya otomatis; pada curl yang lebih lama, encode sendiri, mis. `ciUrl=https%3A%2F%2Fci.example.com%2Frun%2F42`. Batas: body 5 MB, 20.000 testcase per laporan, 60 unggahan per jam per token, dan 200 run terbaru per project disimpan. Hanya token Bearer yang diterima di endpoint ini (cookie sesi tidak), dan laporan dengan `<!DOCTYPE` ditolak.
+`branch` wajib (1 sampai 200 karakter `A-Za-z0-9._/-`); `commit` (hex 7 sampai 40), `ciUrl` (http/https), `name`, dan `version` (versi aplikasi yang diuji, 1 sampai 50 karakter `A-Za-z0-9._+-`; Tahap 3) opsional. Nilai query harus di-URL-encode (`ciUrl` sendiri memuat `:`, `/`, dan sering `?`/`&`; `name` bisa berspasi; `+` pada `version`, mis. `1.0.0+build.5`, menjadi `%2B`, kalau tidak server membacanya sebagai spasi dan menolaknya): `--url-query` (curl 7.87 ke atas) melakukannya otomatis; pada curl yang lebih lama, encode sendiri, mis. `ciUrl=https%3A%2F%2Fci.example.com%2Frun%2F42`. Batas: body 5 MB, 20.000 testcase per laporan, 60 unggahan per jam per token, dan 200 run terbaru per project disimpan. Hanya token Bearer yang diterima di endpoint ini (cookie sesi tidak), dan laporan dengan `<!DOCTYPE` ditolak.
 
 ### Mengunggah dengan reporter CLI
 
@@ -125,7 +125,7 @@ Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `nod
 |---|---|---|
 | **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai dan live (status CI: lihat badge di atas) |
 | **2** | Dashboard hasil test, deteksi flaky, reporter CLI, token CI, dogfooding, test performa (k6) | ✅ Selesai dan live (dashboard production terisi setelah `TESTPULSE_TOKEN` dipasang) |
-| **3** | Bug tracker (bug dari test yang gagal), deteksi regresi antar versi, visual regression, k6 untuk bug dan perbandingan | ✅ Selesai dan live (`/p/testpulse` menampilkan run berversi `0.3.0`) |
+| **3** | Bug tracker (bug dari test yang gagal), deteksi regresi antar versi, visual regression, k6 untuk bug dan perbandingan | ✅ Selesai; setelah deploy, `/p/testpulse` menampilkan run berversi `0.3.0` |
 | 4 | Test case management dan test run manual, mutation testing | Direncanakan |
 | 5 | Crowdtesting: test cycle publik, crowd tester mengirim bug, triase, reputasi dan leaderboard (aplikasi berupa link, tanpa pembayaran) | Direncanakan |
 | 6 (opsional) | Aplikasi desktop Electron (notifikasi build gagal, tray) yang diuji dengan Playwright | Opsional |

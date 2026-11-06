@@ -87,7 +87,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       const readOpts = opts.readStatementTimeoutMs !== undefined ? { statementTimeoutMs: opts.readStatementTimeoutMs } : {};
       await readRoutes(api, readOpts);
       await compareRoutes(api, readOpts);
-      await bugRoutes(api);
+      await bugRoutes(api, readOpts);
       await commentRoutes(api);
     },
     { prefix: "/api/v1" },

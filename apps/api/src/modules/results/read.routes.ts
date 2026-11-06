@@ -43,7 +43,7 @@ export const RESULTS_PAGE_SIZE = 100;
 export const TREND_POINTS = 30;
 export const MAX_FLAKY_TESTS = 50;
 export const HISTORY_LENGTH = 20;
-/** Batas waktu tiap statement pada query baca berat (flaky, stats, riwayat, detail run, versi, perbandingan). */
+/** Batas waktu tiap statement pada query baca berat (flaky, stats, riwayat, detail run, versi, perbandingan, detail bug). */
 export const READ_STATEMENT_TIMEOUT_MS = 5000;
 /** Jumlah daftar flaky (per project + branch) yang disimpan di cache memori (Ruling F-I1). */
 export const FLAKY_CACHE_SIZE = 500;

@@ -2,7 +2,8 @@ import { faker } from "@faker-js/faker";
 import { bugDto, bugsPageDto, createdTokenDto, type BugDto, type ProjectDto, type ResultStatus } from "@testpulse/shared";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { beforeAll, describe, expect, it } from "vitest";
+import pg from "pg";
+import { beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { bugEvents, bugs, projects, testCases } from "../../src/db/schema.js";
 import { insertRun } from "../../src/modules/results/repository.js";
@@ -537,6 +538,33 @@ describe("API bug tracker", () => {
         });
         expectError(res, 404, "PROJECT_NOT_FOUND");
       }
+    });
+  });
+
+  describe("GET /bugs/:number — batas waktu query baca (statement_timeout)", () => {
+    it("detail bug (termasuk testHint) melewati batas → 503 INTERNAL_ERROR; tanpa hambatan → 200; otorisasi tetap lebih dulu", async () => {
+      const slowApp = await createTestApp({}, { readStatementTimeoutMs: 200 });
+      const fx = await setup();
+      await createBug(fx);
+      const url = `/api/v1/projects/${fx.project.slug}/bugs/1`;
+      const get = (cookie?: string) => slowApp.inject({ method: "GET", url, headers: cookie ? { cookie } : {} });
+
+      // Koneksi lain mengunci tabel `bugs` sehingga query detail menunggu sampai statement_timeout membatalkannya.
+      const locker = new pg.Client({ connectionString: inject("databaseUrl") });
+      await locker.connect();
+      try {
+        await locker.query("begin");
+        await locker.query("lock table bugs in access exclusive mode");
+        const res = await get(fx.tester.cookie);
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: expect.any(String) } });
+        // Akses project diputuskan sebelum query bug: non-anggota project privat tetap 404, bukan 503.
+        expectError(await get(), 404, "PROJECT_NOT_FOUND");
+      } finally {
+        await locker.query("rollback");
+        await locker.end();
+      }
+      expect((await get(fx.tester.cookie)).statusCode).toBe(200);
     });
   });
 

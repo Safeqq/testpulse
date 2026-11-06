@@ -1,9 +1,11 @@
 import { bugListQuery, createBugBody, updateBugBody, type BugDto, type BugsPageDto } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
+import { withStatementTimeout } from "../../db/client.js";
 import { AppError } from "../../http/errors.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser, requireUser } from "../auth/service.js";
 import { resolveProject } from "../projects/access.js";
+import { READ_STATEMENT_TIMEOUT_MS, type ReadRoutesOptions } from "../results/read.routes.js";
 import { decodeBugCursor, encodeBugCursor } from "./cursor.js";
 import { bugConflict, bugNotFound, fieldError, invalidTransition } from "./errors.js";
 import { findBugByNumber, listBugs, listLabels } from "./read.repository.js";
@@ -29,11 +31,13 @@ const RESOLUTION_REQUIRED = "Resolusi wajib diisi untuk status ini";
 /**
  * Rute bug tracker (spec Tahap 3 §6). Hanya sesi cookie yang dibaca (`loadUser`): token CI tidak berlaku sehingga
  * pembawa token diperlakukan seperti anonim. Akses project diputuskan sebelum body/query divalidasi, agar non-anggota
- * project privat selalu mendapat 404.
+ * project privat selalu mendapat 404. Detail bug (dengan `testHint` yang membaca riwayat hasil test) berjalan dalam
+ * transaksi baca-saja ber-`statement_timeout` seperti query baca berat lain; terlampaui → 503.
  */
-export async function bugRoutes(app: FastifyInstance): Promise<void> {
+export async function bugRoutes(app: FastifyInstance, opts: ReadRoutesOptions = {}): Promise<void> {
   const readAccess = { preHandler: [loadUser] };
   const loginRequired = { preHandler: [loadUser, requireUser] };
+  const statementTimeoutMs = opts.statementTimeoutMs ?? READ_STATEMENT_TIMEOUT_MS;
 
   app.get<{ Params: { slug: string } }>("/projects/:slug/bugs", readAccess, async (req): Promise<BugsPageDto> => {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
@@ -77,7 +81,8 @@ export async function bugRoutes(app: FastifyInstance): Promise<void> {
     readAccess,
     async (req): Promise<BugDto> => {
       const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
-      const bug = await findBugByNumber(app.db, project.id, parseBugNumber(req.params.number));
+      const number = parseBugNumber(req.params.number);
+      const bug = await withStatementTimeout(app.db, statementTimeoutMs, (db) => findBugByNumber(db, project.id, number));
       if (!bug) throw bugNotFound();
       return bug;
     },

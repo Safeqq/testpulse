@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { ArrowLeft, FolderSearch, Loader2, ShieldAlert } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
+import { ProjectTabs } from "@/components/ProjectTabs";
 import { Button } from "@/components/ui/button";
 import { LoadError } from "../../components/LoadError";
 import { Toast } from "../../components/Toast";
@@ -102,6 +103,7 @@ function SettingsContent({ initial }: { initial: ProjectDto }) {
           <ArrowLeft className="size-4" aria-hidden="true" />
           Kembali ke project
         </Link>
+        <ProjectTabs slug={project.slug} active="pengaturan" canSeeSettings />
         <h1
           id="settings-title"
           className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]"

@@ -40,6 +40,17 @@ export default defineConfig({
     { name: "e2e-firefox", testDir: "e2e", use: { browserName: "firefox" } },
     { name: "e2e-webkit", testDir: "e2e", use: { browserName: "webkit" } },
     { name: "smoke", testDir: "smoke" },
+    // Regresi visual: hanya dijalankan lewat scripts/visual.sh (container Playwright resmi, render font identik di lokal
+    // dan CI). Nama "visual" tidak cocok dengan glob "e2e-*". Baseline selalu dibuat di Linux, jadi path-nya tanpa
+    // nama platform atau project.
+    {
+      name: "visual",
+      testDir: "visual",
+      retries: 0,
+      use: { browserName: "chromium" },
+      snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
+      expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01, animations: "disabled" } },
+    },
   ],
   // Tanpa BASE_URL: jalankan stack dev lokal (shared tsc -w + API + Vite) dan tunggu API siap lewat proxy.
   // Dengan BASE_URL (CI/Docker/production): stack sudah disediakan di luar.

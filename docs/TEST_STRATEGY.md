@@ -23,6 +23,7 @@ Dokumen ini menjelaskan **apa** yang diuji, **di lapisan mana**, dan **kenapa**,
 | Gate CSP | listener `securitypolicyviolation` + pesan console, dipasang di fixture Playwright | `tests/support/csp.ts`, `tests/support/fixtures.ts` | Tidak ada satu pun pelanggaran Content Security Policy selama test E2E (bagian 2.1) |
 | Proxy dan header | Vitest | `apps/web/test/functions` | Pages Function meneruskan request dengan benar; header keamanan nginx dan Cloudflare `_headers` identik |
 | Performa | k6 (image `grafana/k6`, dipin) | `tests/perf`, job `perf` di [`ci.yml`](../.github/workflows/ci.yml) | Gate p95 upload dan baca, dan error < 1%, terhadap stack Docker (bagian 5.1) |
+| Visual regression | Playwright `toHaveScreenshot()` di container Playwright resmi | `tests/visual`, `scripts/visual.sh`, job `visual` di [`ci.yml`](../.github/workflows/ci.yml) | Tampilan landing, dashboard, perbandingan versi, daftar bug, dan detail bug tidak berubah tanpa disengaja, di tema terang dan gelap, 1280 × 800 dan 375 × 812 (bagian 5.2) |
 | Security | OWASP ZAP baseline, `pnpm audit`, Dependabot | job `zap` dan `lint-typecheck` di [`ci.yml`](../.github/workflows/ci.yml); gate di `tests/security/check-zap-report.mjs` | 0 temuan High dari ZAP, 0 dependensi high/critical; penolakan `<!DOCTYPE` (XXE) diuji di unit dan integration |
 | Smoke production | Playwright, tag `@smoke` | `tests/smoke` | Setelah deploy: health, halaman masuk, login akun smoke, project publik terbuka tanpa login, dan dashboard `/p/testpulse` menampilkan run dari dogfooding (dilewati dengan pesan bila belum ada run). Hanya membaca |
 
@@ -171,12 +172,27 @@ Job CI `perf` (setelah `stack-tests`) menjalankan dua skenario k6 terhadap stack
 
 Ringkasan JSON k6 diunggah sebagai artifact `k6-summary`. Threshold mengikuti spec Tahap 2 bagian 11; produksi tetap memakai batas upload default 60/jam/token (compose menaikkannya hanya untuk stack test).
 
+### 5.2 Visual regression
+
+Lima halaman (landing, dashboard, perbandingan, daftar bug, detail bug) × tema terang/gelap × 1280 × 800 dan 375 × 812 = 20 screenshot halaman penuh. Project Playwright `visual` (Chromium) sengaja terpisah dari `e2e-*` dan hanya dijalankan lewat Docker:
+
+```bash
+docker compose up -d --build --wait
+pnpm test:visual          # bandingkan dengan baseline
+pnpm test:visual:update   # tulis ulang baseline yang berubah; periksa gambarnya sebelum commit
+```
+
+- **Render identik di mana pun.** `scripts/visual.sh` menjalankan `mcr.microsoft.com/playwright:v<versi>-noble` di network compose (`testpulse_default`, `BASE_URL=http://web:8080`). Versi image dibaca dari `@playwright/test` di `pnpm-lock.yaml`, jadi image, library, dan font selalu sepaket dengan Playwright yang terpasang. Dependensi test dipasang di dalam container (ke volume bernama) karena `node_modules` host dibuat untuk OS lain. Baseline di host non-Linux tidak sah.
+- **Deterministik.** Seed (`tests/visual/seed.ts`) membuat user, project publik, run `1.0.0`/`1.0.1`, dan tiga bug lewat API dengan nilai tetap; jam dibekukan (`context.clock.install`) sebelum navigasi, zona waktu UTC, `document.fonts.ready` ditunggu, animasi dimatikan. Yang berubah tiap run (waktu relatif dan absolut, id run, slug project, teks pemilih versi yang memuat tanggal) ditutup dengan `mask`. Toleransi `maxDiffPixelRatio: 0.01`.
+- **Fixture yang sama dengan E2E.** Context dibuat lewat `newContext`, sehingga gate CSP ikut berjalan.
+- **Gate.** Job CI `visual` berjalan setelah `stack-tests`; bila gagal, artifact `visual-diff` berisi expected/actual/diff.
+- **Batasan.** Ambang 1% berarti perubahan kecil (mis. satu tombol berubah warna) bisa lolos; perubahan yang luas gagal. Data seed tampil apa adanya, jadi mengubah teks atau tata letak halaman berarti memperbarui baseline.
+
 ## 6. Sengaja tidak diuji (dan alasannya)
 
 | Hal | Alasan | Rencana |
 |---|---|---|
 | Performa free tier (Render cold start, Neon) | Angka dari free tier tidak bermakna; k6 sengaja hanya menyasar stack Docker (bagian 5.1) | Dicatat sebagai keterbatasan |
-| Visual regression | UI masih berubah cepat; screenshot baseline sekarang akan terus rusak tanpa nilai | Tahap 3 |
 | Mutation testing | Perlu suite yang sudah stabil dan domain yang lebih besar | Tahap 4 |
 | Alur email (reset password, verifikasi) | Fiturnya sengaja tidak ada di tahap 1; undangan berupa link yang disalin manual | Tidak direncanakan |
 | Perilaku edge Cloudflare (cache, TLS, routing) | Tidak bisa direplikasi di CI. Yang bisa diuji (logika Pages Function, kesetaraan header) diuji sebagai unit; sisanya dicek lewat smoke test production | Smoke test |

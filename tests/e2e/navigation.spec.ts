@@ -123,7 +123,11 @@ test.describe("Tab navigasi project", () => {
     await expect(tabs.current).toHaveCount(0);
   });
 
-  test("halaman Pengaturan menampilkan tab dengan Pengaturan aktif", async ({ api, signedInPage }) => {
+  test("halaman Pengaturan menampilkan tab dengan Pengaturan aktif", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
     const { owner, project } = await seed(api);
     const { page } = await signedInPage(owner);
     const tabs = new ProjectTabsNav(page);
@@ -134,6 +138,13 @@ test.describe("Tab navigasi project", () => {
     await expect(tabs.tabs).toHaveText(MEMBER_LABELS);
     await expectCurrentTab(tabs, "Pengaturan");
     await expect(tabs.tab("pengaturan")).toHaveAttribute("aria-current", "page");
+    await expectNoA11yViolationsInBothThemes(page);
+
+    // 375 px: tab bergulir di wadahnya, halaman tidak; tab aktif (paling kanan) tergulir ke tampilan.
+    await page.setViewportSize(MOBILE);
+    await settings.goto(project.slug);
+    await expect(tabs.tab("pengaturan")).toBeInViewport({ ratio: 0.99 });
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
 
     await tabs.tab("run").click();
     await expect(page).toHaveURL(`/p/${project.slug}/runs`);

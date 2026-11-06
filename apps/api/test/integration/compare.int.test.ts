@@ -12,7 +12,7 @@ import {
   type ProjectDto,
   type ResultStatus,
 } from "@testpulse/shared";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { FastifyInstance } from "fastify";
 import pg from "pg";
@@ -341,6 +341,45 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
         expect(res.statusCode, query).toBe(400);
         expect(res.json().error.code).toBe("VALIDATION_ERROR");
       }
+    });
+
+    it("Ruling F-b: ringkasan groups=none di-cache per (project, base, target); pasangan lain dan respons penuh dihitung segar", async () => {
+      const fx = await setup();
+      const first = await seedRun(fx, { at: 0, results: [result("a", "passed"), result("b", "failed")] });
+      const second = await seedRun(fx, { at: 1, results: [result("a", "failed"), result("b", "passed")] });
+      const pair = `?base=${first}&target=${second}`;
+      const cached = await compare(fx, `${pair}&groups=none`);
+      expect(cached.summary).toEqual({ ...emptySummary, regressions: 1, fixed: 1 });
+
+      // Run tidak pernah berubah setelah upload; di sini hasilnya diubah langsung di DB hanya untuk membuktikan cache.
+      await app.db.execute(sql`update test_results set status = 'passed', message = null where run_id = ${second}`);
+
+      const hit = await compare(fx, `${pair}&groups=none`);
+      expect(hit).toEqual(cached);
+      // Default (tanpa base/target) memilih pasangan yang sama → kunci yang sama.
+      expect((await compare(fx, "?groups=none")).summary).toEqual(cached.summary);
+      // Respons penuh (item + badge bug) tidak pernah dari cache.
+      expect((await compare(fx, pair)).summary).toEqual({ ...emptySummary, fixed: 1 });
+      // Pasangan lain (dibalik) = kunci lain → dihitung dari data terkini.
+      expect((await compare(fx, `?base=${second}&target=${first}&groups=none`)).summary).toEqual({
+        ...emptySummary,
+        regressions: 1,
+      });
+
+      // Otorisasi dan resolusi run tetap berjalan sebelum cache: anonim 404, run yang dihapus 404.
+      const anonymous = await get(`/projects/${fx.project.slug}/compare${pair}&groups=none`);
+      expect(anonymous.statusCode).toBe(404);
+      expect(anonymous.json().error.code).toBe("PROJECT_NOT_FOUND");
+      expect((await get(`/projects/${fx.project.slug}/runs/${first}`, fx.admin.cookie)).statusCode).toBe(200);
+      const removed = await app.inject({
+        method: "DELETE",
+        url: `/api/v1/projects/${fx.project.slug}/runs/${first}`,
+        headers: { cookie: fx.admin.cookie },
+      });
+      expect(removed.statusCode).toBe(204);
+      const gone = await get(`/projects/${fx.project.slug}/compare${pair}&groups=none`, fx.admin.cookie);
+      expect(gone.statusCode).toBe(404);
+      expect(gone.json().error.code).toBe("RUN_NOT_FOUND");
     });
 
     it("added 250 test → 200 item + nextCursor; ?group=added&cursor= → 50 sisanya", async () => {

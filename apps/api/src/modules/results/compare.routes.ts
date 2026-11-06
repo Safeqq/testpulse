@@ -30,6 +30,7 @@ import { decodeCompareCursor, encodeCompareCursor, type CompareKey } from "./cur
 import { pickBaseline, pickDefaultTarget } from "./domain/baseline.js";
 import { classify, type CompareMatch } from "./domain/compare.js";
 import { groupRunsByVersion } from "./domain/versions.js";
+import { LruCache } from "./lru-cache.js";
 import {
   invalidCursor,
   passRate,
@@ -43,6 +44,8 @@ import { bugRefsForTests, findRun, latestBranch, type RunRecord } from "./reposi
 /** Batas daftar (spec Tahap 3 §6): 200 item pertama per kelompok, lalu 100 per halaman; maks `MAX_VERSIONS` versi. */
 export const COMPARE_FIRST_PAGE = 200;
 export const COMPARE_PAGE_SIZE = 100;
+/** Jumlah ringkasan perbandingan (`groups=none`) yang disimpan di cache memori (Ruling F-b). */
+export const COMPARE_SUMMARY_CACHE_SIZE = 500;
 
 const versionsQuery = z.object({ branch: branchName.optional() });
 
@@ -162,6 +165,16 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
   const statementTimeoutMs = opts.statementTimeoutMs ?? READ_STATEMENT_TIMEOUT_MS;
   const heavyRead = <T>(fn: (db: Queryable) => Promise<T>) => withStatementTimeout(app.db, statementTimeoutMs, fn);
 
+  /**
+   * Ringkasan `groups=none` (kartu dashboard) per (project, base, target), Ruling F-b: hasil run tidak berubah setelah
+   * upload, jadi ringkasan sepasang run tidak pernah basi; run yang dihapus tidak lagi lolos `resolvePair` sehingga
+   * entrinya tidak terjangkau. Hanya angka dan ringkasan run yang disimpan, tidak pernah badge bug (status bug berubah).
+   * Otorisasi dan pemilihan pasangan run tetap berjalan setiap permintaan; yang dilewati hanya membaca dan
+   * mengelompokkan hasil kedua run.
+   */
+  const summaryCache = new LruCache<string, CompareDto>(COMPARE_SUMMARY_CACHE_SIZE);
+  const summaryKey = (projectId: string, baseId: string, targetId: string) => `${projectId}:${baseId}:${targetId}`;
+
   app.get<{ Params: { slug: string } }>("/projects/:slug/versions", readAccess, async (req): Promise<VersionDto[]> => {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
     const requested = parseOrThrow(versionsQuery, req.query).branch;
@@ -214,15 +227,20 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
       // Id run berbentuk lain tidak mungkin ada (dan akan ditolak Postgres saat bind).
       for (const id of [query.base, query.target]) if (id !== undefined && !isUuid(id)) throw runNotFound();
 
-      const { base, target, groups, pages, bugs, messages } = await heavyRead(async (db) => {
+      const { base, target, groups, pages, bugs, messages, cached } = await heavyRead(async (db) => {
         const pair = await resolvePair(db, project.id, query);
         // Cursor hanya berlaku untuk pasangan run tempat ia dibuat (default bisa bergeser setelah upload baru).
         if (after !== undefined && (pair.base?.id !== after.baseId || pair.target?.id !== after.targetId)) {
           throw staleCursor();
         }
-        if (pair.base === null || pair.target === null) {
+        const hit =
+          query.groups === "none" && pair.base !== null && pair.target !== null
+            ? summaryCache.get(summaryKey(project.id, pair.base.id, pair.target.id))
+            : undefined;
+        if (pair.base === null || pair.target === null || hit !== undefined) {
           return {
             ...pair,
+            cached: hit,
             groups: null,
             pages: new Map<CompareGroup, EntryPage>(),
             bugs: new Map<string, BugRefDto[]>(),
@@ -239,6 +257,7 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
         if (query.groups === "none") {
           return {
             ...pair,
+            cached: undefined,
             groups: grouped,
             pages: new Map<CompareGroup, EntryPage>(),
             bugs: new Map<string, BugRefDto[]>(),
@@ -257,6 +276,7 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
         ]);
         return {
           ...pair,
+          cached: undefined,
           groups: grouped,
           pages: paged,
           bugs: await bugRefsForTests(
@@ -288,9 +308,10 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
       };
 
       if (query.group !== undefined) return toPage(query.group);
+      if (cached !== undefined) return cached;
 
       const count = (group: CompareGroup) => groups?.[group].length ?? 0;
-      return {
+      const response: CompareDto = {
         base: base === null ? null : toRunSummary(base),
         target: target === null ? null : toRunSummary(target),
         summary: {
@@ -310,6 +331,11 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
           removed: toPage("removed"),
         },
       };
+      // `groups=none` dengan kedua run: semua kelompok kosong, jadi respons itu sendiri bebas badge bug.
+      if (query.groups === "none" && base !== null && target !== null) {
+        summaryCache.set(summaryKey(project.id, base.id, target.id), response);
+      }
+      return response;
     },
   );
 }

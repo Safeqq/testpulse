@@ -20,6 +20,8 @@ import {
 } from "../../src/db/schema.js";
 import { hashPassword } from "../../src/modules/auth/domain/passwords.js";
 import { generateToken, hashToken, SESSION_TTL_DAYS } from "../../src/modules/auth/domain/tokens.js";
+import { COMPARE_FIRST_PAGE } from "../../src/modules/results/compare.routes.js";
+import { encodeCompareCursor } from "../../src/modules/results/cursor.js";
 
 type StateHandlers = NonNullable<VerifierOptions["stateHandlers"]>;
 // Tipe express tidak tersedia di workspace ini; cukup bentuk minimal yang dipakai filter.
@@ -42,6 +44,8 @@ const BASE_RUN_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const TARGET_RUN_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const REGRESSION_TEST_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const MAX_ACTIVE_TOKENS = 10;
+/** Jumlah regresi pada state halaman kelompok: lebih dari halaman pertama (200), sisanya 50 di halaman berikutnya. */
+const MANY_REGRESSIONS = 250;
 const PROJECT_SLUG = "pact-project";
 const PUBLIC_SLUG = "pact-public";
 const INGEST_PROJECT_SLUG = "testpulse";
@@ -223,6 +227,39 @@ export function createContractStates(db: Db): ContractStates {
     ]);
   }
 
+  /**
+   * Dua run berversi seperti `ensureCompareRuns`, tetapi dengan `MANY_REGRESSIONS` test yang lulus di v1.0.0 dan gagal di
+   * v1.0.1 (`R001`…`R250`, suite `checkout`). Mengembalikan cursor halaman kedua kelompok regresi, dibuat dengan encoder
+   * API sendiri dari item ke-200 menurut urutan perbandingan (suite, nama, id test).
+   */
+  async function ensureManyRegressions(project: { id: string }): Promise<string> {
+    const common = { projectId: project.id, branch: "main", durationMs: 2000, total: MANY_REGRESSIONS, skipped: 0, flaky: 0 };
+    await db.insert(runs).values([
+      { ...common, id: BASE_RUN_ID, version: "1.0.0", commitSha: "aaaaaaa", passed: MANY_REGRESSIONS, failed: 0, createdAt: new Date("2026-01-01T00:00:00.000Z") },
+      { ...common, id: TARGET_RUN_ID, version: "1.0.1", commitSha: "bbbbbbb", passed: 0, failed: MANY_REGRESSIONS, createdAt: new Date("2026-01-02T00:00:00.000Z") },
+    ]);
+    const cases = await db
+      .insert(testCases)
+      .values(
+        Array.from({ length: MANY_REGRESSIONS }, (_, i) => ({
+          projectId: project.id,
+          suite: "checkout",
+          name: `R${String(i + 1).padStart(3, "0")}`,
+        })),
+      )
+      .returning({ id: testCases.id, suite: testCases.suite, name: testCases.name });
+    const result = { flakyInRun: false, retries: 0, durationMs: 1000 };
+    await db.insert(testResults).values(
+      cases.flatMap((testCase) => [
+        { ...result, runId: BASE_RUN_ID, testCaseId: testCase.id, status: "passed", message: null },
+        { ...result, runId: TARGET_RUN_ID, testCaseId: testCase.id, status: "failed", message: `${testCase.name} gagal` },
+      ]),
+    );
+    const last = cases.toSorted((a, b) => (a.name < b.name ? -1 : 1))[COMPARE_FIRST_PAGE - 1];
+    if (!last) throw new Error("gagal membuat regresi perbandingan");
+    return encodeCompareCursor({ baseId: BASE_RUN_ID, targetId: TARGET_RUN_ID, suite: last.suite, name: last.name, testCaseId: last.id });
+  }
+
   async function insertTokens(project: { id: string; createdBy: string }, count: number, firstId?: string) {
     await db.insert(projectTokens).values(
       Array.from({ length: count }, (_, i) => ({
@@ -338,6 +375,12 @@ export function createContractStates(db: Db): ContractStates {
     "pact-project punya run v1.0.0 dan v1.0.1 di branch main dengan satu regresi": async () => {
       const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
       await ensureCompareRuns(project);
+    },
+
+    // Nilai yang dikembalikan disuntikkan ke request consumer (`fromProviderState("${cursor}", …)`).
+    "pact-project punya 250 regresi antara run v1.0.0 dan v1.0.1 di branch main": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      return { cursor: await ensureManyRegressions(project) };
     },
 
     "sari anggota tester di pact-project": async () => {

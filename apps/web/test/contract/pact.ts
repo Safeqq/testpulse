@@ -54,6 +54,8 @@ export const STATE = {
   bugSeeded: "pact-project punya bug #1 tertaut ke test goyang dengan satu komentar dari budi dan satu event",
   closedBugSeeded: "pact-project punya bug #2 berstatus closed",
   compareSeeded: "pact-project punya run v1.0.0 dan v1.0.1 di branch main dengan satu regresi",
+  /** Provider mengembalikan `cursor` (halaman kedua kelompok regresi) untuk `fromProviderState("${cursor}", …)`. */
+  manyRegressions: "pact-project punya 250 regresi antara run v1.0.0 dan v1.0.1 di branch main",
 } as const;
 
 const { like, uuid, regex, iso8601DateTimeWithMillis } = MatchersV3;

@@ -18,7 +18,7 @@ import {
 } from "./pact.js";
 
 const pact = createPact();
-const { eachLike, integer, number, regex } = MatchersV3;
+const { eachLike, fromProviderState, integer, number, regex } = MatchersV3;
 
 const BASE = `/api/v1/projects/${PROJECT_SLUG}`;
 const resultStatus = (example: "passed" | "failed" | "skipped") => regex(/^(passed|failed|skipped)$/, example);
@@ -186,6 +186,58 @@ describe("kontrak versi dan perbandingan", () => {
           target: TARGET_RUN_ID,
         });
         expect(compare.groups.regressions.items[0]?.testCaseId).toBe(REGRESSION_TEST_ID);
+      });
+  });
+
+  it("GET /projects/:slug/compare?group=&cursor= memuat halaman berikutnya satu kelompok (200)", async () => {
+    // Cursor dibuat provider dengan encoder API sendiri (item ke-200 kelompok regresi) lalu disuntikkan ke request;
+    // contoh di sini hanya untuk mock server consumer. Bentuknya tetap rahasia API: klien meneruskannya apa adanya.
+    const exampleCursor = Buffer.from(
+      JSON.stringify([BASE_RUN_ID, TARGET_RUN_ID, "checkout", "R200", REGRESSION_TEST_ID]),
+    ).toString("base64url");
+    await pact
+      .addInteraction()
+      .given(STATE.budiAdmin)
+      .given(STATE.manyRegressions)
+      .uponReceiving("halaman kedua kelompok regresi dengan cursor")
+      .withRequest("GET", `${BASE}/compare`, (b) =>
+        b.headers(COOKIE_HEADERS).query({
+          base: BASE_RUN_ID,
+          target: TARGET_RUN_ID,
+          group: "regressions",
+          cursor: fromProviderState("${cursor}", exampleCursor),
+        }),
+      )
+      .willRespondWith(200, (b) =>
+        b.jsonBody({
+          items: eachLike(
+            {
+              testCaseId: uuidLike(REGRESSION_TEST_ID),
+              suite: text("checkout"),
+              name: text("R201"),
+              base: { status: resultStatus("passed"), durationMs: integer(1000), message: null, flakyInRun: MatchersV3.boolean(false) },
+              target: {
+                status: resultStatus("failed"),
+                durationMs: integer(1000),
+                message: text("R201 gagal"),
+                flakyInRun: MatchersV3.boolean(false),
+              },
+              bugs: [],
+            },
+            1,
+          ),
+          nextCursor: null,
+        }),
+      )
+      .executeTest(async (server) => {
+        const page = await clientFor(server, true).results.compareGroup(PROJECT_SLUG, {
+          base: BASE_RUN_ID,
+          target: TARGET_RUN_ID,
+          group: "regressions",
+          cursor: exampleCursor,
+        });
+        expect(page.items[0]?.name).toBe("R201");
+        expect(page.nextCursor).toBeNull();
       });
   });
 

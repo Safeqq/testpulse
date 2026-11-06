@@ -486,7 +486,7 @@ test.describe("Detail bug", () => {
     const deleted = await owner.request.delete(`/api/v1/projects/${project.slug}/runs/${runId}`);
     expect(deleted.status()).toBe(204);
     await bug.goto(project.slug, 1);
-    await expect(bug.testHint).toContainText("Run asal sudah dihapus");
+    await expect(bug.testHint).toContainText("Run asal tidak tersedia");
     await expect(bug.testHint).toContainText("Lulus 2 run terakhir berturut-turut di main");
     await expect(bug.testRunLink).toHaveCount(0);
     await expect(bug.testHistoryLink).toBeVisible();

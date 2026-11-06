@@ -53,7 +53,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | BUG-09 | Transisi tidak sah dan transisi lewat API | 409 `INVALID_TRANSITION` (mis. `closed`→`resolved`); `resolved` tanpa resolusi 400 pada `fields.resolution`; PATCH ke status sama adalah no-op (Ruling T11-a) | I, A, C | bugs.int.test.ts, bugs.spec.ts, bugs.pact.test.ts |
 | BUG-10 | Update gagal di tengah (error dipaksa) | 500; bug tidak berubah dan tidak ada event tertulis (transaksi yang sama) | I | bugs.int.test.ts |
 | BUG-11 | Anggota dikeluarkan atau keluar sendiri | Assignee semua bug project itu dikosongkan dengan event (actor = pengeluar atau orang itu); ubah role tidak menyentuh assignee | I | bugs.int.test.ts |
-| BUG-12 | Run asal terhapus | `runId` jadi null, test asal tetap; kartu test asal menampilkan "Run asal sudah dihapus" | I, E | bugs.int.test.ts, bug-detail.spec.ts |
+| BUG-12 | Run asal terhapus | `runId` jadi null, test asal tetap; kartu test asal menampilkan "Run asal tidak tersedia" (Ruling F-a) | I, E | bugs.int.test.ts, bug-detail.spec.ts |
 | BUG-13 | Hapus bug (admin) | 204; GET berikutnya 404 `BUG_NOT_FOUND`; tester dan viewer 403 | I, A, C, E | bugs.int.test.ts, bugs.spec.ts, bugs.pact.test.ts, bug-detail.spec.ts |
 | BUG-14 | Skema database | Tabel dan indeks spec bagian 5 (termasuk indeks parsial), `CHECK` enum, default, nomor unik per project, `ON DELETE` (run dan test asal `SET NULL`, anak bug dan project `CASCADE`); data Tahap 2 utuh | I | [migration-0003.int.test.ts](../../apps/api/test/integration/migration-0003.int.test.ts) |
 

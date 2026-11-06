@@ -8,7 +8,8 @@ import { withBranch } from "@/lib/navigation";
 
 /**
  * Kartu "Test asal" untuk bug yang tertaut ke test: nama dan suite test, petunjuk status terbarunya (hanya informasi,
- * status bug tidak pernah berubah otomatis), tautan ke riwayat test dan ke run asal (atau keterangan bila run itu sudah dihapus).
+ * status bug tidak pernah berubah otomatis), tautan ke riwayat test dan ke run asal (atau keterangan netral bila bug
+ * tidak punya run asal: DTO tidak membedakan run yang dihapus dari bug yang tidak pernah menyimpan run, Ruling F-a).
  */
 export function BugTestOrigin({ slug, bug }: { slug: string; bug: Pick<BugDto, "testCase" | "runId" | "testHint"> }) {
   const { testCase, runId, testHint } = bug;
@@ -37,7 +38,7 @@ export function BugTestOrigin({ slug, bug }: { slug: string; bug: Pick<BugDto, "
           </Link>
         ) : null}
       </p>
-      {runId ? null : <p className="m-0 text-sm text-muted-foreground">Run asal sudah dihapus</p>}
+      {runId ? null : <p className="m-0 text-sm text-muted-foreground">Run asal tidak tersedia</p>}
     </section>
   );
 }

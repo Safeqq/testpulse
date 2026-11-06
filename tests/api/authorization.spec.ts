@@ -59,6 +59,11 @@ async function setup(api: TestApi, actor: Actor, visibility: Visibility, bearer 
       return { runId, testCaseId };
     })());
 
+  // Bug dibuat admin project; komentarnya ditulis tester khusus agar selalu "milik orang lain" bagi aktor mana pun.
+  let bug: Promise<number> | undefined;
+  const seededBug = () => (bug ??= api.createBug(owner, project.slug, { title: "Bug awal matriks" }).then((b) => b.number));
+  let comment: Promise<string> | undefined;
+
   return {
     http,
     slug: project.slug,
@@ -68,6 +73,13 @@ async function setup(api: TestApi, actor: Actor, visibility: Visibility, bearer 
     runId: async () => (await seededRun()).runId,
     testCaseId: async () => (await seededRun()).testCaseId,
     tokenId: async () => (await ciToken()).id,
+    bugNumber: seededBug,
+    commentId: () =>
+      (comment ??= (async () => {
+        const number = await seededBug();
+        const author = await api.addMember(owner, project.slug, "tester");
+        return (await api.addComment(author, project.slug, number, { body: "Komentar orang lain" })).id;
+      })()),
   };
 }
 
@@ -150,6 +162,8 @@ test.describe("Urutan pengecekan (spec §7)", () => {
         runId: async () => randomUUID(),
         testCaseId: async () => randomUUID(),
         tokenId: async () => randomUUID(),
+        bugNumber: async () => 1,
+        commentId: async () => randomUUID(),
       };
       await expectApiError(await row.request(ctx), 401, "UNAUTHENTICATED");
     }

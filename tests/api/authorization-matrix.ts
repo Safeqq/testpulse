@@ -26,6 +26,10 @@ export interface MatrixContext {
   testCaseId(): Promise<string>;
   /** Token CI aktif di project yang sama, dibuat saat pertama diminta. */
   tokenId(): Promise<string>;
+  /** Nomor bug (versi 1) di project yang sama, dibuat saat pertama diminta oleh admin project. */
+  bugNumber(): Promise<number>;
+  /** Komentar pada bug tersebut yang ditulis tester lain (bukan aktor), dibuat saat pertama diminta. */
+  commentId(): Promise<string>;
 }
 
 export interface MatrixRow {
@@ -171,6 +175,9 @@ export const MATRIX: MatrixRow[] = [
     request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/tokens/${await ctx.tokenId()}`),
     expected: adminOnly(204),
   },
+  // Tahap 3, §6.3: bug, label, aktivitas, versi, dan perbandingan.
+  ...bugReadRows(),
+  ...bugWriteRows(),
   // Tahap 2, §7.1 baris 4: cookie sesi tanpa token tidak berlaku di endpoint upload, apa pun role-nya.
   {
     name: "POST runs dengan cookie sesi (tanpa token)",
@@ -207,4 +214,90 @@ function readRows(): MatrixRow[] {
     expected: read,
     anonymousOnPublic: 200,
   }));
+}
+
+/** Tahap 3 §6.3 baris 1: baca bug/label/aktivitas/versi/perbandingan mengikuti aturan baca project (token CI = anonim). */
+function bugReadRows(): MatrixRow[] {
+  const read: Record<Actor, number> = {
+    anonymous: 404,
+    nonMemberPrivate: 404,
+    nonMemberPublic: 200,
+    viewer: 200,
+    tester: 200,
+    admin: 200,
+  };
+  const endpoints: Array<{ name: string; path: (ctx: MatrixContext) => Promise<string> | string }> = [
+    { name: "GET bugs", path: ({ slug }) => `${P}/${slug}/bugs` },
+    { name: "GET bugs/labels", path: ({ slug }) => `${P}/${slug}/bugs/labels` },
+    { name: "GET bug", path: async (ctx) => `${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}` },
+    { name: "GET bug activity", path: async (ctx) => `${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}/activity` },
+    { name: "GET versions", path: ({ slug }) => `${P}/${slug}/versions` },
+    { name: "GET compare", path: async (ctx) => `${P}/${ctx.slug}/compare?target=${await ctx.runId()}` },
+    { name: "GET compare (groups=none)", path: ({ slug }) => `${P}/${slug}/compare?groups=none` },
+  ];
+  return endpoints.map(({ name, path }) => ({
+    name,
+    specRow: "GET bug, label, activity, versions, compare",
+    request: async (ctx) => ctx.http.get(await path(ctx)),
+    expected: read,
+    anonymousOnPublic: 200,
+  }));
+}
+
+/** Tahap 3 §6.3 baris 2–5: tulis bug/komentar = tester+, hapus bug = admin, komentar orang lain. */
+function bugWriteRows(): MatrixRow[] {
+  const testerPlus = (status: number): Record<Actor, number> => ({
+    anonymous: 401,
+    nonMemberPrivate: 404,
+    nonMemberPublic: 403,
+    viewer: 403,
+    tester: status,
+    admin: status,
+  });
+  return [
+    {
+      name: "POST bug",
+      specRow: "POST bug, PATCH bug, POST komentar",
+      request: ({ http, slug }) => http.post(`${P}/${slug}/bugs`, { data: { title: "Bug dari matriks" } }),
+      expected: testerPlus(201),
+    },
+    {
+      name: "PATCH bug",
+      specRow: "POST bug, PATCH bug, POST komentar",
+      request: async (ctx) =>
+        ctx.http.patch(`${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}`, { data: { version: 1, priority: "high" } }),
+      expected: testerPlus(200),
+    },
+    {
+      name: "POST komentar",
+      specRow: "POST bug, PATCH bug, POST komentar",
+      request: async (ctx) =>
+        ctx.http.post(`${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}/comments`, { data: { body: "Komentar matriks" } }),
+      expected: testerPlus(201),
+    },
+    {
+      name: "DELETE bug",
+      specRow: "DELETE bug",
+      request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}`),
+      expected: adminOnly(204),
+    },
+    // Hanya penulis yang boleh mengubah komentar: admin pun 403.
+    {
+      name: "PATCH komentar orang lain",
+      specRow: "PATCH komentar orang lain",
+      request: async (ctx) =>
+        ctx.http.patch(`${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}/comments/${await ctx.commentId()}`, {
+          data: { body: "Diubah orang lain" },
+        }),
+      expected: { anonymous: 401, nonMemberPrivate: 404, nonMemberPublic: 403, viewer: 403, tester: 403, admin: 403 },
+    },
+    // Admin boleh menghapus komentar siapa pun; tester hanya miliknya sendiri.
+    {
+      name: "DELETE komentar orang lain",
+      specRow: "DELETE komentar orang lain",
+      request: async (ctx) =>
+        ctx.http.delete(`${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}/comments/${await ctx.commentId()}`),
+      expected: adminOnly(204),
+    },
+  ];
 }

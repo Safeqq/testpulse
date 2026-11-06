@@ -21,6 +21,17 @@ export const RUN_ID = "66666666-6666-4666-8666-666666666666";
 export const MISSING_RUN_ID = "77777777-7777-4777-8777-777777777777";
 export const TEST_CASE_ID = "88888888-8888-4888-8888-888888888888";
 export const TOKEN_ID = "99999999-9999-4999-8999-999999999999";
+export const OWNER_ID = "55555555-5555-4555-8555-555555555555";
+// Bug tracker & perbandingan (Tahap 3): id harus UUID v4 sah karena schema shared memakai z.uuid() yang ketat.
+export const COMMENT_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+export const MISSING_COMMENT_ID = "eeeeeeee-eeee-4eee-aeee-eeeeeeeeeeee";
+export const BASE_RUN_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+export const TARGET_RUN_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+export const REGRESSION_TEST_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+// Nomor bug tetap yang dibuat provider state.
+export const BUG_NUMBER = 1;
+export const CLOSED_BUG_NUMBER = 2;
+export const MISSING_BUG_NUMBER = 99;
 export const BRANCH = "main";
 export const INVITE_TOKEN = "pact-invite-token";
 export const EXPIRED_INVITE_TOKEN = "pact-expired-token";
@@ -40,6 +51,9 @@ export const STATE = {
   runSeeded: "pact-project punya run pact-run di branch main dengan satu test gagal dan satu flaky",
   tokenActive: "pact-project punya token CI aktif Pact CI",
   tokenLimit: "pact-project sudah punya 10 token CI aktif",
+  bugSeeded: "pact-project punya bug #1 tertaut ke test goyang dengan satu komentar dari budi dan satu event",
+  closedBugSeeded: "pact-project punya bug #2 berstatus closed",
+  compareSeeded: "pact-project punya run v1.0.0 dan v1.0.1 di branch main dengan satu regresi",
 } as const;
 
 const { like, uuid, regex, iso8601DateTimeWithMillis } = MatchersV3;

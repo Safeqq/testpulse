@@ -3,6 +3,11 @@ import type { VerifierOptions } from "@pact-foundation/pact";
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "../../src/db/client.js";
 import {
+  bugComments,
+  bugEvents,
+  bugLabels,
+  bugLinks,
+  bugs,
   invitations,
   memberships,
   projectTokens,
@@ -31,6 +36,11 @@ const INVITATION_ID = "33333333-3333-4333-8333-333333333333";
 const RUN_ID = "66666666-6666-4666-8666-666666666666";
 const TEST_CASE_ID = "88888888-8888-4888-8888-888888888888";
 const TOKEN_ID = "99999999-9999-4999-8999-999999999999";
+// Bug tracker & perbandingan (Tahap 3); id harus UUID v4 sah (z.uuid() shared ketat). Sama dengan consumer.
+const COMMENT_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
+const BASE_RUN_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const TARGET_RUN_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const REGRESSION_TEST_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const MAX_ACTIVE_TOKENS = 10;
 const PROJECT_SLUG = "pact-project";
 const PUBLIC_SLUG = "pact-public";
@@ -157,6 +167,62 @@ export function createContractStates(db: Db): ContractStates {
     ]);
   }
 
+  /**
+   * Bug bernomor tetap (`number`) di project; idempoten. Penghitung `bugSeq` project dinaikkan ke nomor itu sehingga
+   * bug yang dibuat consumer berikutnya mendapat nomor berikutnya dengan pasti.
+   */
+  async function ensureBug(
+    project: { id: string },
+    number: number,
+    values: Partial<typeof bugs.$inferInsert> & { title: string },
+  ) {
+    const [existing] = await db
+      .select({ id: bugs.id })
+      .from(bugs)
+      .where(sql`${bugs.projectId} = ${project.id} and ${bugs.number} = ${number}`);
+    if (existing) return existing.id;
+    await ensureUser(OWNER);
+    const [created] = await db
+      .insert(bugs)
+      .values({ projectId: project.id, number, reporterId: OWNER.id, ...values })
+      .returning({ id: bugs.id });
+    if (!created) throw new Error(`gagal membuat bug #${number}`);
+    await db
+      .update(projects)
+      .set({ bugSeq: sql`greatest(${projects.bugSeq}, ${number})` })
+      .where(eq(projects.id, project.id));
+    return created.id;
+  }
+
+  /**
+   * Dua run di `main`: v1.0.0 (dua test lulus) lalu v1.0.1 (satu test gagal), sehingga perbandingan default
+   * memuat tepat satu regresi ("A regresi") dan satu test stabil. Waktu run tetap agar urutannya pasti.
+   */
+  async function ensureCompareRuns(project: { id: string }) {
+    const [existing] = await db.select({ id: runs.id }).from(runs).where(eq(runs.id, BASE_RUN_ID));
+    if (existing) return;
+    const common = { projectId: project.id, branch: "main", durationMs: 2000, total: 2, skipped: 0, flaky: 0 };
+    await db.insert(runs).values([
+      { ...common, id: BASE_RUN_ID, version: "1.0.0", commitSha: "aaaaaaa", passed: 2, failed: 0, createdAt: new Date("2026-01-01T00:00:00.000Z") },
+      { ...common, id: TARGET_RUN_ID, version: "1.0.1", commitSha: "bbbbbbb", passed: 1, failed: 1, createdAt: new Date("2026-01-02T00:00:00.000Z") },
+    ]);
+    const [regresi, stabil] = await db
+      .insert(testCases)
+      .values([
+        { id: REGRESSION_TEST_ID, projectId: project.id, suite: "checkout", name: "A regresi" },
+        { projectId: project.id, suite: "checkout", name: "B stabil" },
+      ])
+      .returning({ id: testCases.id });
+    if (!regresi || !stabil) throw new Error("gagal membuat test case perbandingan");
+    const result = { flakyInRun: false, retries: 0, durationMs: 1000 };
+    await db.insert(testResults).values([
+      { ...result, runId: BASE_RUN_ID, testCaseId: regresi.id, status: "passed", message: null },
+      { ...result, runId: BASE_RUN_ID, testCaseId: stabil.id, status: "passed", message: null },
+      { ...result, runId: TARGET_RUN_ID, testCaseId: regresi.id, status: "failed", message: "Diharapkan 200 tetapi 500" },
+      { ...result, runId: TARGET_RUN_ID, testCaseId: stabil.id, status: "passed", message: null },
+    ]);
+  }
+
   async function insertTokens(project: { id: string; createdBy: string }, count: number, firstId?: string) {
     await db.insert(projectTokens).values(
       Array.from({ length: count }, (_, i) => ({
@@ -221,6 +287,57 @@ export function createContractStates(db: Db): ContractStates {
     "pact-project sudah punya 10 token CI aktif": async () => {
       const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
       await insertTokens(project, MAX_ACTIVE_TOKENS);
+    },
+
+    "pact-project punya bug #1 tertaut ke test goyang dengan satu komentar dari budi dan satu event": async () => {
+      await ensureUser(BUDI);
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureRun(project);
+      const bugId = await ensureBug(project, 1, {
+        title: "Tombol bayar error",
+        description: "Tombol bayar tidak merespons.",
+        priority: "high",
+        testCaseId: TEST_CASE_ID,
+        runId: RUN_ID,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-01T02:00:00.000Z"),
+      });
+      await db.insert(bugLabels).values({ bugId, label: "ui" }).onConflictDoNothing();
+      const [link] = await db.select({ id: bugLinks.id }).from(bugLinks).where(eq(bugLinks.bugId, bugId));
+      if (!link) await db.insert(bugLinks).values({ bugId, position: 0, url: "https://ci.example.com/builds/1", title: "Build CI" });
+      // Event lebih awal dari komentar, sehingga urutan linimasa tetap: event dulu, lalu komentar.
+      const [event] = await db.select({ id: bugEvents.id }).from(bugEvents).where(eq(bugEvents.bugId, bugId));
+      if (!event) {
+        await db.insert(bugEvents).values({
+          bugId,
+          actorId: OWNER.id,
+          field: "priority",
+          oldValue: "medium",
+          newValue: "high",
+          createdAt: new Date("2026-01-01T01:00:00.000Z"),
+        });
+      }
+      await db
+        .insert(bugComments)
+        .values({ id: COMMENT_ID, bugId, authorId: BUDI.id, body: "Sudah direproduksi", createdAt: new Date("2026-01-01T02:00:00.000Z") })
+        .onConflictDoNothing();
+    },
+
+    "pact-project punya bug #2 berstatus closed": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureBug(project, 2, {
+        title: "Bug lama sudah ditutup",
+        status: "closed",
+        resolution: "wont_fix",
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-01T03:00:00.000Z"),
+        closedAt: new Date("2026-01-01T03:00:00.000Z"),
+      });
+    },
+
+    "pact-project punya run v1.0.0 dan v1.0.1 di branch main dengan satu regresi": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureCompareRuns(project);
     },
 
     "sari anggota tester di pact-project": async () => {

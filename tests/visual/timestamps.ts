@@ -49,14 +49,26 @@ export function normalizeTimestamps(value: unknown, runDates: RunDates): unknown
   return result;
 }
 
-/** Semua respons JSON `/api/v1/**` di context ini melewati `normalizeTimestamps`. Dipasang sebelum navigasi. */
+/** Header yang menggambarkan body asli; body hasil tulis ulang sudah didekompresi dan berukuran lain. */
+const STALE_HEADERS = new Set(["content-length", "content-encoding", "transfer-encoding"]);
+
+/**
+ * Semua respons JSON `/api/v1/**` di context ini melewati `normalizeTimestamps`. Dipasang sebelum navigasi. Respons
+ * bukan JSON, tanpa body (mis. 204), atau yang gagal di-parse diteruskan apa adanya.
+ */
 export async function freezeApiTimestamps(context: BrowserContext, runDates: RunDates): Promise<void> {
   await context.route("**/api/v1/**", async (route) => {
     const response = await route.fetch();
-    if (!(response.headers()["content-type"] ?? "").includes("application/json")) {
+    const text = (response.headers()["content-type"] ?? "").includes("application/json") ? await response.text() : "";
+    let rewritten: string;
+    try {
+      if (text.trim() === "") throw new Error("empty");
+      rewritten = JSON.stringify(normalizeTimestamps(JSON.parse(text), runDates));
+    } catch {
       await route.fulfill({ response });
       return;
     }
-    await route.fulfill({ response, json: normalizeTimestamps(await response.json(), runDates) });
+    const headers = Object.fromEntries(Object.entries(response.headers()).filter(([name]) => !STALE_HEADERS.has(name.toLowerCase())));
+    await route.fulfill({ status: response.status(), headers, body: rewritten });
   });
 }

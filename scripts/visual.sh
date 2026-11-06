@@ -64,7 +64,8 @@ EOF
 mkdir -p node_modules tests/node_modules packages/shared/node_modules
 
 # node_modules dari volume bernama menutupi node_modules host pada tiga lokasi yang disentuh `pnpm install --filter`.
-exec docker run --rm \
+# --init: proses 1 yang benar (menuai proses anak browser, meneruskan sinyal); --ipc=host: anjuran Playwright untuk Chromium.
+exec docker run --rm --init \
   --network "$NETWORK" \
   -v "$MOUNT_ROOT:/work" \
   -v testpulse-visual-nm-root:/work/node_modules \

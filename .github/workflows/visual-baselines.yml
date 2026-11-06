@@ -1,0 +1,40 @@
+name: Visual baselines
+
+# Manual: regenerates every visual-regression baseline on a GitHub runner and uploads them as an artifact. Use it when the
+# `visual` job in CI.yml fails only on rendering noise between the machine that made the baselines and the runner. Download
+# the `visual-baselines` artifact, copy its files over tests/visual/__screenshots__/, review the git diff, and commit.
+# (The `visual-diff` artifact of a failed CI run also holds the runner's `*-actual.png` files, which can be used the same way.)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    name: Regenerate baselines (Playwright container)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start stack (docker compose)
+        run: docker compose up -d --build --wait
+
+      # Baselines are removed first so every screenshot is rewritten (update mode alone only rewrites those over tolerance).
+      - name: Regenerate baselines
+        run: |
+          rm -rf tests/visual/__screenshots__
+          bash scripts/visual.sh --update
+
+      - name: Upload baselines
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: tests/visual/__screenshots__
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stack logs
+        if: ${{ failure() }}
+        run: docker compose logs --no-color --tail=200

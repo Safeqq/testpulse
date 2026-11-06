@@ -1,6 +1,7 @@
 import { stripControlChars } from "@testpulse/shared";
 
-/** Batas deskripsi bug di server (spec Tahap 3 §3.1). */
+/** Batas judul dan deskripsi bug di server (spec Tahap 3 §3.1), dalam code unit UTF-16 seperti `.max()` zod. */
+const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 20_000;
 const TRUNCATED = "… (dipotong)";
 
@@ -43,6 +44,19 @@ function fenceFor(text: string): string {
  */
 function ciAutolink(url: string): string | null {
   return /^https?:\/\/[^\s<>]+$/i.test(url) ? `<${url}>` : null;
+}
+
+/**
+ * Judul awal bug dari nama test (data laporan CI): karakter kontrol dibuang, spasi/baris baru dirapikan menjadi satu
+ * spasi (judul satu baris), lalu dipotong ke `MAX_TITLE` di batas code point (tidak pernah menyisakan separuh pasangan
+ * surrogate) agar lolos validasi judul server.
+ */
+export function buildBugReportTitle(testName: string): string {
+  const flat = stripControlChars(testName).replace(/\s+/g, " ").trim();
+  if (flat.length <= MAX_TITLE) return flat;
+  let kept = flat.slice(0, MAX_TITLE);
+  if (/[\ud800-\udbff]$/.test(kept)) kept = kept.slice(0, -1);
+  return kept.trimEnd();
 }
 
 function assemble(head: string[], message: string | null): string {

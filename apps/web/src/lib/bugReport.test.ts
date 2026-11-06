@@ -1,6 +1,6 @@
 import { createBugBody } from "@testpulse/shared";
 import { describe, expect, it } from "vitest";
-import { buildBugReportDescription } from "./bugReport";
+import { buildBugReportDescription, buildBugReportTitle } from "./bugReport";
 
 const base = {
   suite: "checkout",
@@ -97,5 +97,37 @@ describe("buildBugReportDescription", () => {
     expect(text).toContain("`suite`");
     expect(text).toContain("ab\tc\nde");
     expect(valid(text)).toBe(true);
+  });
+});
+
+describe("buildBugReportTitle", () => {
+  const validTitle = (title: string) => createBugBody.shape.title.safeParse(title).success;
+
+  it("nama test 500 karakter dengan emoji tepat di batas: dipotong 200 code unit tanpa memecah pasangan surrogate", () => {
+    // 199 huruf lalu emoji (2 code unit, indeks 199–200): memotong di 200 akan menyisakan separuh surrogate.
+    const name = `${"a".repeat(199)}😀${"b".repeat(299)}`;
+    expect(name.length).toBe(500);
+    const title = buildBugReportTitle(name);
+    expect(title).toBe("a".repeat(199));
+    expect(/[\ud800-\udbff]$/.test(title)).toBe(false);
+    expect(validTitle(title)).toBe(true);
+  });
+
+  it("emoji yang muat utuh di batas tetap dipertahankan", () => {
+    const title = buildBugReportTitle(`${"a".repeat(198)}😀${"b".repeat(300)}`);
+    expect(title).toBe(`${"a".repeat(198)}😀`);
+    expect(title.length).toBe(200);
+    expect(validTitle(title)).toBe(true);
+  });
+
+  it("membuang karakter kontrol C0/C1 dan merapikan spasi agar lolos validasi judul", () => {
+    const title = buildBugReportTitle("  login\u0000 gagal\u0085\u009f di\n\tcheckout\u007f  ");
+    expect(title).toBe("login gagal di checkout");
+    expect(validTitle(title)).toBe(true);
+  });
+
+  it("karakter kontrol dibuang sebelum memotong, jadi tidak menghabiskan jatah 200 karakter", () => {
+    const title = buildBugReportTitle(`${"\u0085".repeat(300)}${"x".repeat(250)}`);
+    expect(title).toBe("x".repeat(200));
   });
 });

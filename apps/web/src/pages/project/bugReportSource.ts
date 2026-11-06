@@ -1,5 +1,5 @@
 import { api, ApiError } from "@/lib/api";
-import { buildBugReportDescription } from "@/lib/bugReport";
+import { buildBugReportDescription, buildBugReportTitle } from "@/lib/bugReport";
 
 /** Isian awal formulir bug yang berasal dari satu test (dari tombol "Laporkan bug" di detail run). */
 export interface BugReportPrefill {
@@ -38,7 +38,7 @@ export async function loadBugReportSource(
             runId,
             suite: found.suite,
             testName: found.name,
-            title: found.name,
+            title: buildBugReportTitle(found.name),
             description: buildBugReportDescription({
               suite: found.suite,
               branch: detail.run.branch,
@@ -65,7 +65,7 @@ export async function loadBugReportSource(
     runId: knownRunId,
     suite,
     testName: name,
-    title: name,
+    title: buildBugReportTitle(name),
     description: buildBugReportDescription({ suite, branch: history.branch, commitSha: null, ciUrl: null, message: null }),
   };
 }

@@ -20,12 +20,12 @@
     "test:contract": "vitest run --project contract"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.11.2"
+    "fast-xml-parser": "^5.12.0"
   },
   "devDependencies": {
     "@pact-foundation/pact": "^17.1.4",
     "@testpulse/shared": "workspace:*",
     "@types/node": "^24.19.2",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   }
 }

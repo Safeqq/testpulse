@@ -1,15 +1,19 @@
+import type { CasePriority, CaseStep, StepResult } from "@testpulse/shared";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigserial,
   boolean,
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 
@@ -45,6 +49,9 @@ export const projects = pgTable(
     createdAt: createdAt(),
     // Penghitung nomor bug per project (spec Tahap 3 §5): dinaikkan di dalam transaksi pembuatan bug.
     bugSeq: integer("bug_seq").notNull().default(0),
+    // Penghitung nomor TC-<n> dan TR-<n> (spec Tahap 4 §6): dinaikkan di dalam transaksi pembuatan, tidak pernah dipakai ulang.
+    caseSeq: integer("case_seq").notNull().default(0),
+    manualRunSeq: integer("manual_run_seq").notNull().default(0),
   },
   (t) => [check("projects_visibility_check", sql`${t.visibility} in ('private', 'public')`)],
 );
@@ -193,6 +200,9 @@ export const bugs = pgTable(
       .references(() => users.id),
     testCaseId: uuid("test_case_id").references(() => testCases.id, { onDelete: "set null" }),
     runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+    // Asal manual (spec Tahap 4 §6): run case tempat bug ditemukan. `manualRunCases` dideklarasikan setelah `bugs`
+    // (dan merujuk balik ke tabel lain), jadi tipe referensinya dieksplisitkan dengan `AnyPgColumn`.
+    manualRunCaseId: uuid("manual_run_case_id").references((): AnyPgColumn => manualRunCases.id, { onDelete: "set null" }),
     // Penghitung konkurensi optimistis (409 BUG_CONFLICT), bukan versi aplikasi.
     version: integer("version").notNull().default(1),
     createdAt: createdAt(),
@@ -211,6 +221,10 @@ export const bugs = pgTable(
     // EXPLAIN pada data uji (90% bug closed) memilih indeks parsial ini dan membaca ~3× lebih sedikit blok.
     index("bugs_test_case_open_idx")
       .on(t.testCaseId)
+      .where(sql`${t.status} <> 'closed'`),
+    // Badge bug per run case hanya menghitung bug yang belum ditutup; FK SET NULL memakai indeks yang sama.
+    index("bugs_manual_run_case_open_idx")
+      .on(t.manualRunCaseId)
       .where(sql`${t.status} <> 'closed'`),
     check("bugs_status_check", sql`${t.status} in ('open', 'in_progress', 'resolved', 'closed')`),
     check(
@@ -282,4 +296,150 @@ export const bugEvents = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("bug_events_bug_created_idx").on(t.bugId, t.createdAt)],
+);
+
+// ---- Test manual (spec Tahap 4 §6) ----
+
+const updatedAt = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
+
+export const caseSuites = pgTable(
+  "case_suites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    position: integer("position").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    // Nama suite unik per project tanpa peka huruf besar/kecil ("Login" dan "login" bentrok).
+    uniqueIndex("case_suites_project_lower_name_unique").on(t.projectId, sql`lower(${t.name})`),
+    index("case_suites_project_position_idx").on(t.projectId, t.position),
+  ],
+);
+
+export const manualCases = pgTable(
+  "manual_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Nomor TC-<n> dari `projects.case_seq`.
+    number: integer("number").notNull(),
+    // RESTRICT: suite hanya bisa dihapus bila kosong (termasuk case arsip); diperiksa juga di aplikasi (409 SUITE_NOT_EMPTY).
+    suiteId: uuid("suite_id")
+      .notNull()
+      .references(() => caseSuites.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    preconditions: text("preconditions").notNull().default(""),
+    steps: jsonb("steps").$type<CaseStep[]>().notNull(),
+    priority: text("priority").$type<CasePriority>().notNull().default("medium"),
+    automatedTestId: uuid("automated_test_id").references(() => testCases.id, { onDelete: "set null" }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    updatedBy: uuid("updated_by")
+      .notNull()
+      .references(() => users.id),
+    // Penghitung konkurensi optimistis (409 CASE_CONFLICT), bukan versi aplikasi.
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique("manual_cases_project_number_unique").on(t.projectId, t.number),
+    index("manual_cases_project_suite_number_idx").on(t.projectId, t.suiteId, t.number),
+    // FK `ON DELETE SET NULL` + hitung cakupan otomasi: hanya case yang tertaut yang perlu diindeks.
+    index("manual_cases_automated_test_idx")
+      .on(t.automatedTestId)
+      .where(sql`${t.automatedTestId} is not null`),
+    check("manual_cases_priority_check", sql`${t.priority} in ('low', 'medium', 'high', 'urgent')`),
+  ],
+);
+
+export const manualCaseLabels = pgTable(
+  "manual_case_labels",
+  {
+    caseId: uuid("case_id")
+      .notNull()
+      .references(() => manualCases.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.caseId, t.label] })],
+);
+
+export const manualRuns = pgTable(
+  "manual_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Nomor TR-<n> dari `projects.manual_run_seq`.
+    number: integer("number").notNull(),
+    name: text("name").notNull(),
+    // Versi aplikasi yang diuji (cocok dengan `runs.version`); NULL bila tanpa versi. Bukan konkurensi: itu `version`.
+    appVersion: text("app_version"),
+    status: text("status").notNull().default("open"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    completedBy: uuid("completed_by").references(() => users.id),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    // Penghitung konkurensi optimistis (409 MANUAL_RUN_CONFLICT).
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique("manual_runs_project_number_unique").on(t.projectId, t.number),
+    index("manual_runs_project_created_idx").on(t.projectId, sql`${t.createdAt} desc`),
+    index("manual_runs_project_app_version_idx").on(t.projectId, t.appVersion),
+    check("manual_runs_status_check", sql`${t.status} in ('open', 'completed')`),
+  ],
+);
+
+export const manualRunCases = pgTable(
+  "manual_run_cases",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => manualRuns.id, { onDelete: "cascade" }),
+    // SET NULL: menghapus case sumber tidak menghapus hasil; snapshot di bawah tetap utuh.
+    caseId: uuid("case_id").references(() => manualCases.id, { onDelete: "set null" }),
+    position: integer("position").notNull(),
+    // Snapshot case saat run dibuat (spec §4.2); tidak ikut berubah bila case sumber diubah.
+    caseNumber: integer("case_number").notNull(),
+    suiteName: text("suite_name").notNull(),
+    suitePosition: integer("suite_position").notNull(),
+    title: text("title").notNull(),
+    preconditions: text("preconditions").notNull().default(""),
+    steps: jsonb("steps").$type<CaseStep[]>().notNull(),
+    priority: text("priority").$type<CasePriority>().notNull(),
+    // Hasil eksekusi.
+    status: text("status").notNull().default("untested"),
+    stepResults: jsonb("step_results").$type<StepResult[]>().notNull(),
+    note: text("note").notNull().default(""),
+    // SET NULL bila pengguna dihapus; mengeluarkan anggota dari project mengosongkan assignee lewat logika aplikasi.
+    assigneeId: uuid("assignee_id").references(() => users.id, { onDelete: "set null" }),
+    executedBy: uuid("executed_by").references(() => users.id, { onDelete: "set null" }),
+    executedAt: timestamp("executed_at", { withTimezone: true }),
+    // Penghitung konkurensi optimistis (409 MANUAL_RUN_CONFLICT).
+    version: integer("version").notNull().default(1),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index("manual_run_cases_run_position_idx").on(t.runId, t.position),
+    index("manual_run_cases_run_status_idx").on(t.runId, t.status),
+    // FK `ON DELETE SET NULL`: menghapus case sumber mencari run case lewat kolom ini; juga riwayat hasil per case.
+    index("manual_run_cases_case_idx").on(t.caseId),
+    check("manual_run_cases_status_check", sql`${t.status} in ('untested', 'passed', 'failed', 'blocked', 'skipped')`),
+  ],
 );

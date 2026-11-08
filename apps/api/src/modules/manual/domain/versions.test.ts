@@ -109,13 +109,27 @@ describe("mergeManualVersions", () => {
     ]);
   });
 
-  it("automated non-semver: pencocokan harus string identik", () => {
+  it("pencocokan berpasangan: automated berisi non-semver, v0.4.0 tetap cocok dengan 0.4.0", () => {
+    const { rows, matchOf } = mergeManualVersions({
+      automated: ["0.3.0", "build-5", "0.4.0"],
+      manual: [manual("v0.4.0", 5), manual("build-5", 6)],
+    });
+    expect(rows).toEqual([
+      { version: "0.3.0", automated: true },
+      { version: "build-5", automated: true },
+      { version: "0.4.0", automated: true },
+    ]);
+    expect(matchOf("v0.4.0")).toBe("0.4.0");
+    expect(matchOf("build-5")).toBe("build-5");
+  });
+
+  it("pencocokan berpasangan: non-semver hanya cocok dengan string identik", () => {
     const { rows, matchOf } = mergeManualVersions({
       automated: ["build-1", "0.4.0"],
-      manual: [manual("v0.4.0", 5)],
+      manual: [manual("build-1x", 5)],
     });
-    expect(labels(rows)).toEqual(["v0.4.0", "build-1", "0.4.0"]);
-    expect(matchOf("v0.4.0")).toBe("v0.4.0");
+    expect(labels(rows)).toEqual(["build-1x", "build-1", "0.4.0"]);
+    expect(matchOf("build-1x")).toBe("build-1x");
   });
 
   it("seri waktu di manual-saja non-semver diurut menurut string", () => {

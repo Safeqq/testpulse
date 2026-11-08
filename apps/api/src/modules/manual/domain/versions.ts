@@ -6,8 +6,8 @@ type ManualVersionEntry = { appVersion: string; latestAt: Date };
  * Menggabungkan versi automated sebuah branch dengan versi run manual (spec §5.1 langkah 1–3).
  * Hasil terendah → tertinggi; pemanggil yang membalik urutan dan memotong ke 100 baris.
  *
- * - Versi manual yang sama dengan versi automated (aturan `sameVersion`: semver hanya bila semua versi automated
- *   semver, selain itu string identik) tidak menjadi baris baru.
+ * - Versi manual yang sama dengan versi automated (berpasangan: semver bila keduanya semver, selain itu string
+ *   identik) tidak menjadi baris baru.
  * - Versi manual-saja disisipkan menurut semver bila versi automated dan semua versi manual-saja semver;
  *   selain itu ditaruh di bawah semua versi automated, berurut waktu run manual terbarunya.
  *
@@ -19,7 +19,8 @@ export function mergeManualVersions(input: {
   manual: readonly ManualVersionEntry[];
 }): { rows: Array<{ version: string; automated: boolean }>; matchOf: (manualVersion: string) => string | null } {
   const automatedSemver = isAllSemver(input.automated);
-  const findAutomated = (version: string) => input.automated.find((a) => sameVersion(a, version, automatedSemver));
+  // Pencocokan berpasangan (spec §5.1): semver bila keduanya semver, selain itu string identik.
+  const findAutomated = (version: string) => input.automated.find((a) => sameVersion(a, version, true));
 
   const manualOnly = input.manual.filter((m) => findAutomated(m.appVersion) === undefined);
   const entries = manualOnly.map((m) => ({ version: m.appVersion, latestRunAt: m.latestAt }));

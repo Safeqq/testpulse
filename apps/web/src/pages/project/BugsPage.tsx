@@ -1,17 +1,16 @@
 import { bugListQuery, type BugListQuery, type BugSummaryDto, type MemberDto } from "@testpulse/shared";
-import { Bug, Loader2, Plus, Search } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import { Bug, Loader2, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { BugStatus } from "@/components/BugStatus";
 import { EmptyState } from "@/components/EmptyState";
+import { FilterSelect } from "@/components/FilterSelect";
 import { LIST_ITEM_LINK_CLASS } from "@/components/listItemLink";
 import { LoadError } from "@/components/LoadError";
 import { Loading } from "@/components/Loading";
-import { NativeSelect } from "@/components/NativeSelect";
+import { SearchForm } from "@/components/SearchForm";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { BUG_PRIORITY_LABEL, BUG_SEVERITY_LABEL } from "@/lib/bugs";
 import { formatRelativeTime } from "@/lib/format";
@@ -150,7 +149,7 @@ function BugsView({ slug, isMember, canCreate }: { slug: string; isMember: boole
         <LabelFilter slug={slug} value={filters.label ?? ""} onChange={(value) => setFilter("label", value)} />
       </div>
 
-      <SearchForm value={filters.q ?? ""} onSubmit={(value) => setFilter("q", value.trim())} />
+      <SearchForm value={filters.q ?? ""} onSubmit={(value) => setFilter("q", value.trim())} testId="bugs-search" />
 
       <BugsList
         key={params.toString()}
@@ -163,37 +162,6 @@ function BugsView({ slug, isMember, canCreate }: { slug: string; isMember: boole
         }
       />
     </section>
-  );
-}
-
-function FilterSelect({
-  label,
-  testId,
-  allLabel,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  testId: string;
-  allLabel: string;
-  value: string;
-  options: [string, ReactNode][];
-  onChange: (value: string) => void;
-}) {
-  const id = useId();
-  return (
-    <div className="grid min-w-0 gap-1.5 [&>span]:w-full">
-      <Label htmlFor={id}>{label}</Label>
-      <NativeSelect id={id} data-testid={testId} value={value} onChange={(e) => onChange(e.target.value)} className="w-full">
-        <option value="">{allLabel}</option>
-        {options.map(([optionValue, optionLabel]) => (
-          <option key={optionValue} value={optionValue}>
-            {optionLabel}
-          </option>
-        ))}
-      </NativeSelect>
-    </div>
   );
 }
 
@@ -254,46 +222,6 @@ function LabelFilter({ slug, value, onChange }: { slug: string; value: string; o
       options={options.map((label): [string, ReactNode] => [label, label])}
       onChange={onChange}
     />
-  );
-}
-
-/** Kolom cari: teks diketik lokal, dikirim ke URL saat submit, dan mengikuti URL bila berubah dari luar (mis. Kembali/Atur ulang). */
-function SearchForm({ value, onSubmit }: { value: string; onSubmit: (value: string) => void }) {
-  const id = useId();
-  const [draft, setDraft] = useState(value);
-  const [seen, setSeen] = useState(value);
-  // Menyelaraskan state saat render (tanpa effect/remount) supaya kolom tetap fokus setelah submit.
-  if (value !== seen) {
-    setSeen(value);
-    setDraft(value);
-  }
-  return (
-    <form
-      role="search"
-      className="flex min-w-0 flex-wrap items-end gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSubmit(draft);
-      }}
-    >
-      <div className="grid min-w-0 flex-1 gap-1.5 sm:max-w-md">
-        <Label htmlFor={id}>Cari judul</Label>
-        <Input
-          id={id}
-          name="q"
-          type="search"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={100}
-          autoComplete="off"
-          data-testid="bugs-search"
-        />
-      </div>
-      <Button type="submit" variant="outline" data-testid="bugs-search-submit">
-        <Search aria-hidden="true" />
-        Cari
-      </Button>
-    </form>
   );
 }
 

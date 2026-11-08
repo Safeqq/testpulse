@@ -15,6 +15,7 @@ import {
   BugNewPage,
   BugPage,
   BugsPage,
+  CasesPage,
   ComparePage,
   FlakyPage,
   RunPage,
@@ -59,6 +60,7 @@ export function App() {
           <Route path="/p/:slug/compare" element={<ComparePage />} />
           <Route path="/p/:slug/versions" element={<VersionsPage />} />
           <Route path="/p/:slug/tests/:testCaseId" element={<TestHistoryPage />} />
+          <Route path="/p/:slug/cases" element={<CasesPage />} />
           <Route path="/p/:slug/bugs" element={<BugsPage />} />
           <Route path="/p/:slug/bugs/new" element={<BugNewPage />} />
           <Route path="/p/:slug/bugs/:number" element={<BugPage />} />

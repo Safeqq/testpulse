@@ -12,6 +12,10 @@ import type {
   CompareGroup,
   CompareGroupPageDto,
   CompareQuery,
+  CasesPageDto,
+  CaseListQuery,
+  CreateCaseBody,
+  CreateManualRunBody,
   CreateBugBody,
   CreateInvitationBody,
   CreateProjectBody,
@@ -23,17 +27,32 @@ import type {
   InvitationDto,
   InvitationPreviewDto,
   LoginBody,
+  ManualCaseDto,
+  ManualRunDto,
+  ManualRunListQuery,
+  ManualRunsPageDto,
+  ManualSummaryDto,
   MemberDto,
   ProjectDto,
   RegisterBody,
+  RunCaseDto,
+  RunCaseListQuery,
+  RunCasesPageDto,
   RunDetailDto,
   RunsPageDto,
   StatsDto,
+  SuiteBody,
+  SuiteDto,
   TestHistoryDto,
+  TestSearchItemDto,
   TokenDto,
   UpdateBugBody,
+  UpdateCaseBody,
+  UpdateManualRunBody,
   UpdateMemberBody,
   UpdateProjectBody,
+  UpdateRunCaseBody,
+  UpdateSuiteBody,
   UserDto,
   VersionDto,
 } from "@testpulse/shared";
@@ -85,6 +104,10 @@ function withQuery(path: string, params: Record<string, string | undefined>): st
   const text = query.toString();
   return text === "" ? path : `${path}?${text}`;
 }
+
+/** Isi buat run manual: server mengisi `suiteIds`/`caseNumbers` yang tidak dikirim dengan daftar kosong. */
+export type CreateManualRunInput = Omit<CreateManualRunBody, "suiteIds" | "caseNumbers"> &
+  Partial<Pick<CreateManualRunBody, "suiteIds" | "caseNumbers">>;
 
 /** Pasangan run yang dibandingkan; kosong = default server (spec Tahap 3 §4.3). */
 export type CompareParams = Pick<CompareQuery, "base" | "target" | "branch" | "groups">;
@@ -184,6 +207,49 @@ export function createApiClient(baseUrl: string, fetchFn: typeof fetch = fetch) 
       remove: (slug: string, number: number) => request<void>("DELETE", `/projects/${seg(slug)}/bugs/${number}`),
       activity: (slug: string, number: number, cursor?: string) =>
         request<ActivityPageDto>("GET", withQuery(`/projects/${seg(slug)}/bugs/${number}/activity`, { cursor })),
+    },
+    manual: {
+      suites: {
+        list: (slug: string) => request<SuiteDto[]>("GET", `/projects/${seg(slug)}/suites`),
+        create: (slug: string, body: SuiteBody) => request<SuiteDto>("POST", `/projects/${seg(slug)}/suites`, body),
+        update: (slug: string, id: string, body: UpdateSuiteBody) =>
+          request<SuiteDto>("PATCH", `/projects/${seg(slug)}/suites/${seg(id)}`, body),
+        remove: (slug: string, id: string) => request<void>("DELETE", `/projects/${seg(slug)}/suites/${seg(id)}`),
+      },
+      cases: {
+        list: (slug: string, query: Partial<CaseListQuery> = {}) =>
+          request<CasesPageDto>("GET", withQuery(`/projects/${seg(slug)}/cases`, query)),
+        labels: (slug: string) => request<string[]>("GET", `/projects/${seg(slug)}/cases/labels`),
+        get: (slug: string, number: number) => request<ManualCaseDto>("GET", `/projects/${seg(slug)}/cases/${number}`),
+        create: (slug: string, body: CreateCaseBody) =>
+          request<ManualCaseDto>("POST", `/projects/${seg(slug)}/cases`, body),
+        update: (slug: string, number: number, body: UpdateCaseBody) =>
+          request<ManualCaseDto>("PATCH", `/projects/${seg(slug)}/cases/${number}`, body),
+        remove: (slug: string, number: number) => request<void>("DELETE", `/projects/${seg(slug)}/cases/${number}`),
+      },
+      searchTests: (slug: string, q: string) =>
+        request<TestSearchItemDto[]>("GET", withQuery(`/projects/${seg(slug)}/tests`, { q })),
+      runs: {
+        list: (slug: string, query: Partial<ManualRunListQuery> = {}) =>
+          request<ManualRunsPageDto>("GET", withQuery(`/projects/${seg(slug)}/manual-runs`, query)),
+        get: (slug: string, number: number) =>
+          request<ManualRunDto>("GET", `/projects/${seg(slug)}/manual-runs/${number}`),
+        create: (slug: string, body: CreateManualRunInput) =>
+          request<ManualRunDto>("POST", `/projects/${seg(slug)}/manual-runs`, body),
+        update: (slug: string, number: number, body: UpdateManualRunBody) =>
+          request<ManualRunDto>("PATCH", `/projects/${seg(slug)}/manual-runs/${number}`, body),
+        remove: (slug: string, number: number) =>
+          request<void>("DELETE", `/projects/${seg(slug)}/manual-runs/${number}`),
+      },
+      runCases: {
+        list: (slug: string, runNumber: number, query: Partial<RunCaseListQuery> = {}) =>
+          request<RunCasesPageDto>("GET", withQuery(`/projects/${seg(slug)}/manual-runs/${runNumber}/cases`, query)),
+        get: (slug: string, runNumber: number, id: string) =>
+          request<RunCaseDto>("GET", `/projects/${seg(slug)}/manual-runs/${runNumber}/cases/${seg(id)}`),
+        update: (slug: string, runNumber: number, id: string, body: UpdateRunCaseBody) =>
+          request<RunCaseDto>("PATCH", `/projects/${seg(slug)}/manual-runs/${runNumber}/cases/${seg(id)}`, body),
+      },
+      summary: (slug: string) => request<ManualSummaryDto>("GET", `/projects/${seg(slug)}/manual/summary`),
     },
     comments: {
       create: (slug: string, number: number, body: CommentBody) =>

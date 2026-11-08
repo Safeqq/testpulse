@@ -9,6 +9,7 @@ const loadBugsPage = () => import("./BugsPage").then((m) => ({ default: m.BugsPa
 const loadBugNewPage = () => import("./BugNewPage").then((m) => ({ default: m.BugNewPage }));
 const loadComparePage = () => import("./ComparePage").then((m) => ({ default: m.ComparePage }));
 const loadVersionsPage = () => import("./VersionsPage").then((m) => ({ default: m.VersionsPage }));
+const loadCasesPage = () => import("./CasesPage").then((m) => ({ default: m.CasesPage }));
 const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage }));
 
 export const RunsPage = lazy(loadRunsPage);
@@ -18,6 +19,7 @@ export const TestHistoryPage = lazy(loadTestHistoryPage);
 export const BugsPage = lazy(loadBugsPage);
 export const BugNewPage = lazy(loadBugNewPage);
 export const BugPage = lazy(loadBugPage);
+export const CasesPage = lazy(loadCasesPage);
 export const ComparePage = lazy(loadComparePage);
 export const VersionsPage = lazy(loadVersionsPage);
 
@@ -31,6 +33,7 @@ const LOADERS = {
   bug: loadBugPage,
   compare: loadComparePage,
   versions: loadVersionsPage,
+  cases: loadCasesPage,
 };
 
 /**

@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { withBranch } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
-export type ProjectTab = "ringkasan" | "run" | "versi" | "bug" | "flaky" | "pengaturan";
+export type ProjectTab = "ringkasan" | "run" | "versi" | "manual" | "bug" | "flaky" | "pengaturan";
 
 interface TabDef {
   id: ProjectTab;
@@ -18,6 +18,8 @@ const TABS: readonly TabDef[] = [
   { id: "ringkasan", label: "Ringkasan", path: "", branchScoped: true },
   { id: "run", label: "Run", path: "/runs", branchScoped: true },
   { id: "versi", label: "Versi", path: "/versions", branchScoped: true },
+  // Test manual tidak terikat branch: tautannya tidak membawa `?branch=`. Aktif untuk /cases* dan /manual-runs*.
+  { id: "manual", label: "Test manual", path: "/cases" },
   { id: "bug", label: "Bug", path: "/bugs" },
   { id: "flaky", label: "Flaky", path: "/flaky", branchScoped: true },
   { id: "pengaturan", label: "Pengaturan", path: "/settings" },
@@ -55,7 +57,7 @@ interface ProjectTabsProps {
 }
 
 /**
- * Navigasi antarhalaman project (spec Tahap 3 §7.1). Di layar sempit tab bisa digeser mendatar di dalam wadahnya
+ * Navigasi antarhalaman project (spec Tahap 3 §7.1, Tahap 4 §8.1). Di layar sempit tab bisa digeser mendatar di dalam wadahnya
  * sendiri (`min-w-0` + `overflow-x-auto`), jadi halaman tidak ikut bergulir; setiap tab adalah tautan biasa yang
  * bisa difokus dengan keyboard, dan fokus menggulirkan tab ke dalam tampilan. Bila URL saat ini memuat `?branch=`, tab
  * halaman per branch (Ringkasan, Run, Versi, Flaky) membawanya agar pindah tab tetap di branch yang sama.

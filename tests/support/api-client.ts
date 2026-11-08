@@ -5,20 +5,33 @@ import type {
   CommentBody,
   CommentDto,
   CreateBugBody,
+  CreateCaseBody,
+  CreateManualRunBody,
   CreateProjectBody,
   CreatedInvitationDto,
   CreatedTokenDto,
   InvitableRole,
+  ManualCaseDto,
+  ManualRunDto,
   ProjectDto,
   RegisterBody,
   Role,
+  RunCaseDto,
+  SuiteBody,
+  SuiteDto,
   UpdateBugBody,
+  UpdateCaseBody,
+  UpdateRunCaseBody,
   UserDto,
   Visibility,
 } from "@testpulse/shared";
 import { newProjectData, newUserData } from "./data.js";
 
 const API = "/api/v1";
+
+/** Isi buat run manual; `suiteIds`/`caseNumbers` yang tidak dikirim dianggap kosong oleh server. */
+export type CreateManualRunInput = Omit<CreateManualRunBody, "suiteIds" | "caseNumbers"> &
+  Partial<Pick<CreateManualRunBody, "suiteIds" | "caseNumbers">>;
 
 /** Satu `APIRequestContext` per user agar cookie sesi tiap user terpisah. */
 export interface TestUser {
@@ -127,6 +140,49 @@ export class TestApi {
       await user.request.post(`${API}/projects/${slug}/bugs/${number}/comments`, { data: body }),
       201,
       "addComment",
+    );
+  }
+
+  /** Buat suite test manual sebagai `user` (tester/admin); suite baru berada di posisi terakhir. */
+  async createSuite(user: TestUser, slug: string, body: SuiteBody): Promise<SuiteDto> {
+    return expectStatus<SuiteDto>(await user.request.post(`${API}/projects/${slug}/suites`, { data: body }), 201, "createSuite");
+  }
+
+  /** Buat test case manual; `number` (TC-n) dialokasikan server. */
+  async createCase(user: TestUser, slug: string, body: CreateCaseBody): Promise<ManualCaseDto> {
+    return expectStatus<ManualCaseDto>(await user.request.post(`${API}/projects/${slug}/cases`, { data: body }), 201, "createCase");
+  }
+
+  /** Ubah case; `body.version` harus versi terakhir case itu (mulai 1, naik tiap perubahan). */
+  async updateCase(user: TestUser, slug: string, number: number, body: UpdateCaseBody): Promise<ManualCaseDto> {
+    return expectStatus<ManualCaseDto>(
+      await user.request.patch(`${API}/projects/${slug}/cases/${number}`, { data: body }),
+      200,
+      "updateCase",
+    );
+  }
+
+  /** Buat run manual dari suite dan/atau nomor case; case disalin sebagai snapshot saat run dibuat. */
+  async createManualRun(user: TestUser, slug: string, body: CreateManualRunInput): Promise<ManualRunDto> {
+    return expectStatus<ManualRunDto>(
+      await user.request.post(`${API}/projects/${slug}/manual-runs`, { data: body }),
+      201,
+      "createManualRun",
+    );
+  }
+
+  /** Isi hasil satu run case; `body.version` harus versi terakhir run case itu. */
+  async updateRunCase(
+    user: TestUser,
+    slug: string,
+    runNumber: number,
+    id: string,
+    body: UpdateRunCaseBody,
+  ): Promise<RunCaseDto> {
+    return expectStatus<RunCaseDto>(
+      await user.request.patch(`${API}/projects/${slug}/manual-runs/${runNumber}/cases/${id}`, { data: body }),
+      200,
+      "updateRunCase",
     );
   }
 

@@ -15,8 +15,8 @@ import { buildJUnit } from "../support/junit.js";
 const LAZY_NAVIGATION_TIMEOUT = 15_000;
 const MOBILE = { width: 375, height: 812 };
 const NARROW = { width: 320, height: 800 };
-const MEMBER_LABELS = ["Ringkasan", "Run", "Versi", "Bug", "Flaky", "Pengaturan"];
-const VISITOR_LABELS = ["Ringkasan", "Run", "Versi", "Bug", "Flaky"];
+const MEMBER_LABELS = ["Ringkasan", "Run", "Versi", "Test manual", "Bug", "Flaky", "Pengaturan"];
+const VISITOR_LABELS = ["Ringkasan", "Run", "Versi", "Test manual", "Bug", "Flaky"];
 
 async function horizontalOverflow(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -45,7 +45,7 @@ async function expectCurrentTab(tabs: ProjectTabsNav, label: string): Promise<vo
 }
 
 test.describe("Tab navigasi project", () => {
-  test("anggota melihat enam tab menuju rute masing-masing; tab aktif ditandai aria-current", async ({
+  test("anggota melihat tujuh tab menuju rute masing-masing; tab aktif ditandai aria-current", async ({
     api,
     signedInPage,
     expectNoA11yViolationsInBothThemes,
@@ -62,6 +62,7 @@ test.describe("Tab navigasi project", () => {
     await expect(tabs.tab("ringkasan")).toHaveAttribute("href", base);
     await expect(tabs.tab("run")).toHaveAttribute("href", `${base}/runs`);
     await expect(tabs.tab("versi")).toHaveAttribute("href", `${base}/versions`);
+    await expect(tabs.tab("manual")).toHaveAttribute("href", `${base}/cases`);
     await expect(tabs.tab("bug")).toHaveAttribute("href", `${base}/bugs`);
     await expect(tabs.tab("flaky")).toHaveAttribute("href", `${base}/flaky`);
     await expect(tabs.tab("pengaturan")).toHaveAttribute("href", `${base}/settings`);
@@ -241,7 +242,7 @@ test.describe("Tab navigasi project", () => {
       await open();
       await expect(tabs.root).toBeVisible();
       expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
-      // Keenam tab tidak muat di 375 px: wadah tab yang menggulir, bukan halaman.
+      // Ketujuh tab tidak muat di 375 px: wadah tab yang menggulir, bukan halaman.
       expect(await tabs.scrollOverflow()).toBeGreaterThan(0);
     }
 
@@ -281,7 +282,7 @@ test.describe("Tab navigasi project", () => {
     await new ProjectPage(page).goto(project.slug);
 
     await tabs.tab("ringkasan").focus();
-    for (const id of ["run", "versi", "bug", "flaky", "pengaturan"] as const) {
+    for (const id of ["run", "versi", "manual", "bug", "flaky", "pengaturan"] as const) {
       await page.keyboard.press("Tab");
       await expect(tabs.tab(id)).toBeFocused();
       await expect(tabs.tab(id)).toBeInViewport({ ratio: 0.99 });

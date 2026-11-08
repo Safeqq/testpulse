@@ -371,6 +371,48 @@ test.describe("Suite test manual (HP)", () => {
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 
+  test("di 375 px berpindah suite di suite-select membuang kolom ganti nama, konfirmasi hapus, dan error suite sebelumnya", async ({
+    api,
+    newContext,
+  }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login", "Checkout"], casesPerSuite: 1 });
+    const [login, checkout] = suites;
+    const page = await (await newContext(await mobileContextOptions(owner))).newPage();
+    const cases = new ManualCasesPage(page);
+    const manage = page.getByTestId("suite-manage-panel");
+    await cases.goto(project.slug, `?suite=${login!.id}`);
+    await page.getByTestId("suite-manage-toggle").click();
+
+    // Kolom ganti nama yang terbuka (dengan draf) tidak ikut ke suite lain.
+    await cases.suiteAction("rename", login!.id).click();
+    const loginInput = page.getByTestId(`suite-rename-input-${login!.id}`);
+    await loginInput.fill("Draf untuk Login");
+    await cases.suiteSelect.selectOption(checkout!.id);
+    await expect(manage).toContainText("Suite terpilih: Checkout");
+    await expect(page.locator('[data-testid^="suite-rename-input-"]')).toHaveCount(0);
+    await expect(cases.suiteAction("rename", checkout!.id)).toBeVisible();
+    // Membukanya lagi untuk suite baru menampilkan nama suite itu, bukan draf lama.
+    await cases.suiteAction("rename", checkout!.id).click();
+    await expect(page.getByTestId(`suite-rename-input-${checkout!.id}`)).toHaveValue("Checkout");
+    await page.getByTestId(`suite-rename-cancel-${checkout!.id}`).click();
+
+    // Konfirmasi hapus yang terbuka tidak ikut ke suite lain.
+    await cases.suiteAction("delete", checkout!.id).click();
+    await expect(manage).toContainText("Hapus suite “Checkout”?");
+    await cases.suiteSelect.selectOption(login!.id);
+    await expect(manage).toContainText("Suite terpilih: Login");
+    await expect(manage).not.toContainText("Hapus suite");
+    await expect(page.locator('[data-testid^="suite-delete-confirm-"]')).toHaveCount(0);
+
+    // Error aksi sebelumnya (SUITE_NOT_EMPTY) tidak ikut ke suite lain.
+    await cases.suiteAction("delete", login!.id).click();
+    await page.getByTestId(`suite-delete-confirm-${login!.id}`).click();
+    await expect(manage.getByRole("alert")).toHaveText("Pindahkan atau hapus case di suite ini terlebih dahulu.");
+    await cases.suiteSelect.selectOption(checkout!.id);
+    await expect(manage).toContainText("Suite terpilih: Checkout");
+    await expect(manage.getByRole("alert")).toHaveCount(0);
+  });
+
   test("di 375 px tester tidak melihat hapus suite, dan viewer tidak melihat kontrol kelola sama sekali", async ({
     api,
     newContext,

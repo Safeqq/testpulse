@@ -147,6 +147,8 @@ export function SuiteMobileControls({
         {suite ? (
           <ul data-testid="suite-manage" className="m-0 grid list-none p-0">
             <SuiteItem
+              // key: pindah suite di suite-select harus membuang state lokal (kolom ganti nama, konfirmasi hapus, error) suite lama.
+              key={suite.id}
               slug={slug}
               suite={suite}
               isFirst={index === 0}

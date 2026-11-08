@@ -1,11 +1,14 @@
-import type { CreateCaseBody } from "@testpulse/shared";
+import type { CreateCaseBody, ManualCaseDto } from "@testpulse/shared";
 import { BugsPage } from "../pages/BugsPage.js";
 import { FlakyPage } from "../pages/FlakyPage.js";
+import { ManualCaseFormPage } from "../pages/ManualCaseFormPage.js";
+import { ManualCasePage } from "../pages/ManualCasePage.js";
 import { ManualCasesPage } from "../pages/ManualCasesPage.js";
 import { ProjectPage } from "../pages/ProjectPage.js";
 import { ProjectTabsNav } from "../pages/ProjectTabsNav.js";
 import { RunsPage } from "../pages/RunsPage.js";
 import { VersionsPage } from "../pages/VersionsPage.js";
+import type { TestUser } from "../support/api-client.js";
 import { expect, test } from "../support/fixtures.js";
 import { horizontalOverflow, mobileContextOptions, newProject, testCaseIds, uploadRun } from "../support/bugs.js";
 import { seedManualProject } from "../support/manual.js";
@@ -727,5 +730,676 @@ test.describe("Hak akses daftar test case", () => {
     await cases.goto(project.slug);
     await expect(cases.notFound).toBeVisible();
     await expect(cases.list).toHaveCount(0);
+  });
+});
+
+/** Case menurut server (bukan menurut UI). */
+async function fetchCase(user: TestUser, slug: string, number: number): Promise<ManualCaseDto> {
+  const res = await user.request.get(`/api/v1/projects/${slug}/cases/${number}`);
+  expect(res.status(), await res.text()).toBe(200);
+  return (await res.json()) as ManualCaseDto;
+}
+
+test.describe("Form case: editor langkah", () => {
+  test("tester membuat case 3 langkah, memindah langkah 3 ke posisi 1; detail menampilkan urutan baru", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login", "Checkout"], casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+    const detail = new ManualCasePage(page);
+
+    // ?suite= memilih suite awal; tanpa itu suite pertama.
+    await form.gotoNew(project.slug, `?suite=${suites[1]!.id}`);
+    await expect(form.heading).toHaveText("Buat test case");
+    await expect(form.suite).toHaveValue(suites[1]!.id);
+    await expect(form.steps).toHaveCount(1);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    await form.title.fill("Bayar dengan kartu");
+    await form.action(0).fill("Buka keranjang");
+    await form.expected(0).fill("Keranjang tampil");
+    await form.addStep.click();
+    await expect(form.action(1)).toBeFocused();
+    await form.action(1).fill("Pilih kartu");
+    await form.addStep.click();
+    await form.action(2).fill("Konfirmasi bayar");
+    await expect(form.steps).toHaveCount(3);
+    await expect(form.stepAction(0, "up")).toBeDisabled();
+    await expect(form.stepAction(2, "down")).toBeDisabled();
+
+    // Langkah 3 → 2 → 1; isian "Hasil yang diharapkan" ikut berpindah bersama langkahnya, dan fokus tetap di tombolnya.
+    await form.stepAction(2, "up").click();
+    await expect(form.action(1)).toHaveValue("Konfirmasi bayar");
+    await expect(form.action(2)).toHaveValue("Pilih kartu");
+    await expect(form.stepAction(1, "up")).toBeFocused();
+    await form.stepAction(1, "up").click();
+    await expect(form.action(0)).toHaveValue("Konfirmasi bayar");
+    await expect(form.action(1)).toHaveValue("Buka keranjang");
+    await expect(form.expected(1)).toHaveValue("Keranjang tampil");
+    await expect(form.stepAction(0, "up")).toBeDisabled();
+    // Di posisi pertama ▲ nonaktif: fokus pindah ke ▼ langkah yang sama, tidak lepas ke awal halaman.
+    await expect(form.stepAction(0, "down")).toBeFocused();
+
+    await form.submit.click();
+    await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
+    await expect(detail.title).toHaveText("Bayar dengan kartu");
+    await expect(detail.steps).toHaveCount(3);
+    await expect(detail.step(0)).toContainText("Konfirmasi bayar");
+    await expect(detail.step(1)).toContainText("Buka keranjang");
+    await expect(detail.step(1)).toContainText("Keranjang tampil");
+    await expect(detail.step(2)).toContainText("Pilih kartu");
+    await expect(detail.suite).toHaveText("Checkout");
+    const stored = await fetchCase(owner, project.slug, 1);
+    expect(stored.steps.map((step) => step.action)).toEqual(["Konfirmasi bayar", "Buka keranjang", "Pilih kartu"]);
+    expect(stored.suite.id).toBe(suites[1]!.id);
+
+    await expectNoA11yViolationsInBothThemes(page);
+  });
+
+  test("menghapus langkah memindahkan fokus ke tetangganya; langkah terakhir yang tersisa menjadi satu langkah kosong; tombol tambah berhenti di 50", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoNew(project.slug);
+    await form.action(0).fill("Satu");
+    await form.addStep.click();
+    await form.action(1).fill("Dua");
+    await form.addStep.click();
+    await form.action(2).fill("Tiga");
+
+    await form.stepAction(1, "remove").click();
+    await expect(form.steps).toHaveCount(2);
+    await expect(form.action(1)).toHaveValue("Tiga");
+    await expect(form.stepAction(1, "remove")).toBeFocused();
+
+    await form.stepAction(0, "remove").click();
+    await form.stepAction(0, "remove").click();
+    await expect(form.steps).toHaveCount(1);
+    await expect(form.action(0)).toHaveValue("");
+    await expect(form.expected(0)).toHaveValue("");
+
+    for (let i = 1; i < 50; i += 1) await form.addStep.click();
+    await expect(form.steps).toHaveCount(50);
+    await expect(form.addStep).toBeDisabled();
+    await expect(page.getByTestId("case-steps")).toContainText("(50 dari 50)");
+    await expect(page.getByTestId("case-steps")).toContainText("Maksimal 50 langkah");
+  });
+
+  test("pratinjau Markdown berfungsi untuk prasyarat serta Aksi dan Hasil yang diharapkan tiap langkah", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoNew(project.slug);
+    await form.preconditions.fill("Akun **aktif** dan `saldo` cukup");
+    await form.preconditionsPreviewTab.click();
+    await expect(form.preconditionsPreview.locator("strong")).toHaveText("aktif");
+    await expect(form.preconditionsPreview.locator("code")).toHaveText("saldo");
+    await expect(form.preconditions).toBeHidden();
+    await form.preconditionsWriteTab.click();
+    await expect(form.preconditions).toBeVisible();
+
+    await form.action(0).fill("Klik **Bayar**");
+    await form.expected(0).fill("- Muncul struk\n- Saldo berkurang");
+    await form.previewTab(0, "action").click();
+    await expect(form.preview(0, "action").locator("strong")).toHaveText("Bayar");
+    await form.previewTab(0, "expected").click();
+    await expect(form.preview(0, "expected").locator("li")).toHaveCount(2);
+    // Pratinjau satu kolom tidak menyentuh kolom lain; isian di Tulis tidak hilang.
+    await expect(form.action(0)).toBeHidden();
+    await form.writeTab(0, "action").click();
+    await expect(form.action(0)).toHaveValue("Klik **Bayar**");
+    await expect(form.expected(0)).toBeHidden();
+  });
+
+  test("pratinjau suatu langkah tetap pada langkahnya setelah dipindah", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoNew(project.slug);
+    await form.action(0).fill("Pertama **tebal**");
+    await form.addStep.click();
+    await form.action(1).fill("Kedua");
+    await form.previewTab(0, "action").click();
+    await expect(form.preview(0, "action")).toBeVisible();
+
+    await form.stepAction(0, "down").click();
+    await expect(form.preview(1, "action").locator("strong")).toHaveText("tebal");
+    await expect(form.preview(0, "action")).toHaveCount(0);
+    await expect(form.action(0)).toHaveValue("Kedua");
+  });
+
+  test("judul dan langkah kosong ditolak dengan pesan di bawah field-nya", async ({ api, signedInPage, expectNoA11yViolationsInBothThemes }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoNew(project.slug);
+    await form.title.fill("ab");
+    await form.addStep.click();
+    await form.action(1).fill("   ");
+    await form.submit.click();
+
+    await expect(form.titleError).toHaveText("Judul minimal 3 karakter");
+    await expect(form.title.locator("xpath=..").getByTestId("field-error-title")).toBeVisible();
+    await expect(form.title).toBeFocused();
+    await expect(form.actionError(0)).toHaveText("Langkah wajib diisi");
+    await expect(form.step(0).getByTestId("field-error-steps.0.action")).toBeVisible();
+    await expect(form.actionError(1)).toHaveText("Langkah wajib diisi");
+    await expect(form.step(1).getByTestId("field-error-steps.1.action")).toBeVisible();
+    await expect(page).toHaveURL(/\/cases\/new$/);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    // Setelah diperbaiki, simpan berhasil dan case benar-benar terbuat.
+    await form.title.fill("Judul valid");
+    await form.action(0).fill("Langkah satu");
+    await form.stepAction(1, "remove").click();
+    await form.submit.click();
+    await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
+  });
+
+  test("kesalahan langkah dari server dipetakan ke langkahnya; pratinjau yang menyembunyikan kolom kembali ke Tulis", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+    await page.route(`**/api/v1/projects/${project.slug}/cases`, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 400,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "Data tidak valid",
+            fields: { "steps.1.action": "Langkah maksimal 2000 karakter", "steps.0.expected": "Hasil yang diharapkan maksimal 2000 karakter" },
+          },
+        }),
+      });
+    });
+
+    await form.gotoNew(project.slug);
+    await form.title.fill("Judul valid");
+    await form.action(0).fill("Satu");
+    await form.addStep.click();
+    await form.action(1).fill("Dua");
+    await form.previewTab(1, "action").click();
+    await form.submit.click();
+
+    await expect(form.step(1).getByTestId("field-error-steps.1.action")).toHaveText("Langkah maksimal 2000 karakter");
+    await expect(form.step(0).getByTestId("field-error-steps.0.expected")).toHaveText("Hasil yang diharapkan maksimal 2000 karakter");
+    // Kolom bermasalah tampil kembali sebagai textarea dan menerima fokus.
+    await expect(form.action(1)).toBeVisible();
+    await expect(form.expected(0)).toBeFocused();
+    await expect(page).toHaveURL(/\/cases\/new$/);
+  });
+});
+
+test.describe("Form case: edit", () => {
+  test("isian terisi dari case; suite dipindah, prioritas diubah, label ditambah dan dihapus", async ({ api, signedInPage }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login", "Checkout"], casesPerSuite: 0 });
+    await api.createCase(owner, project.slug, {
+      suiteId: suites[0]!.id,
+      title: "Login berhasil",
+      preconditions: "Akun **aktif**",
+      priority: "urgent",
+      labels: ["smoke", "ui"],
+      steps: [
+        { action: "Buka halaman", expected: "Halaman tampil" },
+        { action: "Klik masuk", expected: "" },
+      ],
+    });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+    const detail = new ManualCasePage(page);
+
+    await form.gotoEdit(project.slug, 1);
+    await expect(form.heading).toHaveText("Edit TC-1");
+    await expect(form.suite).toHaveValue(suites[0]!.id);
+    await expect(form.title).toHaveValue("Login berhasil");
+    await expect(form.preconditions).toHaveValue("Akun **aktif**");
+    await expect(form.priority).toHaveValue("urgent");
+    await expect(form.steps).toHaveCount(2);
+    await expect(form.expected(0)).toHaveValue("Halaman tampil");
+    await expect(page.getByTestId("case-label-smoke")).toBeVisible();
+
+    await form.suite.selectOption(suites[1]!.id);
+    await form.priority.selectOption("low");
+    await page.getByTestId("case-label-remove-smoke").click();
+    await form.labelInput.fill("Regresi");
+    await form.labelInput.press("Enter");
+    await form.title.fill("Login berhasil (diubah)");
+    await form.submit.click();
+
+    await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
+    await expect(detail.title).toHaveText("Login berhasil (diubah)");
+    await expect(detail.suite).toHaveText("Checkout");
+    await expect(detail.priority).toHaveText("Rendah");
+    await expect(detail.labels).toContainText("ui");
+    await expect(detail.labels).toContainText("regresi");
+    await expect(detail.labels).not.toContainText("smoke");
+    await expect(detail.preconditions.locator("strong")).toHaveText("aktif");
+    const stored = await fetchCase(owner, project.slug, 1);
+    expect(stored.version).toBe(2);
+    expect(stored.labels).toEqual(["regresi", "ui"]);
+  });
+
+  test("kesalahan label yang belum jadi chip menahan penyimpanan", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoEdit(project.slug, 1);
+    await form.labelInput.fill("label salah!");
+    await form.submit.click();
+    await expect(page.getByTestId("field-error-labels")).toBeVisible();
+    await expect(page).toHaveURL(/\/edit$/);
+  });
+
+  test("konflik dua tab: banner case-conflict, isian tidak dibuang, muat ulang menampilkan versi terbaru", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1 });
+    const { page: tabA } = await signedInPage(owner);
+    const { page: tabB } = await signedInPage(owner);
+    const formA = new ManualCaseFormPage(tabA);
+    const formB = new ManualCaseFormPage(tabB);
+    const detailB = new ManualCasePage(tabB);
+
+    await formA.gotoEdit(project.slug, 1);
+    await formB.gotoEdit(project.slug, 1);
+    await formB.title.fill("Judul dari tab B");
+    await formB.submit.click();
+    await expect(detailB.title).toHaveText("Judul dari tab B");
+
+    await formA.title.fill("Judul dari tab A");
+    await formA.action(0).fill("Langkah dari tab A");
+    await formA.submit.click();
+    await expect(formA.conflict).toBeVisible();
+    await expect(formA.conflict).toContainText("Case ini baru saja diubah orang lain");
+    await expect(tabA).toHaveURL(/\/cases\/1\/edit$/);
+    await expect(formA.title).toHaveValue("Judul dari tab A");
+    await expect(formA.action(0)).toHaveValue("Langkah dari tab A");
+    expect((await fetchCase(owner, project.slug, 1)).title).toBe("Judul dari tab B");
+    await expectNoA11yViolationsInBothThemes(tabA);
+
+    await formA.conflictReload.click();
+    await expect(formA.conflict).toHaveCount(0);
+    await expect(formA.title).toHaveValue("Judul dari tab B");
+    await expect(formA.title).toBeFocused();
+    await formA.title.fill("Judul akhir dari tab A");
+    await formA.submit.click();
+    await expect(tabA).toHaveURL(`/p/${project.slug}/cases/1`);
+    expect((await fetchCase(owner, project.slug, 1)).title).toBe("Judul akhir dari tab A");
+  });
+});
+
+test.describe("Tautan otomasi", () => {
+  test("cari 'lo', pilih test: kartu menampilkan status terakhir dan meter cakupan naik; lepas tautan → Belum diotomasi", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: ["Login"], casesPerSuite: 2 });
+    const runId = await uploadRun(api, owner, project.slug, [
+      { suite: "auth", name: "login works" },
+      { suite: "auth", name: "signup works" },
+    ]);
+    const ids = await testCaseIds(owner, project.slug, runId);
+    const { page } = await signedInPage(owner);
+    const cases = new ManualCasesPage(page);
+    const form = new ManualCaseFormPage(page);
+    const detail = new ManualCasePage(page);
+
+    await cases.goto(project.slug);
+    await expect(cases.coverage).toContainText("0 dari 2 case aktif sudah diotomasi (0%)");
+
+    await form.gotoEdit(project.slug, 1);
+    await form.automationSearch.fill("l");
+    await expect(form.automationOption(ids["login works"]!)).toHaveCount(0);
+    await form.automationSearch.fill("lo");
+    await expect(form.automationOption(ids["login works"]!)).toHaveText("auth › login works");
+    await expect(form.automationOption(ids["signup works"]!)).toHaveCount(0);
+    await expect(form.automationStatus).toHaveText("1 test ditemukan.");
+    await expectNoA11yViolationsInBothThemes(page);
+
+    // Enter di kolom cari tidak mengirim formulir.
+    await form.automationSearch.press("Enter");
+    await expect(page).toHaveURL(/\/cases\/1\/edit$/);
+
+    await form.automationOption(ids["login works"]!).click();
+    await expect(form.automationSelected).toContainText("auth › login works");
+    await expect(form.automationSearch).toHaveCount(0);
+    await expect(form.automationUnlink).toBeFocused();
+    await form.submit.click();
+
+    await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
+    await expect(detail.automation).toContainText("auth › login works");
+    await expect(detail.automationStatus).toContainText("Lulus");
+    await expect(detail.automationStatus).toContainText("di main");
+    await expect(detail.automationTest).toHaveAttribute("href", `/p/${project.slug}/tests/${ids["login works"]}`);
+    await expect(detail.automationStatus.getByRole("link")).toHaveAttribute("href", `/p/${project.slug}/runs/${runId}`);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    await cases.goto(project.slug);
+    await expect(cases.coverage).toContainText("1 dari 2 case aktif sudah diotomasi (50%)");
+    await expect(cases.row(1)).toContainText("Otomatis");
+
+    await form.gotoEdit(project.slug, 1);
+    await expect(form.automationSelected).toContainText("auth › login works");
+    await form.automationUnlink.click();
+    await expect(form.automationSearch).toBeFocused();
+    await form.submit.click();
+    await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
+    await expect(detail.automation).toContainText("Belum diotomasi");
+    await expect(detail.automationTest).toHaveCount(0);
+
+    await cases.goto(project.slug);
+    await expect(cases.coverage).toContainText("0 dari 2 case aktif sudah diotomasi (0%)");
+    expect((await fetchCase(owner, project.slug, 1)).automatedTest).toBeNull();
+  });
+
+  test("kata cari tanpa hasil menampilkan pesan 'Tidak ada test yang cocok'", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoEdit(project.slug, 1);
+    await form.automationSearch.fill("tidak-ada-test-ini");
+    await expect(form.automationStatus).toHaveText("Tidak ada test yang cocok.");
+  });
+});
+
+test.describe("Detail case", () => {
+  test("menampilkan judul, kode, suite, prioritas, label, prasyarat, dan langkah; riwayat eksekusi menaut ke halaman eksekusi", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login"], casesPerSuite: 0 });
+    await api.createCase(owner, project.slug, {
+      suiteId: suites[0]!.id,
+      title: "Login berhasil",
+      preconditions: "Akun **aktif**",
+      priority: "high",
+      labels: ["smoke"],
+      steps: [
+        { action: "Buka *halaman* login", expected: "Form tampil" },
+        { action: "Klik masuk", expected: "" },
+      ],
+    });
+    const run = await api.createManualRun(owner, project.slug, { name: "Regresi", appVersion: "0.4.0", caseNumbers: [1] });
+    const runCases = await owner.request.get(`/api/v1/projects/${project.slug}/manual-runs/${run.number}/cases`);
+    const [runCase] = ((await runCases.json()) as { items: { id: string }[] }).items;
+    await api.updateRunCase(owner, project.slug, run.number, runCase!.id, { version: 1, status: "failed" });
+    const { page } = await signedInPage(owner);
+    const detail = new ManualCasePage(page);
+
+    await detail.goto(project.slug, 1);
+    await expect(detail.title).toHaveText("Login berhasil");
+    await expect(detail.meta).toContainText("TC-1");
+    await expect(detail.suite).toHaveText("Login");
+    await expect(detail.priority).toHaveText("Tinggi");
+    await expect(detail.labels).toContainText("smoke");
+    await expect(detail.preconditions.locator("strong")).toHaveText("aktif");
+    await expect(detail.steps).toHaveCount(2);
+    await expect(detail.step(0).locator("em")).toHaveText("halaman");
+    await expect(detail.step(0)).toContainText("Form tampil");
+    await expect(detail.automation).toContainText("Belum diotomasi");
+
+    const row = detail.historyRow(run.number);
+    await expect(row).toContainText("TR-1");
+    await expect(row).toContainText("Regresi 0.4.0");
+    await expect(row).toContainText("Gagal");
+    await expect(row.getByRole("link")).toHaveAttribute("href", `/p/${project.slug}/manual-runs/${run.number}/cases/${runCase!.id}`);
+    await expectNoA11yViolationsInBothThemes(page);
+  });
+
+  test("case yang belum pernah masuk run manual menampilkan keadaan kosong riwayat", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1 });
+    const { page } = await signedInPage(owner);
+    const detail = new ManualCasePage(page);
+
+    await detail.goto(project.slug, 1);
+    await expect(detail.history).toContainText("Case ini belum pernah masuk run manual");
+    await expect(detail.preconditions).toContainText("Tidak ada prasyarat");
+  });
+
+  test("case tidak ada atau nomor tidak valid: 'Case tidak ditemukan'", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1 });
+    const { page } = await signedInPage(owner);
+    const detail = new ManualCasePage(page);
+    const form = new ManualCaseFormPage(page);
+
+    await page.goto(`/p/${project.slug}/cases/999`);
+    await detail.waitForLoaded();
+    await expect(detail.notFound).toBeVisible();
+    await page.goto(`/p/${project.slug}/cases/abc`);
+    await detail.waitForLoaded();
+    await expect(detail.notFound).toBeVisible();
+    await form.gotoEdit(project.slug, 999);
+    await expect(form.notFound).toBeVisible();
+  });
+
+  test("konflik saat mengarsipkan: banner case-conflict; setelah muat ulang pengarsipan berhasil", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1 });
+    const { page } = await signedInPage(owner);
+    const detail = new ManualCasePage(page);
+
+    await detail.goto(project.slug, 1);
+    // Orang lain mengubah case lebih dulu, jadi `version` yang dilihat halaman ini sudah usang.
+    await api.updateCase(owner, project.slug, 1, { version: 1, title: "Judul dari orang lain" });
+    await detail.archive.click();
+    await expect(detail.conflict).toBeVisible();
+    await expect(detail.archivedNote).toHaveCount(0);
+
+    await detail.conflictReload.click();
+    await expect(detail.conflict).toHaveCount(0);
+    await expect(detail.title).toHaveText("Judul dari orang lain");
+    await detail.archive.click();
+    await expect(detail.archivedNote).toBeVisible();
+    expect((await fetchCase(owner, project.slug, 1)).archivedAt).not.toBeNull();
+  });
+});
+
+test.describe("Arsip dan hapus case", () => {
+  test("arsipkan: case hilang dari daftar bawaan dan tampil dengan filter arsip; pulihkan mengembalikannya", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 2 });
+    const { page } = await signedInPage(owner);
+    const cases = new ManualCasesPage(page);
+    const detail = new ManualCasePage(page);
+
+    await detail.goto(project.slug, 1);
+    await expect(detail.archive).toHaveText("Arsipkan");
+    await detail.archive.click();
+    await expect(detail.archive).toHaveText("Pulihkan");
+    await expect(detail.archivedNote).toContainText("Diarsipkan");
+
+    await cases.goto(project.slug);
+    await expect(cases.rows).toHaveCount(1);
+    await expect(cases.row(1)).toHaveCount(0);
+    await expect(cases.coverage).toContainText("0 dari 1 case aktif");
+    await cases.goto(project.slug, "?archived=true");
+    await expect(cases.rows).toHaveCount(1);
+    await expect(cases.row(1)).toContainText("Diarsipkan");
+
+    await detail.goto(project.slug, 1);
+    await detail.archive.click();
+    await expect(detail.archive).toHaveText("Arsipkan");
+    await expect(detail.archivedNote).toHaveCount(0);
+    await cases.goto(project.slug);
+    await expect(cases.rows).toHaveCount(2);
+  });
+
+  test("admin menghapus case lewat konfirmasi inline; Batal menutup konfirmasi tanpa menghapus", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 2 });
+    const { page } = await signedInPage(owner);
+    const cases = new ManualCasesPage(page);
+    const detail = new ManualCasePage(page);
+
+    await detail.goto(project.slug, 2);
+    await detail.remove.click();
+    await expect(detail.removeConfirm).toBeVisible();
+    await expect(page.getByRole("group")).toContainText("Run manual lama tetap tersimpan");
+    await expect(detail.removeCancel).toBeFocused();
+    await detail.removeCancel.click();
+    await expect(detail.removeConfirm).toHaveCount(0);
+    await expect(detail.remove).toBeFocused();
+
+    await detail.remove.click();
+    await detail.removeConfirm.click();
+    await expect(page).toHaveURL(`/p/${project.slug}/cases`);
+    await cases.waitForLoaded();
+    await expect(cases.rows).toHaveCount(1);
+    await expect(cases.row(2)).toHaveCount(0);
+    expect((await owner.request.get(`/api/v1/projects/${project.slug}/cases/2`)).status()).toBe(404);
+  });
+
+  test("tester melihat Edit dan Arsipkan tetapi bukan hapus permanen; viewer tidak melihat kontrol tulis", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1, visibility: "public" });
+    const tester = await api.addMember(owner, project.slug, "tester");
+    const viewer = await api.addMember(owner, project.slug, "viewer");
+
+    const testerPage = new ManualCasePage((await signedInPage(tester)).page);
+    await testerPage.goto(project.slug, 1);
+    await expect(testerPage.edit).toBeVisible();
+    await expect(testerPage.archive).toBeVisible();
+    await expect(testerPage.remove).toHaveCount(0);
+
+    const viewerPage = new ManualCasePage((await signedInPage(viewer)).page);
+    await viewerPage.goto(project.slug, 1);
+    await expect(viewerPage.title).toBeVisible();
+    await expect(viewerPage.edit).toHaveCount(0);
+    await expect(viewerPage.archive).toHaveCount(0);
+    await expect(viewerPage.remove).toHaveCount(0);
+  });
+});
+
+test.describe("Hak akses form case", () => {
+  test("viewer dan anonim tidak bisa membuka form; anonim diajak masuk", async ({ api, signedInPage, newContext }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 1, visibility: "public" });
+    const viewer = await api.addMember(owner, project.slug, "viewer");
+    const anonymous = await (await newContext()).newPage();
+
+    const viewerForm = new ManualCaseFormPage((await signedInPage(viewer)).page);
+    await viewerForm.gotoNew(project.slug);
+    await expect(viewerForm.forbidden).toContainText("Peran viewer");
+    await expect(viewerForm.form).toHaveCount(0);
+
+    const anonymousForm = new ManualCaseFormPage(anonymous);
+    await anonymousForm.gotoEdit(project.slug, 1);
+    await expect(anonymousForm.forbidden).toBeVisible();
+    await expect(anonymous.getByRole("link", { name: "Masuk" }).last()).toHaveAttribute("href", /\/login/);
+  });
+
+  test("project tanpa suite: form mengajak membuat suite lebih dulu", async ({ api, signedInPage }) => {
+    const { owner, project } = await newProject(api);
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+
+    await form.gotoNew(project.slug);
+    await expect(form.noSuite).toBeVisible();
+    await expect(form.form).toHaveCount(0);
+  });
+});
+
+test.describe("Teks panjang di form dan detail case", () => {
+  // 300 karakter tanpa spasi + emoji, dan blok kode 500 karakter (Review Focus 5).
+  const LONG = `${"A".repeat(300)}😀🎉`;
+  const CODE = `\`\`\`\n${"x".repeat(500)}\n\`\`\``;
+
+  test("langkah dan prasyarat panjang tersimpan utuh; tanpa scroll horizontal di 375 px, baik di form maupun di detail", async ({
+    api,
+    newContext,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const page = await (await newContext(await mobileContextOptions(owner))).newPage();
+    const form = new ManualCaseFormPage(page);
+    const detail = new ManualCasePage(page);
+
+    await form.gotoNew(project.slug);
+    await form.title.fill(`Judul ${"B".repeat(150)}`);
+    await form.preconditions.fill(`${LONG}\n\n${CODE}`);
+    await form.action(0).fill(LONG);
+    await form.expected(0).fill(CODE);
+    await form.addStep.click();
+    await form.action(1).fill(CODE);
+    await form.expected(1).fill(`${LONG}\n\n${CODE}`);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+    // Mode pratinjau merender blok kode panjang di dalam wadah yang bisa digulir, bukan melebarkan halaman.
+    await form.preconditionsPreviewTab.click();
+    await form.previewTab(0, "action").click();
+    await form.previewTab(1, "action").click();
+    await form.previewTab(1, "expected").click();
+    await expect(form.preview(1, "action").getByRole("region", { name: "Blok kode" })).toBeVisible();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    await form.submit.click();
+    await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
+    await expect(detail.title).toBeVisible();
+    await expect(detail.step(1).getByRole("region", { name: "Blok kode" }).first()).toBeVisible();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    const stored = await fetchCase(owner, project.slug, 1);
+    expect(stored.preconditions).toBe(`${LONG}\n\n${CODE}`);
+    expect(stored.steps).toEqual([
+      { action: LONG, expected: CODE },
+      { action: CODE, expected: `${LONG}\n\n${CODE}` },
+    ]);
+
+    // Form edit dengan isi yang sama juga tidak melebar.
+    await form.gotoEdit(project.slug, 1);
+    await expect(form.action(0)).toHaveValue(LONG);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  test("di 375 px detail dengan label, riwayat, dan kartu otomasi tidak melebar", async ({ api, newContext }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Suite dengan nama yang sangat panjang sekali ".repeat(2).trim()], casesPerSuite: 0 });
+    const runId = await uploadRun(api, owner, project.slug, [{ suite: "s".repeat(80), name: "n".repeat(120) }]);
+    const ids = await testCaseIds(owner, project.slug, runId);
+    await api.createCase(owner, project.slug, {
+      suiteId: suites[0]!.id,
+      title: "J".repeat(190),
+      labels: ["l".repeat(30), "m".repeat(30), "n".repeat(30)],
+      steps: [{ action: "a", expected: "" }],
+      automatedTestId: Object.values(ids)[0]!,
+    });
+    const run = await api.createManualRun(owner, project.slug, { name: "R".repeat(100), appVersion: "v".repeat(40), caseNumbers: [1] });
+    expect(run.number).toBe(1);
+    const page = await (await newContext(await mobileContextOptions(owner))).newPage();
+    const detail = new ManualCasePage(page);
+
+    await detail.goto(project.slug, 1);
+    await expect(detail.automationStatus).toContainText("Lulus");
+    await expect(detail.historyRow(1)).toBeVisible();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 });

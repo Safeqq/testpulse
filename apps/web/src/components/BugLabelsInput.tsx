@@ -14,13 +14,15 @@ interface BugLabelsInputProps {
   onDraftChange: (draft: string) => void;
   /** Error dari validasi form (mis. saat simpan); error saat menambah label ditampilkan lokal. */
   error?: string | undefined;
+  /** Awalan data-testid (`<awalan>-labels`, `-label-add`, `-label-list`, `-label-<label>`); bawaan `bug`, case manual memakai `case`. */
+  testIdPrefix?: string;
 }
 
 /**
  * Masukan label berupa chip. Teks diketik lalu dijadikan label dengan Enter, koma, atau tombol Tambah (tidak saat fokus
  * pergi: chip baru akan menggeser tombol di bawahnya dan menelan klik); draf yang belum jadi chip diperiksa saat simpan. Aturannya (`addLabels`) sama dengan server.
  */
-export function BugLabelsInput({ value, onChange, draft, onDraftChange, error }: BugLabelsInputProps) {
+export function BugLabelsInput({ value, onChange, draft, onDraftChange, error, testIdPrefix = "bug" }: BugLabelsInputProps) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
@@ -62,11 +64,11 @@ export function BugLabelsInput({ value, onChange, draft, onDraftChange, error }:
           autoComplete="off"
           aria-invalid={shownError ? true : undefined}
           aria-describedby={[shownError ? errorId : null, hintId].filter(Boolean).join(" ")}
-          data-testid="bug-labels"
+          data-testid={`${testIdPrefix}-labels`}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
         />
-        <Button type="button" variant="outline" data-testid="bug-label-add" onClick={() => onDraftChange(commit([draft]))}>
+        <Button type="button" variant="outline" data-testid={`${testIdPrefix}-label-add`} onClick={() => onDraftChange(commit([draft]))}>
           Tambah
         </Button>
       </div>
@@ -79,15 +81,15 @@ export function BugLabelsInput({ value, onChange, draft, onDraftChange, error }:
         </p>
       ) : null}
       {value.length > 0 ? (
-        <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Label terpilih" data-testid="bug-label-list">
+        <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Label terpilih" data-testid={`${testIdPrefix}-label-list`}>
           {value.map((label) => (
             <li key={label} className="max-w-full">
-              <Badge variant="secondary" className="max-w-full gap-1 pr-1" data-testid={`bug-label-${label}`}>
+              <Badge variant="secondary" className="max-w-full gap-1 pr-1" data-testid={`${testIdPrefix}-label-${label}`}>
                 <span className="min-w-0 truncate">{label}</span>
                 <button
                   type="button"
                   aria-label={`Hapus label ${label}`}
-                  data-testid={`bug-label-remove-${label}`}
+                  data-testid={`${testIdPrefix}-label-remove-${label}`}
                   className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm outline-hidden hover:bg-foreground/10 focus-visible:ring-[3px] focus-visible:ring-ring"
                   onClick={() => onChange(value.filter((l) => l !== label))}
                 >

@@ -20,6 +20,7 @@ import { formatRelativeTime } from "@/lib/format";
 import { AUTOMATED_LABEL, CASE_FILTER_KEYS, CASE_PRIORITY_LABEL, caseCode, parseCaseFilters, type CaseFilters } from "@/lib/manual";
 import { useCursorList } from "@/lib/useCursorList";
 import { useMediaQuery } from "@/lib/useMediaQuery";
+import { preloadPages } from "./lazyPages";
 import { ProjectFrame } from "./ProjectFrame";
 
 /** `/p/:slug/cases`: sidebar/pilihan suite, meter cakupan otomasi, dan daftar test case dengan filter di URL (50 per halaman). */
@@ -71,6 +72,7 @@ function useSuites(slug: string): { state: SuitesState; refresh: () => Promise<v
 }
 
 function CasesView({ slug, canWrite, canDelete }: { slug: string; canWrite: boolean; canDelete: boolean }) {
+  useEffect(() => preloadPages("case", "caseForm"), []);
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => parseCaseFilters(params), [params]);
   // Berdasarkan URL (bukan filter yang lolos validasi) agar "Atur ulang filter" juga membersihkan parameter yang tidak valid.

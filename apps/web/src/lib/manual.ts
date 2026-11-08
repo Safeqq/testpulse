@@ -1,4 +1,4 @@
-import { caseListQuery, type CaseListQuery, type CasePriority } from "@testpulse/shared";
+import { caseListQuery, type CaseListQuery, type CasePriority, type ManualResultStatus } from "@testpulse/shared";
 import { BUG_PRIORITY_LABEL } from "./bugs";
 
 /** Prioritas case memakai himpunan dan istilah yang sama dengan prioritas bug. */
@@ -36,3 +36,21 @@ export function parseCaseFilters(params: URLSearchParams): CaseFilters {
   if (automated.success && automated.data !== undefined) filters.automated = automated.data;
   return filters;
 }
+
+const MAX_CASE_NUMBER = 2_147_483_647;
+
+/** Nomor case dari URL; `null` untuk apa pun yang bukan bilangan bulat positif yang mungkin ada. */
+export function parseCaseNumber(raw: string): number | null {
+  if (!/^[1-9]\d{0,9}$/.test(raw)) return null;
+  const value = Number(raw);
+  return value <= MAX_CASE_NUMBER ? value : null;
+}
+
+/** Istilah hasil eksekusi manual (case maupun langkah). */
+export const MANUAL_STATUS_LABEL: Record<ManualResultStatus, string> = {
+  untested: "Belum diuji",
+  passed: "Lulus",
+  failed: "Gagal",
+  blocked: "Terblokir",
+  skipped: "Dilewati",
+};

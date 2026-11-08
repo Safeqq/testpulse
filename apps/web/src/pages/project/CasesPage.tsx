@@ -11,7 +11,7 @@ import { Loading } from "@/components/Loading";
 import { ManualSubTabs } from "@/components/ManualSubTabs";
 import { NativeSelect } from "@/components/NativeSelect";
 import { SearchForm } from "@/components/SearchForm";
-import { SuiteSidebar } from "@/components/SuiteSidebar";
+import { SuiteMobileControls, SuiteSidebar } from "@/components/SuiteSidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,7 @@ import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/format";
 import { AUTOMATED_LABEL, CASE_FILTER_KEYS, CASE_PRIORITY_LABEL, caseCode, parseCaseFilters, type CaseFilters } from "@/lib/manual";
 import { useCursorList } from "@/lib/useCursorList";
+import { useMediaQuery } from "@/lib/useMediaQuery";
 import { ProjectFrame } from "./ProjectFrame";
 
 /** `/p/:slug/cases`: sidebar/pilihan suite, meter cakupan otomasi, dan daftar test case dengan filter di URL (50 per halaman). */
@@ -90,6 +91,12 @@ function CasesView({ slug, canWrite, canDelete }: { slug: string; canWrite: bool
     setParams(next, { replace: true });
   }
 
+  // Sidebar di layar lebar (Tailwind `md`), `suite-select` + kelola suite di HP; hanya satu yang dirender.
+  const wide = useMediaQuery("(min-width: 768px)");
+  const clearRemovedSuite = (id: string) => {
+    if (parseCaseFilters(new URLSearchParams(window.location.search)).suite === id) setFilter("suite", "");
+  };
+
   const createHref = `/p/${encodeURIComponent(slug)}/cases/new${filters.suite ? `?suite=${filters.suite}` : ""}`;
 
   return (
@@ -115,7 +122,7 @@ function CasesView({ slug, canWrite, canDelete }: { slug: string; canWrite: bool
       <div className="grid min-w-0 grid-cols-1 gap-6 md:grid-cols-[16rem_minmax(0,1fr)] md:items-start">
         <div className="min-w-0">
           {suites.state.status === "ready" ? (
-            <>
+            wide ? (
               <SuiteSidebar
                 slug={slug}
                 suites={suites.state.suites}
@@ -124,13 +131,26 @@ function CasesView({ slug, canWrite, canDelete }: { slug: string; canWrite: bool
                 canWrite={canWrite}
                 canDelete={canDelete}
                 onChanged={suites.refresh}
+                onRemoved={clearRemovedSuite}
               />
-              <SuiteSelect
-                suites={suites.state.suites}
-                value={filters.suite ?? ""}
-                onChange={(id) => setFilter("suite", id)}
-              />
-            </>
+            ) : (
+              <div className="grid min-w-0 gap-4">
+                <SuiteSelect
+                  suites={suites.state.suites}
+                  value={filters.suite ?? ""}
+                  onChange={(id) => setFilter("suite", id)}
+                />
+                <SuiteMobileControls
+                  slug={slug}
+                  suites={suites.state.suites}
+                  selected={filters.suite ?? ""}
+                  canWrite={canWrite}
+                  canDelete={canDelete}
+                  onChanged={suites.refresh}
+                  onRemoved={clearRemovedSuite}
+                />
+              </div>
+            )
           ) : suites.state.status === "error" ? (
             <LoadError error={suites.state.error} fallback="Gagal memuat daftar suite. Coba lagi." onRetry={() => void suites.refresh()} />
           ) : (
@@ -178,7 +198,7 @@ function CasesView({ slug, canWrite, canDelete }: { slug: string; canWrite: bool
 }
 
 /**
- * Pilihan suite untuk HP (< md), pengganti sidebar. Dirender di komponen halaman yang sama dengan sidebar, setelah
+ * Pilihan suite untuk HP (< md), pengganti sidebar. Dirender oleh komponen halaman yang sama dengan sidebar, setelah
  * daftar suite dimuat: `<select>` baru dibuat saat halaman lazy sudah terpasang, bukan di dalam Suspense yang menunggu
  * (artefak guard CSP WebKit; lihat `BranchFilter`).
  */
@@ -186,7 +206,7 @@ function SuiteSelect({ suites, value, onChange }: { suites: SuiteDto[]; value: s
   const id = useId();
   const known = value === "" || suites.some((suite) => suite.id === value);
   return (
-    <div className="grid min-w-0 gap-1.5 md:hidden [&>span]:w-full">
+    <div className="grid min-w-0 gap-1.5 [&>span]:w-full">
       <Label htmlFor={id}>Suite</Label>
       <NativeSelect id={id} data-testid="suite-select" value={value} onChange={(e) => onChange(e.target.value)} className="w-full">
         <option value="">Semua suite</option>

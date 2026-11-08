@@ -19,30 +19,28 @@ function suiteErrorMessage(err: unknown): string {
 
 type RunAction = (action: () => Promise<unknown>) => Promise<string | null>;
 
-interface SuiteSidebarProps {
+interface SuiteControlsProps {
   slug: string;
   suites: SuiteDto[];
   /** Id suite terpilih; kosong = Semua suite. */
   selected: string;
-  onSelect: (id: string) => void;
   canWrite: boolean;
   canDelete: boolean;
   /** Memuat ulang daftar suite setelah sebuah aksi (berhasil atau tidak); selesai saat daftar baru terpasang. */
   onChanged: () => Promise<void>;
+  /** Suite berhasil dihapus; halaman melepas pilihan bila itu suite yang sedang dipilih. */
+  onRemoved: (id: string) => void;
 }
 
 /**
- * Sidebar suite untuk layar lebar (spec Tahap 4 §8.2): "Semua suite" dan tiap suite dengan jumlah case aktif. Tester+
- * menambah suite, mengganti nama, dan memindah urutan (▲/▼); admin menghapus suite kosong dengan konfirmasi inline.
- * Di HP sidebar disembunyikan dan digantikan `suite-select` oleh halaman. Satu aksi berjalan pada satu waktu (`busy`),
- * agar dua pindah urutan beruntun tidak saling menimpa posisi.
+ * Menjalankan satu aksi suite pada satu waktu (`busy`), agar dua pindah urutan beruntun tidak saling menimpa posisi.
+ * Aksi dijalankan lalu daftar dimuat ulang; hasilnya pesan error (atau `null`) untuk ditampilkan pemanggil.
  */
-export function SuiteSidebar({ slug, suites, selected, onSelect, canWrite, canDelete, onChanged }: SuiteSidebarProps) {
-  const headingId = useId();
+function useSuiteActions(onChanged: () => Promise<void>): {
+  busy: boolean;
+  run: RunAction;
+} {
   const [busy, setBusy] = useState(false);
-  const total = suites.reduce((sum, suite) => sum + suite.activeCount, 0);
-
-  /** Menjalankan aksi lalu memuat ulang daftar; mengembalikan pesan error (atau `null`) untuk ditampilkan pemanggil. */
   const run: RunAction = async (action) => {
     setBusy(true);
     try {
@@ -56,9 +54,34 @@ export function SuiteSidebar({ slug, suites, selected, onSelect, canWrite, canDe
       setBusy(false);
     }
   };
+  return { busy, run };
+}
+
+interface SuiteSidebarProps extends SuiteControlsProps {
+  onSelect: (id: string) => void;
+}
+
+/**
+ * Sidebar suite untuk layar lebar (spec Tahap 4 §8.2): "Semua suite" dan tiap suite dengan jumlah case aktif. Tester+
+ * menambah suite, mengganti nama, dan memindah urutan (▲/▼); admin menghapus suite kosong dengan konfirmasi inline.
+ * Di HP halaman memakai `SuiteMobileControls` bersama `suite-select`; hanya salah satunya yang dirender (id uji unik).
+ */
+export function SuiteSidebar({
+  slug,
+  suites,
+  selected,
+  onSelect,
+  canWrite,
+  canDelete,
+  onChanged,
+  onRemoved,
+}: SuiteSidebarProps) {
+  const headingId = useId();
+  const { busy, run } = useSuiteActions(onChanged);
+  const total = suites.reduce((sum, suite) => sum + suite.activeCount, 0);
 
   return (
-    <section aria-labelledby={headingId} className="hidden min-w-0 content-start gap-3 md:grid">
+    <section aria-labelledby={headingId} className="grid min-w-0 content-start gap-3">
       <h2 id={headingId} className="text-sm font-semibold">
         Suite
       </h2>
@@ -85,11 +108,66 @@ export function SuiteSidebar({ slug, suites, selected, onSelect, canWrite, canDe
             canDelete={canDelete}
             busy={busy}
             run={run}
+            onRemoved={onRemoved}
           />
         ))}
       </ul>
       {canWrite ? <AddSuiteForm slug={slug} busy={busy} run={run} /> : null}
     </section>
+  );
+}
+
+/**
+ * Pengelolaan suite di HP (spec §8.2), dilipat dalam `<details>` agar daftar case tetap dekat di layar kecil: menambah suite, dan untuk suite yang sedang dipilih di `suite-select` mengganti
+ * nama, memindah (▲/▼), atau menghapusnya. Memakai `SuiteItem` dan `AddSuiteForm` yang sama dengan sidebar, jadi aksi,
+ * label aksesibel, dan pesan error identik. Tanpa hak tulis tidak ada yang dirender.
+ */
+export function SuiteMobileControls({
+  slug,
+  suites,
+  selected,
+  canWrite,
+  canDelete,
+  onChanged,
+  onRemoved,
+}: SuiteControlsProps) {
+  const { busy, run } = useSuiteActions(onChanged);
+  if (!canWrite) return null;
+  const index = suites.findIndex((suite) => suite.id === selected);
+  const suite = suites[index];
+  return (
+    <details data-testid="suite-manage-panel" className="group min-w-0 rounded-md border bg-card">
+      <summary
+        data-testid="suite-manage-toggle"
+        className="cursor-pointer rounded-md px-3 py-2 text-sm font-medium outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring"
+      >
+        Kelola suite
+      </summary>
+      <div className="grid min-w-0 gap-3 border-t p-3">
+        {suite ? (
+          <ul data-testid="suite-manage" className="m-0 grid list-none p-0">
+            <SuiteItem
+              slug={slug}
+              suite={suite}
+              isFirst={index === 0}
+              isLast={index === suites.length - 1}
+              pressed
+              showSelect={false}
+              canWrite
+              canDelete={canDelete}
+              busy={busy}
+              run={run}
+              onRemoved={onRemoved}
+            />
+          </ul>
+        ) : (
+          <p className="m-0 text-sm text-muted-foreground">
+            Pilih satu suite di atas untuk mengganti nama, memindahkan, atau menghapusnya.
+          </p>
+        )}
+        <AddSuiteForm slug={slug} busy={busy} run={run} />
+      </div>
+    </details>
   );
 }
 
@@ -161,14 +239,30 @@ interface SuiteItemProps {
   isFirst: boolean;
   isLast: boolean;
   pressed: boolean;
-  onSelect: (id: string) => void;
+  onSelect?: (id: string) => void;
+  /** Tampilkan tombol pemilih suite; di HP pilihan ada di `suite-select`, jadi hanya nama suite yang tampil. */
+  showSelect?: boolean;
   canWrite: boolean;
   canDelete: boolean;
   busy: boolean;
   run: RunAction;
+  onRemoved: (id: string) => void;
 }
 
-function SuiteItem({ slug, suite, isFirst, isLast, pressed, onSelect, canWrite, canDelete, busy, run }: SuiteItemProps) {
+function SuiteItem({
+  slug,
+  suite,
+  isFirst,
+  isLast,
+  pressed,
+  onSelect,
+  showSelect = true,
+  canWrite,
+  canDelete,
+  busy,
+  run,
+  onRemoved,
+}: SuiteItemProps) {
   const inputId = useId();
   const errorId = useId();
   const [mode, setMode] = useState<Mode>("view");
@@ -192,7 +286,11 @@ function SuiteItem({ slug, suite, isFirst, isLast, pressed, onSelect, canWrite, 
 
   async function move(delta: -1 | 1) {
     // Posisi tujuan 0-based; server membatasi ke rentang yang ada.
-    const message = await run(() => api.manual.suites.update(slug, suite.id, { position: suite.position + delta }));
+    const message = await run(() =>
+      api.manual.suites.update(slug, suite.id, {
+        position: suite.position + delta,
+      }),
+    );
     setError(message);
   }
 
@@ -212,7 +310,7 @@ function SuiteItem({ slug, suite, isFirst, isLast, pressed, onSelect, canWrite, 
     if (message) {
       setError(message);
       close("delete");
-    }
+    } else onRemoved(suite.id);
   }
 
   function renameKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -259,14 +357,18 @@ function SuiteItem({ slug, suite, isFirst, isLast, pressed, onSelect, canWrite, 
             </Button>
           </div>
         </form>
-      ) : (
+      ) : showSelect ? (
         <SuiteButton
           testId={`suite-${suite.id}`}
           name={suite.name}
           count={suite.activeCount}
           pressed={pressed}
-          onClick={() => onSelect(suite.id)}
+          onClick={() => onSelect?.(suite.id)}
         />
+      ) : (
+        <p className="m-0 px-1 text-sm [overflow-wrap:anywhere]">
+          Suite terpilih: <span className="font-medium">{suite.name}</span>
+        </p>
       )}
 
       {mode === "delete" ? (

@@ -290,6 +290,132 @@ test.describe("Suite test manual (HP)", () => {
     await expect(cases.rows).toHaveCount(5);
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
+
+  test("di 375 px admin menambah, mengganti nama, memindah, dan menghapus suite lewat kontrol suite terpilih", async ({
+    api,
+    newContext,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login", "Checkout"], casesPerSuite: 1 });
+    const page = await (await newContext(await mobileContextOptions(owner))).newPage();
+    const cases = new ManualCasesPage(page);
+    const manage = page.getByTestId("suite-manage-panel");
+    const options = cases.suiteSelect.locator("option");
+    await cases.goto(project.slug);
+
+    // Sidebar tidak dirender di HP (id uji unik); kontrol ada di panel lipat.
+    await expect(cases.suiteList).toHaveCount(0);
+    await expect(cases.suiteAddInput).toBeHidden();
+    await page.getByTestId("suite-manage-toggle").click();
+    await expect(manage).toContainText("Pilih satu suite di atas");
+
+    // Tambah suite.
+    await cases.suiteAddInput.fill("Regresi");
+    await cases.suiteAddSubmit.click();
+    await expect(options).toHaveText(["Semua suite", "Login (1)", "Checkout (1)", "Regresi (0)"]);
+    await expect(cases.suiteAddInput).toHaveValue("");
+    await cases.suiteAddInput.fill("regresi");
+    await cases.suiteAddInput.press("Enter");
+    await expect(cases.suiteError).toHaveText("Nama suite sudah dipakai");
+
+    // Pilih suite baru: kontrolnya muncul untuk suite itu saja.
+    await cases.suiteSelect.selectOption({ label: "Regresi (0)" });
+    // Select terkendali URL: nilainya baru terpasang setelah navigasi router selesai.
+    await expect(cases.suiteSelect).not.toHaveValue("");
+    const id = await cases.suiteSelect.inputValue();
+    await expect(page).toHaveURL(new RegExp(`\\?suite=${id}$`));
+    await expect(manage).toContainText("Suite terpilih: Regresi");
+    await expect(cases.suiteAction("up", id)).toHaveAccessibleName("Pindah ke atas: Regresi");
+    await expect(cases.suiteAction("down", id)).toHaveAccessibleName("Pindah ke bawah: Regresi");
+    await expect(cases.suiteAction("down", id)).toBeDisabled();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    await expectNoA11yViolationsInBothThemes(page);
+
+    // Ganti nama.
+    await cases.suiteAction("rename", id).click();
+    const input = page.getByTestId(`suite-rename-input-${id}`);
+    await expect(input).toBeFocused();
+    await input.fill("Regresi v2");
+    await input.press("Enter");
+    await expect(options).toHaveText(["Semua suite", "Login (1)", "Checkout (1)", "Regresi v2 (0)"]);
+    await expect(manage).toContainText("Suite terpilih: Regresi v2");
+
+    // Pindah ke atas dua kali; urutan bertahan setelah reload.
+    await cases.suiteAction("up", id).click();
+    await expect(options).toHaveText(["Semua suite", "Login (1)", "Regresi v2 (0)", "Checkout (1)"]);
+    await cases.suiteAction("up", id).click();
+    await expect(options).toHaveText(["Semua suite", "Regresi v2 (0)", "Login (1)", "Checkout (1)"]);
+    await expect(cases.suiteAction("up", id)).toBeDisabled();
+    await page.reload();
+    await expect(options).toHaveText(["Semua suite", "Regresi v2 (0)", "Login (1)", "Checkout (1)"]);
+    await expect(cases.suiteSelect).toHaveValue(id);
+
+    // Hapus suite kosong dengan konfirmasi inline; pilihan dilepas dan kembali ke Semua suite.
+    await page.getByTestId("suite-manage-toggle").click();
+    await cases.suiteAction("delete", id).click();
+    await expect(manage).toContainText("Hapus suite “Regresi v2”?");
+    await page.getByTestId(`suite-delete-confirm-${id}`).click();
+    await expect(options).toHaveText(["Semua suite", "Login (1)", "Checkout (1)"]);
+    await expect(cases.suiteSelect).toHaveValue("");
+    await expect(page).not.toHaveURL(/suite=/);
+    await expect(manage).toContainText("Pilih satu suite di atas");
+
+    // Suite berisi case: pesan SUITE_NOT_EMPTY di panel, suite tetap ada dan terpilih.
+    const login = suites[0]!;
+    await cases.suiteSelect.selectOption(login.id);
+    await cases.suiteAction("delete", login.id).click();
+    await page.getByTestId(`suite-delete-confirm-${login.id}`).click();
+    await expect(manage.getByRole("alert")).toHaveText("Pindahkan atau hapus case di suite ini terlebih dahulu.");
+    await expect(options).toHaveText(["Semua suite", "Login (1)", "Checkout (1)"]);
+    await expect(cases.suiteSelect).toHaveValue(login.id);
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+
+  test("di 375 px tester tidak melihat hapus suite, dan viewer tidak melihat kontrol kelola sama sekali", async ({
+    api,
+    newContext,
+  }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login"], casesPerSuite: 0 });
+    const tester = await api.addMember(owner, project.slug, "tester");
+    const viewer = await api.addMember(owner, project.slug, "viewer");
+    const suiteId = suites[0]!.id;
+
+    const testerPage = await (await newContext(await mobileContextOptions(tester))).newPage();
+    const testerCases = new ManualCasesPage(testerPage);
+    await testerCases.goto(project.slug, `?suite=${suiteId}`);
+    await testerPage.getByTestId("suite-manage-toggle").click();
+    await expect(testerCases.suiteAction("rename", suiteId)).toBeVisible();
+    await expect(testerCases.suiteAction("up", suiteId)).toBeVisible();
+    await expect(testerCases.suiteAction("down", suiteId)).toBeVisible();
+    await expect(testerCases.suiteAction("delete", suiteId)).toHaveCount(0);
+
+    const viewerPage = await (await newContext(await mobileContextOptions(viewer))).newPage();
+    const viewerCases = new ManualCasesPage(viewerPage);
+    await viewerCases.goto(project.slug, `?suite=${suiteId}`);
+    await expect(viewerCases.suiteSelect).toBeVisible();
+    await expect(viewerPage.getByTestId("suite-manage-panel")).toHaveCount(0);
+    await expect(viewerCases.suiteAddInput).toHaveCount(0);
+  });
+});
+
+test.describe("Suite test manual (ganti ukuran)", () => {
+  test("melebar dari HP ke desktop menukar suite-select dengan sidebar tanpa kehilangan pilihan", async ({
+    api,
+    newContext,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project, suites } = await seedManualProject(api, { suites: ["Login", "Checkout"], casesPerSuite: 1 });
+    const page = await (await newContext(await mobileContextOptions(owner))).newPage();
+    const cases = new ManualCasesPage(page);
+    await cases.goto(project.slug, `?suite=${suites[1]!.id}`);
+    await expect(cases.suiteSelect).toHaveValue(suites[1]!.id);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(cases.suiteSelect).toHaveCount(0);
+    await expect(cases.suite(suites[1]!.id)).toHaveAttribute("aria-pressed", "true");
+    await expect(cases.rows).toHaveCount(1);
+    await expectNoA11yViolationsInBothThemes(page);
+  });
 });
 
 test.describe("Daftar test case", () => {

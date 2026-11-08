@@ -12,6 +12,8 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { commentRoutes } from "./modules/bugs/comments.routes.js";
 import { bugRoutes } from "./modules/bugs/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
+import { caseRoutes } from "./modules/manual/cases.routes.js";
+import { suiteRoutes } from "./modules/manual/suites.routes.js";
 import { memberRoutes } from "./modules/projects/members.routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
 import { compareRoutes } from "./modules/results/compare.routes.js";
@@ -89,6 +91,8 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await compareRoutes(api, readOpts);
       await bugRoutes(api, readOpts);
       await commentRoutes(api);
+      await suiteRoutes(api);
+      await caseRoutes(api, readOpts);
     },
     { prefix: "/api/v1" },
   );

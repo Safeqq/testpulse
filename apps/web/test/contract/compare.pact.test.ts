@@ -40,6 +40,19 @@ const runSummary = (id: string, version: string, passed: number, failed: number)
   version: text(version),
 });
 
+/** ManualRunRef (Tahap 4 §5.1) dari state `manualVersionsSeeded`; hitungan yang tidak disebut = 0. */
+const manualRef = (runNumber: number, name: string, counts: Partial<Record<"untested" | "passed", number>>) => {
+  const untested = counts.untested ?? 0;
+  const passed = counts.passed ?? 0;
+  return {
+    number: integer(runNumber),
+    name: text(name),
+    status: regex(/^(open|completed)$/, "open"),
+    total: integer(untested + passed),
+    counts: { untested: integer(untested), passed: integer(passed), failed: integer(0), blocked: integer(0), skipped: integer(0) },
+  };
+};
+
 const baseRun = runSummary(BASE_RUN_ID, "1.0.0", 2, 0);
 const targetRun = runSummary(TARGET_RUN_ID, "1.0.1", 1, 1);
 
@@ -83,15 +96,57 @@ describe("kontrak versi dan perbandingan", () => {
             runCount: integer(1),
             passRate: number(50),
             passRateDelta: number(-50),
+            manual: null,
           },
-          { version: text("1.0.0"), run: baseRun, runCount: integer(1), passRate: number(100), passRateDelta: null },
+          { version: text("1.0.0"), run: baseRun, runCount: integer(1), passRate: number(100), passRateDelta: null, manual: null },
         ]),
       )
       .executeTest(async (server) => {
         const versions = await clientFor(server, true).results.versions(PROJECT_SLUG, BRANCH);
         expect(versions.map((v) => v.version)).toEqual(["1.0.1", "1.0.0"]);
-        expect(versions[0]).toMatchObject({ passRate: 50, passRateDelta: -50 });
+        expect(versions[0]).toMatchObject({ passRate: 50, passRateDelta: -50, manual: null });
         expect(versions[1]?.passRateDelta).toBeNull();
+      });
+  });
+
+  it("GET /projects/:slug/versions?branch= memuat run manual per versi dan baris manual-saja (200)", async () => {
+    await pact
+      .addInteraction()
+      .given(STATE.budiAdmin)
+      .given(STATE.compareSeeded)
+      .given(STATE.manualVersionsSeeded)
+      .uponReceiving("daftar versi dengan run manual")
+      .withRequest("GET", `${BASE}/versions`, (b) => b.headers(COOKIE_HEADERS).query({ branch: BRANCH }))
+      .willRespondWith(200, (b) =>
+        b.jsonBody([
+          {
+            version: text("1.0.1"),
+            run: targetRun,
+            runCount: integer(1),
+            passRate: number(50),
+            passRateDelta: number(-50),
+            manual: manualRef(1, "Regresi 1.0.1", { untested: 1, passed: 1 }),
+          },
+          { version: text("1.0.0"), run: baseRun, runCount: integer(1), passRate: number(100), passRateDelta: null, manual: null },
+          // Versi yang hanya punya run manual: tanpa run CI, ditaruh di posisi semver-nya.
+          {
+            version: text("0.9.0"),
+            run: null,
+            runCount: integer(0),
+            passRate: null,
+            passRateDelta: null,
+            manual: manualRef(2, "Eksplorasi 0.9", {}),
+          },
+        ]),
+      )
+      .executeTest(async (server) => {
+        const versions = await clientFor(server, true).results.versions(PROJECT_SLUG, BRANCH);
+        expect(versions.map((v) => [v.version, v.run?.id ?? null, v.manual?.number ?? null])).toEqual([
+          ["1.0.1", TARGET_RUN_ID, 1],
+          ["1.0.0", BASE_RUN_ID, null],
+          ["0.9.0", null, 2],
+        ]);
+        expect(versions[0]?.manual).toMatchObject({ total: 2, counts: { untested: 1, passed: 1, failed: 0 } });
       });
   });
 

@@ -70,10 +70,24 @@ describe("compareDto", () => {
 });
 
 describe("versionDto", () => {
-  const v = { version: "1.0.1", run, runCount: 2, passRate: 97.5, passRateDelta: -2.5 };
+  const v = { version: "1.0.1", run, runCount: 2, passRate: 97.5, passRateDelta: -2.5, manual: null };
+  const manual = {
+    number: 3,
+    name: "Regresi",
+    status: "open",
+    total: 2,
+    counts: { untested: 1, passed: 1, failed: 0, blocked: 0, skipped: 0 },
+  };
   it("menerima versi dengan delta", () => expect(versionDto.safeParse(v).success).toBe(true));
   it("menerima passRate dan delta null", () =>
     expect(versionDto.safeParse({ ...v, passRate: null, passRateDelta: null }).success).toBe(true));
+  it("menerima rujukan run manual dan baris manual-saja (run null)", () => {
+    expect(versionDto.safeParse({ ...v, manual }).success).toBe(true);
+    const manualOnly = { version: "0.3.5", run: null, runCount: 0, passRate: null, passRateDelta: null, manual };
+    expect(versionDto.safeParse(manualOnly).success).toBe(true);
+  });
+  it("manual wajib ada (null bila tanpa run manual)", () =>
+    expect(versionDto.safeParse({ ...v, manual: undefined }).success).toBe(false));
 });
 
 describe("compareQuery", () => {

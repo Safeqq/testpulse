@@ -9,6 +9,8 @@ import {
   bugLinks,
   bugs,
   invitations,
+  manualRunCases,
+  manualRuns,
   memberships,
   projectTokens,
   projects,
@@ -260,6 +262,31 @@ export function createContractStates(db: Db): ContractStates {
     return encodeCompareCursor({ baseId: BASE_RUN_ID, targetId: TARGET_RUN_ID, suite: last.suite, name: last.name, testCaseId: last.id });
   }
 
+  /**
+   * Dua run manual (Tahap 4 §5.1): TR-1 `v1.0.1` (cocok dengan run CI 1.0.1 milik `ensureCompareRuns`) berisi dua run
+   * case (satu lulus, satu belum dites), dan TR-2 `0.9.0` tanpa run case (versi manual-saja). Harus sama dengan
+   * `manualRef` di apps/web/test/contract/compare.pact.test.ts.
+   */
+  async function ensureManualVersionRuns(project: { id: string }) {
+    const [existing] = await db.select({ id: manualRuns.id }).from(manualRuns).where(eq(manualRuns.projectId, project.id));
+    if (existing) return;
+    await ensureUser(OWNER);
+    const [tr1] = await db
+      .insert(manualRuns)
+      .values([
+        { projectId: project.id, number: 1, name: "Regresi 1.0.1", appVersion: "v1.0.1", createdBy: OWNER.id },
+        { projectId: project.id, number: 2, name: "Eksplorasi 0.9", appVersion: "0.9.0", createdBy: OWNER.id },
+      ])
+      .returning({ id: manualRuns.id });
+    if (!tr1) throw new Error("gagal membuat run manual");
+    await db.update(projects).set({ manualRunSeq: 2 }).where(eq(projects.id, project.id));
+    const snapshot = { suiteName: "Checkout", suitePosition: 0, steps: [{ action: "Bayar", expected: "Berhasil" }], priority: "medium" as const };
+    await db.insert(manualRunCases).values([
+      { ...snapshot, runId: tr1.id, position: 0, caseNumber: 1, title: "Bayar kartu", status: "passed", stepResults: [{ status: "passed", note: "" }] },
+      { ...snapshot, runId: tr1.id, position: 1, caseNumber: 2, title: "Bayar transfer", stepResults: [{ status: null, note: "" }] },
+    ]);
+  }
+
   async function insertTokens(project: { id: string; createdBy: string }, count: number, firstId?: string) {
     await db.insert(projectTokens).values(
       Array.from({ length: count }, (_, i) => ({
@@ -381,6 +408,11 @@ export function createContractStates(db: Db): ContractStates {
     "pact-project punya 250 regresi antara run v1.0.0 dan v1.0.1 di branch main": async () => {
       const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
       return { cursor: await ensureManyRegressions(project) };
+    },
+
+    "pact-project punya run manual TR-1 v1.0.1 dan TR-2 0.9.0": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureManualVersionRuns(project);
     },
 
     "sari anggota tester di pact-project": async () => {

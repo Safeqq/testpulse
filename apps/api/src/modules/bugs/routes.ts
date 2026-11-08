@@ -68,6 +68,7 @@ export async function bugRoutes(app: FastifyInstance, opts: ReadRoutesOptions = 
     if (result === "assignee_not_member") throw fieldError("assigneeId", ASSIGNEE_NOT_MEMBER);
     if (result === "test_case_not_found") throw fieldError("testCaseId", "Test tidak ditemukan di project ini");
     if (result === "run_not_found") throw fieldError("runId", "Run tidak ditemukan atau tidak memuat hasil test ini");
+    if (result === "manual_run_case_not_found") throw fieldError("manualRunCaseId", "Run case tidak ditemukan di project ini");
     return reply.status(201).send(result);
   });
 

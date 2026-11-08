@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { bugRefDto } from "./bugs.js";
+import { manualRunRefDto } from "./manual.js";
 import { branchName, runSummaryDto } from "./results.js";
 import { RESULT_STATUSES } from "./result-status.js";
 
@@ -56,14 +57,17 @@ export const compareDto = z.object({
 });
 export type CompareDto = z.infer<typeof compareDto>;
 
+// Tahap 4 §5.1: `run` null (dengan `runCount` 0, pass rate & delta null) untuk versi yang hanya punya run manual.
 export const versionDto = z.object({
   version: z.string(),
-  run: runSummaryDto,
+  run: runSummaryDto.nullable(),
   runCount: z.number(),
   // `null` bila run terakhir versi itu tidak punya test yang dijalankan (lulus + gagal = 0).
   passRate: z.number().nullable(),
-  // Selisih poin terhadap versi tepat di bawahnya; `null` bila tidak ada versi di bawahnya.
+  // Selisih poin terhadap versi automated tepat di bawahnya; `null` bila tidak ada versi automated di bawahnya.
   passRateDelta: z.number().nullable(),
+  // Run manual terbaru (nomor TR terbesar) berversi sama; `null` bila tidak ada.
+  manual: manualRunRefDto.nullable(),
 });
 export type VersionDto = z.infer<typeof versionDto>;
 

@@ -222,7 +222,7 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       expect([older.base?.id, older.target?.id]).toEqual([v100, prefixed]);
 
       const versions = versionsDto.parse((await get(`/projects/${fx.project.slug}/versions`, fx.admin.cookie)).json());
-      expect(versions.map((v) => [v.version, v.run.id, v.runCount])).toEqual([
+      expect(versions.map((v) => [v.version, v.run?.id, v.runCount])).toEqual([
         ["1.0.1", plain, 2],
         ["1.0.0", v100, 1],
       ]);
@@ -524,10 +524,10 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       const res = await get(`/projects/${fx.project.slug}/versions?branch=main`, fx.admin.cookie);
       expect(res.statusCode, res.body).toBe(200);
       const versions = versionsDto.parse(res.json());
-      expect(versions.map((v) => ({ ...v, run: v.run.id }))).toEqual([
-        { version: "1.10.0", run: v110, runCount: 1, passRate: 100, passRateDelta: 33.3 },
-        { version: "1.2.0", run: v120, runCount: 1, passRate: 66.7, passRateDelta: 33.4 },
-        { version: "1.0.0", run: v100, runCount: 2, passRate: 33.3, passRateDelta: null },
+      expect(versions.map((v) => ({ ...v, run: v.run?.id }))).toEqual([
+        { version: "1.10.0", run: v110, runCount: 1, passRate: 100, passRateDelta: 33.3, manual: null },
+        { version: "1.2.0", run: v120, runCount: 1, passRate: 66.7, passRateDelta: 33.4, manual: null },
+        { version: "1.0.0", run: v100, runCount: 2, passRate: 33.3, passRateDelta: null, manual: null },
       ]);
       expect(versions[0]?.run).toMatchObject({ version: "1.10.0", branch: "main", total: 1 });
 
@@ -544,10 +544,10 @@ describe("API versi, perbandingan, badge bug, dan petunjuk test", () => {
       const semver = await seedRun(fx, { version: "1.0.0", at: 3, results: [result("a", "failed")] });
 
       const versions = versionsDto.parse((await get(`/projects/${fx.project.slug}/versions`, fx.admin.cookie)).json());
-      expect(versions.map((v) => ({ ...v, run: v.run.id }))).toEqual([
-        { version: "1.0.0", run: semver, runCount: 1, passRate: 0, passRateDelta: -100 },
-        { version: "release-b", run: releaseB, runCount: 2, passRate: 100, passRateDelta: null },
-        { version: "alpha", run: alpha, runCount: 1, passRate: null, passRateDelta: null },
+      expect(versions.map((v) => ({ ...v, run: v.run?.id }))).toEqual([
+        { version: "1.0.0", run: semver, runCount: 1, passRate: 0, passRateDelta: -100, manual: null },
+        { version: "release-b", run: releaseB, runCount: 2, passRate: 100, passRateDelta: null, manual: null },
+        { version: "alpha", run: alpha, runCount: 1, passRate: null, passRateDelta: null, manual: null },
       ]);
     });
 

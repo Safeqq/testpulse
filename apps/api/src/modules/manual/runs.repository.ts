@@ -45,7 +45,7 @@ export const runByNumber = (projectId: string, number: number) =>
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Hitungan status run case per run, dihitung dengan `GROUP BY` saat dibaca (spec §4.5), satu query untuk semua run. */
-async function countsByRun(db: Queryable, runIds: string[]): Promise<Map<string, Partial<ManualCountsDto>>> {
+export async function countsByRun(db: Queryable, runIds: string[]): Promise<Map<string, Partial<ManualCountsDto>>> {
   const grouped = new Map<string, Partial<ManualCountsDto>>(runIds.map((id) => [id, {}]));
   if (runIds.length === 0) return grouped;
   const rows = await db

@@ -1,6 +1,8 @@
 import {
   caseStep,
   stepResult,
+  type BugRefDto,
+  type BugStatus,
   type ManualResultStatus,
   type ManualRunStatus,
   type RunCaseDto,
@@ -8,13 +10,14 @@ import {
   type RunCaseListQuery,
   type UpdateRunCaseBody,
 } from "@testpulse/shared";
-import { and, asc, eq, gt, inArray, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import type { Db, Queryable } from "../../db/client.js";
-import { manualRunCases, manualRuns, memberships, users } from "../../db/schema.js";
+import { bugs, manualRunCases, manualRuns, memberships, users } from "../../db/schema.js";
 import { isUuid } from "../../http/uuid.js";
+import { MAX_BUG_REFS } from "../results/repository.js";
 import { stepResultsMatch } from "./domain/results.js";
 
 /*
@@ -39,10 +42,55 @@ const stepResultsSchema = z.array(stepResult);
 const userRef = (id: string | null, name: string | null) => (id !== null && name !== null ? { id, name } : null);
 
 // ---------------------------------------------------------------------------------------------------------------
+// Badge bug
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Badge bug untuk setiap run case di `runCaseIds` dengan **satu** query (spec §5.4), pola `bugRefsForTests`: bug
+ * non-`closed` yang tertaut ke run case itu, maks `MAX_BUG_REFS`, terbaru dulu (`created_at desc`, nomor sebagai
+ * pemutus seri). Predikat `status <> 'closed'` ditulis literal agar indeks parsial `bugs_manual_run_case_open_idx`
+ * terpakai. Run case tanpa bug mendapat `[]`.
+ */
+export async function bugRefsForRunCases(
+  db: Queryable,
+  projectId: string,
+  runCaseIds: readonly string[],
+): Promise<Map<string, BugRefDto[]>> {
+  const refs = new Map<string, BugRefDto[]>(runCaseIds.map((id) => [id, []]));
+  if (runCaseIds.length === 0) return refs;
+
+  const ranked = db
+    .select({
+      runCaseId: bugs.manualRunCaseId,
+      number: bugs.number,
+      title: bugs.title,
+      status: bugs.status,
+      recency: sql<number>`row_number() over (partition by ${bugs.manualRunCaseId} order by ${bugs.createdAt} desc, ${bugs.number} desc)`.as(
+        "recency",
+      ),
+    })
+    .from(bugs)
+    .where(and(inArray(bugs.manualRunCaseId, [...refs.keys()]), sql`${bugs.status} <> 'closed'`, eq(bugs.projectId, projectId)))
+    .as("ranked");
+  const rows = await db
+    .select()
+    .from(ranked)
+    .where(lte(ranked.recency, MAX_BUG_REFS))
+    .orderBy(ranked.runCaseId, ranked.recency);
+
+  for (const row of rows) {
+    if (row.runCaseId === null) continue;
+    refs.get(row.runCaseId)?.push({ number: row.number, title: row.title, status: row.status as BugStatus });
+  }
+  return refs;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Daftar
 // ---------------------------------------------------------------------------------------------------------------
 
 export interface ListRunCasesOptions {
+  projectId: string;
   runId: string;
   /** Pengguna sesi untuk `assignee=me` (anonim → tidak ada yang cocok). */
   userId: string | null;
@@ -53,7 +101,8 @@ export interface ListRunCasesOptions {
 }
 
 /**
- * Satu halaman run case (spec §7), urut `position`. `suite` = nama suite snapshot. `bugs` diisi Task 6; di sini `[]`.
+ * Satu halaman run case (spec §7), urut `position`. `suite` = nama suite snapshot. Badge bug semua run case di halaman
+ * diambil dengan satu query (`bugRefsForRunCases`).
  */
 export async function listRunCases(db: Queryable, opts: ListRunCasesOptions): Promise<RunCaseListItemDto[]> {
   const { query } = opts;
@@ -84,6 +133,11 @@ export async function listRunCases(db: Queryable, opts: ListRunCasesOptions): Pr
     .orderBy(asc(manualRunCases.position))
     .limit(opts.limit);
 
+  const bugRefs = await bugRefsForRunCases(
+    db,
+    opts.projectId,
+    rows.map((row) => row.id),
+  );
   return rows.map((row) => ({
     id: row.id,
     position: row.position,
@@ -94,7 +148,7 @@ export async function listRunCases(db: Queryable, opts: ListRunCasesOptions): Pr
     status: row.status as ManualResultStatus,
     assignee: userRef(row.assigneeId, row.assigneeName),
     executedAt: row.executedAt?.toISOString() ?? null,
-    bugs: [],
+    bugs: bugRefs.get(row.id) ?? [],
   }));
 }
 
@@ -116,8 +170,11 @@ async function nextUntestedId(db: Queryable, runId: string, current: { id: strin
   return row?.id ?? null;
 }
 
-/** Run case lengkap (snapshot + hasil) dari run `runId`, atau `null` bila id itu bukan milik run tersebut. */
-export async function loadRunCaseDto(db: Queryable, runId: string, id: string): Promise<RunCaseDto | null> {
+/**
+ * Run case lengkap (snapshot + hasil + badge bug) dari run `runId` milik project `projectId`, atau `null` bila id itu
+ * bukan milik run tersebut.
+ */
+export async function loadRunCaseDto(db: Queryable, projectId: string, runId: string, id: string): Promise<RunCaseDto | null> {
   const [row] = await db
     .select({
       id: manualRunCases.id,
@@ -158,7 +215,7 @@ export async function loadRunCaseDto(db: Queryable, runId: string, id: string): 
     status: row.status as ManualResultStatus,
     assignee: userRef(row.assigneeId, row.assigneeName),
     executedAt: row.executedAt?.toISOString() ?? null,
-    bugs: [],
+    bugs: (await bugRefsForRunCases(db, projectId, [row.id])).get(row.id) ?? [],
     preconditions: row.preconditions,
     steps: stepsSchema.parse(row.steps),
     stepResults: stepResultsSchema.parse(row.stepResults),
@@ -256,7 +313,7 @@ export async function updateRunCase(
         .set({ ...changes, version: sql`${manualRunCases.version} + 1`, updatedAt: sql`statement_timestamp()` })
         .where(eq(manualRunCases.id, row.id));
     }
-    const dto = await loadRunCaseDto(tx, run.id, row.id);
+    const dto = await loadRunCaseDto(tx, projectId, run.id, row.id);
     if (!dto) throw new Error("run case hilang di tengah transaksi");
     return dto;
   });

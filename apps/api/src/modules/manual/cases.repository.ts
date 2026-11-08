@@ -1,21 +1,34 @@
 import {
   caseStep,
   type CaseCoverageDto,
+  type CaseRecentResultDto,
   type CaseListQuery,
   type CasePriority,
   type CreateCaseBody,
   type ManualCaseDto,
   type ManualCaseListItemDto,
+  type ManualResultStatus,
+  type ResultStatus,
   type TestSearchItemDto,
   type UpdateCaseBody,
 } from "@testpulse/shared";
-import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import type { Db, Queryable } from "../../db/client.js";
-import { caseSuites, manualCaseLabels, manualCases, projects, testCases, users } from "../../db/schema.js";
+import {
+  caseSuites,
+  manualCaseLabels,
+  manualCases,
+  manualRunCases,
+  manualRuns,
+  projects,
+  testCases,
+  users,
+} from "../../db/schema.js";
 import { escapeLike, sortLabels } from "../bugs/read.repository.js";
+import { latestBranch, listTestHistory } from "../results/repository.js";
 import type { CaseCursor } from "./cursor.js";
 
 /*
@@ -50,13 +63,58 @@ async function labelsByCase(db: Queryable, caseIds: string[]): Promise<Map<strin
   return new Map([...grouped].map(([id, labels]) => [id, sortLabels(labels)]));
 }
 
+/** Jumlah hasil run case terbaru pada detail case (spec §7). */
+export const RECENT_RESULTS_LIMIT = 10;
+
 /**
- * Detail case. `automatedTest.lastResult` dan `recentResults` diisi Task 6 (spec §5.3, §7); di sini `null` dan `[]`.
+ * Hasil terakhir automated test di branch default project (branch run terbaru, sama dengan `stats`; spec §5.3);
+ * `null` bila project belum punya run atau test itu tidak punya hasil di branch tersebut.
  */
+async function lastAutomatedResult(
+  db: Queryable,
+  projectId: string,
+  testId: string,
+): Promise<NonNullable<ManualCaseDto["automatedTest"]>["lastResult"]> {
+  const branch = await latestBranch(db, projectId);
+  if (branch === null) return null;
+  const [last] = await listTestHistory(db, projectId, testId, branch, 1);
+  // Kolom status dibatasi CHECK constraint `test_results_status_check`.
+  return last ? { status: last.status as ResultStatus, runId: last.runId, createdAt: last.createdAt.toISOString(), branch } : null;
+}
+
+/**
+ * Hasil case ini di run manual (spec §7): maks `RECENT_RESULTS_LIMIT`, run terbaru dulu (nomor TR terbesar,
+ * Ruling R5), termasuk run case yang belum dites. Satu case muncul paling banyak sekali per run.
+ */
+async function recentResults(db: Queryable, caseId: string): Promise<CaseRecentResultDto[]> {
+  const rows = await db
+    .select({
+      runCaseId: manualRunCases.id,
+      runNumber: manualRuns.number,
+      runName: manualRuns.name,
+      appVersion: manualRuns.appVersion,
+      status: manualRunCases.status,
+      executedAt: manualRunCases.executedAt,
+    })
+    .from(manualRunCases)
+    .innerJoin(manualRuns, eq(manualRuns.id, manualRunCases.runId))
+    .where(eq(manualRunCases.caseId, caseId))
+    .orderBy(desc(manualRuns.number), asc(manualRunCases.position))
+    .limit(RECENT_RESULTS_LIMIT);
+  // Kolom status dibatasi CHECK constraint `manual_run_cases_status_check`.
+  return rows.map((row) => ({
+    ...row,
+    status: row.status as ManualResultStatus,
+    executedAt: row.executedAt?.toISOString() ?? null,
+  }));
+}
+
+/** Detail case, termasuk hasil terakhir automated test tertaut (spec §5.3) dan hasil run manual terbaru (spec §7). */
 async function loadCaseDto(db: Queryable, caseId: string): Promise<ManualCaseDto> {
   const [row] = await db
     .select({
       id: manualCases.id,
+      projectId: manualCases.projectId,
       number: manualCases.number,
       suiteId: caseSuites.id,
       suiteName: caseSuites.name,
@@ -101,9 +159,14 @@ async function loadCaseDto(db: Queryable, caseId: string): Promise<ManualCaseDto
     version: row.version,
     automatedTest:
       row.testId !== null && row.testSuite !== null && row.testName !== null
-        ? { id: row.testId, suite: row.testSuite, name: row.testName, lastResult: null }
+        ? {
+            id: row.testId,
+            suite: row.testSuite,
+            name: row.testName,
+            lastResult: await lastAutomatedResult(db, row.projectId, row.testId),
+          }
         : null,
-    recentResults: [],
+    recentResults: await recentResults(db, row.id),
   };
 }
 

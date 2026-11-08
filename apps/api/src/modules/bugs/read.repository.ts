@@ -12,7 +12,7 @@ import type {
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Queryable } from "../../db/client.js";
-import { bugLabels, bugLinks, bugs, testCases, users } from "../../db/schema.js";
+import { bugLabels, bugLinks, bugs, manualRunCases, manualRuns, testCases, users } from "../../db/schema.js";
 import { listTestHistory } from "../results/repository.js";
 import type { BugCursor, BugSort } from "./cursor.js";
 
@@ -134,7 +134,11 @@ async function loadTestHint(
   };
 }
 
-/** Detail bug (spec §6), termasuk `testHint` bila bug tertaut ke test. */
+/**
+ * Detail bug (spec §6), termasuk `testHint` bila bug tertaut ke test dan `manualOrigin` (Tahap 4 §5.4) dari run case
+ * asal: nomor & nama run serta nomor & judul case dari snapshot run case. Run yang dihapus menghapus run case-nya
+ * dan mengosongkan `manual_run_case_id`, sehingga `manualOrigin` menjadi `null`.
+ */
 export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> {
   const [row] = await db
     .select({
@@ -150,11 +154,17 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
       version: bugs.version,
       resolvedAt: bugs.resolvedAt,
       closedAt: bugs.closedAt,
+      originRunNumber: manualRuns.number,
+      originRunName: manualRuns.name,
+      originCaseNumber: manualRunCases.caseNumber,
+      originCaseTitle: manualRunCases.title,
     })
     .from(bugs)
     .innerJoin(reporterUser, eq(reporterUser.id, bugs.reporterId))
     .leftJoin(assigneeUser, eq(assigneeUser.id, bugs.assigneeId))
     .leftJoin(testCases, eq(testCases.id, bugs.testCaseId))
+    .leftJoin(manualRunCases, eq(manualRunCases.id, bugs.manualRunCaseId))
+    .leftJoin(manualRuns, eq(manualRuns.id, manualRunCases.runId))
     .where(eq(bugs.id, bugId));
   if (!row) throw new Error("bug hilang di tengah transaksi");
 
@@ -179,8 +189,15 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     closedAt: row.closedAt?.toISOString() ?? null,
     testHint: row.testCaseId === null ? null : await loadTestHint(db, row.projectId, row.testCaseId, row.runId),
-    // Diisi dari bugs.manual_run_case_id setelah migrasi 0005 (Tahap 4); sementara belum ada asal manual.
-    manualOrigin: null,
+    manualOrigin:
+      row.originRunNumber !== null && row.originRunName !== null && row.originCaseNumber !== null && row.originCaseTitle !== null
+        ? {
+            runNumber: row.originRunNumber,
+            runName: row.originRunName,
+            caseNumber: row.originCaseNumber,
+            caseTitle: row.originCaseTitle,
+          }
+        : null,
   };
 }
 

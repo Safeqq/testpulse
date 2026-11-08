@@ -9,6 +9,8 @@ import {
   type CompareGroupPageDto,
   type CompareItemDto,
   type CompareQuery,
+  type ManualCountsDto,
+  type ManualRunRefDto,
   type VersionDto,
 } from "@testpulse/shared";
 import type { FastifyInstance } from "fastify";
@@ -18,13 +20,18 @@ import { AppError } from "../../http/errors.js";
 import { isUuid } from "../../http/uuid.js";
 import { parseOrThrow } from "../../http/validate.js";
 import { loadUser } from "../auth/service.js";
+import { mergeManualVersions } from "../manual/domain/versions.js";
+import { summarize } from "../manual/domain/summary.js";
+import { countsByRun } from "../manual/runs.repository.js";
 import { resolveProject } from "../projects/access.js";
 import {
   listBranchRuns,
   listCompareResults,
+  listLatestManualRunsByVersion,
   listResultMessages,
   messageKey,
   type CompareResultRow,
+  type ManualVersionRun,
 } from "./compare.repository.js";
 import { decodeCompareCursor, encodeCompareCursor, type CompareKey } from "./cursor.js";
 import { pickBaseline, pickDefaultTarget } from "./domain/baseline.js";
@@ -62,19 +69,21 @@ function staleCursor(): AppError {
   });
 }
 
+type AutomatedVersion = Omit<VersionDto, "manual">;
+
 /**
  * Versi satu branch (spec §4.2), tertinggi dulu. "Run sebuah versi" = run terakhirnya; versi yang sama menurut
  * semver (mis. `v1.0.1` dan `1.0.1`) menjadi satu entri. `passRateDelta` = selisih poin terhadap versi tepat di
  * bawahnya, `null` bila tidak ada versi di bawahnya atau salah satu pass rate `null`.
  */
-function listVersions(branchRuns: readonly RunRecord[]): VersionDto[] {
+function listVersions(branchRuns: readonly RunRecord[]): AutomatedVersion[] {
   const rows = groupRunsByVersion(branchRuns).groups.map((group) => {
     const run = group.runs.at(-1)!;
     return { version: group.version, run, runCount: group.runs.length, passRate: passRate(run) };
   });
 
   return rows
-    .map((row, index): VersionDto => {
+    .map((row, index): AutomatedVersion => {
       const below = rows[index - 1];
       const delta =
         below === undefined || row.passRate === null || below.passRate === null
@@ -84,6 +93,42 @@ function listVersions(branchRuns: readonly RunRecord[]): VersionDto[] {
     })
     .toReversed();
 }
+
+/**
+ * Menggabungkan versi automated (tertinggi dulu, `passRateDelta` sudah dihitung antarversi automated) dengan run
+ * manual terbaru per versi (Tahap 4 §5.1): penempatan baris manual-saja oleh `mergeManualVersions`, lalu dipotong
+ * `MAX_VERSIONS` baris tertinggi. Tiap baris mendapat run manual bernomor terbesar di antara versi manual yang
+ * jatuh ke baris itu (beberapa penulisan, mis. `v0.4.0` dan `0.4.0`, bisa jatuh ke satu baris).
+ */
+function mergeVersions(
+  automated: readonly AutomatedVersion[],
+  manualRuns: readonly ManualVersionRun[],
+): Array<{ automated: AutomatedVersion | null; version: string; manualRun: ManualVersionRun | null }> {
+  const { rows, matchOf } = mergeManualVersions({
+    automated: automated.map((entry) => entry.version).toReversed(),
+    manual: manualRuns.map((run) => ({ appVersion: run.appVersion, latestAt: run.createdAt })),
+  });
+  const manualByRow = new Map<string, ManualVersionRun>();
+  for (const run of manualRuns) {
+    const label = matchOf(run.appVersion);
+    const current = label === null ? undefined : manualByRow.get(label);
+    if (label !== null && (current === undefined || run.number > current.number)) manualByRow.set(label, run);
+  }
+  const automatedByVersion = new Map(automated.map((entry) => [entry.version, entry]));
+  return rows
+    .toReversed()
+    .slice(0, MAX_VERSIONS)
+    .map((row) => ({
+      automated: row.automated ? (automatedByVersion.get(row.version) ?? null) : null,
+      version: row.version,
+      manualRun: manualByRow.get(row.version) ?? null,
+    }));
+}
+
+const toManualRef = (run: ManualVersionRun, counts: Partial<ManualCountsDto>): ManualRunRefDto => {
+  const { total, counts: full } = summarize(counts);
+  return { number: run.number, name: run.name, status: run.status, total, counts: full };
+};
 
 /** Satu test dalam kelompok perbandingan, dengan data base/target lengkap untuk DTO. */
 interface CompareEntry extends CompareKey {
@@ -178,11 +223,18 @@ export async function compareRoutes(app: FastifyInstance, opts: ReadRoutesOption
   app.get<{ Params: { slug: string } }>("/projects/:slug/versions", readAccess, async (req): Promise<VersionDto[]> => {
     const { project } = await resolveProject(app.db, req.params.slug, req.user, "project:read");
     const requested = parseOrThrow(versionsQuery, req.query).branch;
-    const branchRuns = await heavyRead(async (db) => {
+    return heavyRead(async (db) => {
       const branch = requested ?? (await latestBranch(db, project.id));
-      return branch === null ? [] : listBranchRuns(db, project.id, branch);
+      const branchRuns = branch === null ? [] : await listBranchRuns(db, project.id, branch);
+      const rows = mergeVersions(listVersions(branchRuns), await listLatestManualRunsByVersion(db, project.id));
+      // Hitungan status hanya untuk run manual yang benar-benar tampil (satu query `GROUP BY`).
+      const shownRuns = rows.flatMap((row) => (row.manualRun === null ? [] : [row.manualRun.id]));
+      const counts = await countsByRun(db, shownRuns);
+      return rows.map(({ automated, version, manualRun }): VersionDto => ({
+        ...(automated ?? { version, run: null, runCount: 0, passRate: null, passRateDelta: null }),
+        manual: manualRun === null ? null : toManualRef(manualRun, counts.get(manualRun.id) ?? {}),
+      }));
     });
-    return listVersions(branchRuns).slice(0, MAX_VERSIONS);
   });
 
   /**

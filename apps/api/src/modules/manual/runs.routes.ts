@@ -49,7 +49,7 @@ const parseRunNumber = (raw: string) => parsePathNumber(raw, manualRunNotFound);
 /**
  * Rute run manual dan eksekusi run case (spec Tahap 4 §4, §7). Hanya sesi cookie yang dibaca (token CI diperlakukan
  * anonim); akses project diputuskan sebelum body/query divalidasi. Detail run dan run case berjalan dalam transaksi
- * baca-saja ber-`statement_timeout` (snapshot konsisten untuk ringkasan dan `nextUntestedId`; Task 6 menambah bug).
+ * baca-saja ber-`statement_timeout` (snapshot konsisten untuk ringkasan, `nextUntestedId`, dan badge bug).
  */
 export async function manualRunRoutes(app: FastifyInstance, opts: ReadRoutesOptions = {}): Promise<void> {
   const readAccess = { preHandler: [loadUser] };
@@ -141,6 +141,7 @@ export async function manualRunRoutes(app: FastifyInstance, opts: ReadRoutesOpti
       const run = await findRunRef(app.db, project.id, number);
       if (!run) throw manualRunNotFound();
       const rows = await listRunCases(app.db, {
+        projectId: project.id,
         runId: run.id,
         userId: req.user?.id ?? null,
         query,
@@ -166,7 +167,7 @@ export async function manualRunRoutes(app: FastifyInstance, opts: ReadRoutesOpti
         const run = await findRunRef(db, project.id, number);
         if (!run) return "run_not_found" as const;
         // Id bukan uuid → 404 RUN_CASE_NOT_FOUND tanpa query (Postgres menolak bind-nya); run tak dikenal didahulukan.
-        return isUuid(req.params.id) ? loadRunCaseDto(db, run.id, req.params.id) : null;
+        return isUuid(req.params.id) ? loadRunCaseDto(db, project.id, run.id, req.params.id) : null;
       });
       if (result === "run_not_found") throw manualRunNotFound();
       if (!result) throw runCaseNotFound();

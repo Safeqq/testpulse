@@ -1,7 +1,7 @@
-import type { ResultStatus } from "@testpulse/shared";
-import { and, asc, eq, inArray, isNotNull, or } from "drizzle-orm";
+import type { ManualRunStatus, ResultStatus } from "@testpulse/shared";
+import { and, asc, desc, eq, inArray, isNotNull, or } from "drizzle-orm";
 import type { Queryable } from "../../db/client.js";
-import { runs, testCases, testResults } from "../../db/schema.js";
+import { manualRuns, runs, testCases, testResults } from "../../db/schema.js";
 import type { RunRecord } from "./repository.js";
 
 // Query perbandingan & daftar versi (spec Tahap 3 §4.2–4.4). Pengurutan versi, pembanding default, dan
@@ -72,4 +72,37 @@ export async function listResultMessages(
       ),
     );
   return new Map(rows.map((row) => [messageKey(row.runId, row.testCaseId), row.message ?? ""]));
+}
+
+export interface ManualVersionRun {
+  id: string;
+  number: number;
+  name: string;
+  appVersion: string;
+  status: ManualRunStatus;
+  createdAt: Date;
+}
+
+/**
+ * Run manual terbaru untuk setiap `app_version` (string persis) project ini, dengan **satu** query `DISTINCT ON`
+ * (Tahap 4 §5.1). "Terbaru" = nomor TR terbesar (Ruling R5); `createdAt`-nya menjadi waktu urut baris manual-saja
+ * non-semver. Run manual tidak punya branch, jadi hasilnya sama untuk setiap pilihan branch. Run tanpa versi diabaikan.
+ */
+export async function listLatestManualRunsByVersion(db: Queryable, projectId: string): Promise<ManualVersionRun[]> {
+  const rows = await db
+    .selectDistinctOn([manualRuns.appVersion], {
+      id: manualRuns.id,
+      number: manualRuns.number,
+      name: manualRuns.name,
+      appVersion: manualRuns.appVersion,
+      status: manualRuns.status,
+      createdAt: manualRuns.createdAt,
+    })
+    .from(manualRuns)
+    .where(and(eq(manualRuns.projectId, projectId), isNotNull(manualRuns.appVersion)))
+    .orderBy(manualRuns.appVersion, desc(manualRuns.number));
+  // Status dibatasi CHECK constraint `manual_runs_status_check`; `app_version` null sudah difilter SQL.
+  return rows.flatMap(({ appVersion, ...row }) =>
+    appVersion === null ? [] : [{ ...row, appVersion, status: row.status as ManualRunStatus }],
+  );
 }

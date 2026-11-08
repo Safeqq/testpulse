@@ -2,7 +2,20 @@ import type { BugDto, BugResolution, BugStatus, CreateBugBody, UpdateBugBody } f
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { Db, Queryable } from "../../db/client.js";
-import { bugEvents, bugLabels, bugLinks, bugs, memberships, projects, runs, testCases, testResults, users } from "../../db/schema.js";
+import {
+  bugEvents,
+  bugLabels,
+  bugLinks,
+  bugs,
+  manualRunCases,
+  manualRuns,
+  memberships,
+  projects,
+  runs,
+  testCases,
+  testResults,
+  users,
+} from "../../db/schema.js";
 import { applyStatusChange } from "./domain/transitions.js";
 import { bugByNumber, labelsByBug, loadBugDto, sortLabels } from "./read.repository.js";
 
@@ -43,7 +56,12 @@ async function insertLinks(tx: Queryable, bugId: string, links: readonly { url: 
     .values(links.map((link, position) => ({ bugId, position, url: link.url, title: link.title ?? null })));
 }
 
-export type CreateBugFailure = "project_not_found" | "assignee_not_member" | "test_case_not_found" | "run_not_found";
+export type CreateBugFailure =
+  | "project_not_found"
+  | "assignee_not_member"
+  | "test_case_not_found"
+  | "run_not_found"
+  | "manual_run_case_not_found";
 
 /**
  * Membuat bug dalam satu transaksi. Baris project dikunci lebih dulu (`FOR NO KEY UPDATE`); nomor diambil dari
@@ -94,6 +112,16 @@ export async function createBug(
         : [];
       if (!result) return "run_not_found";
     }
+    if (body.manualRunCaseId !== undefined) {
+      // Run case dari run manual project ini (spec Tahap 4 §5.4); dikunci agar run-nya tidak terhapus di sela-sela.
+      const [runCase] = await tx
+        .select({ id: manualRunCases.id })
+        .from(manualRunCases)
+        .innerJoin(manualRuns, eq(manualRuns.id, manualRunCases.runId))
+        .where(and(eq(manualRunCases.id, body.manualRunCaseId), eq(manualRuns.projectId, projectId)))
+        .for("key share", { of: manualRunCases });
+      if (!runCase) return "manual_run_case_not_found";
+    }
 
     const [seq] = await tx
       .update(projects)
@@ -116,6 +144,7 @@ export async function createBug(
         reporterId,
         testCaseId: body.testCaseId ?? null,
         runId: body.runId ?? null,
+        manualRunCaseId: body.manualRunCaseId ?? null,
       })
       .returning({ id: bugs.id });
     if (!bug) throw new Error("insert bug tidak mengembalikan baris");

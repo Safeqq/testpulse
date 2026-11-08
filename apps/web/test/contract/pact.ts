@@ -56,6 +56,8 @@ export const STATE = {
   compareSeeded: "pact-project punya run v1.0.0 dan v1.0.1 di branch main dengan satu regresi",
   /** Provider mengembalikan `cursor` (halaman kedua kelompok regresi) untuk `fromProviderState("${cursor}", …)`. */
   manyRegressions: "pact-project punya 250 regresi antara run v1.0.0 dan v1.0.1 di branch main",
+  /** Tahap 4: TR-1 `v1.0.1` (2 run case: 1 lulus, 1 belum dites) dan TR-2 `0.9.0` (manual-saja, tanpa run case). */
+  manualVersionsSeeded: "pact-project punya run manual TR-1 v1.0.1 dan TR-2 0.9.0",
 } as const;
 
 const { like, uuid, regex, iso8601DateTimeWithMillis } = MatchersV3;

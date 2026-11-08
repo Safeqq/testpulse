@@ -1,4 +1,4 @@
-import { MAX_VERSIONS, type VersionDto } from "@testpulse/shared";
+import { MAX_VERSIONS, type RunSummaryDto, type VersionDto } from "@testpulse/shared";
 import { Tag } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -135,13 +135,13 @@ function VersionsTable({ slug, branch, versions }: { slug: string; branch: strin
         </thead>
         <tbody className="divide-y divide-border">
           {versions.map((entry, index) => (
-            // Daftar terbaru dulu: baris berikutnya adalah versi tepat di bawahnya.
+            // Daftar terbaru dulu: pembanding = versi automated berikutnya (baris manual-saja tidak punya run CI).
             <VersionRow
               key={entry.version}
               slug={slug}
               branch={branch}
               entry={entry}
-              previous={versions[index + 1] ?? null}
+              previousRun={versions.slice(index + 1).find((below) => below.run !== null)?.run ?? null}
               capped={versions.length >= MAX_VERSIONS}
             />
           ))}
@@ -170,18 +170,19 @@ function VersionRow({
   slug,
   branch,
   entry,
-  previous,
+  previousRun,
   capped,
 }: {
   slug: string;
   branch: string;
   entry: VersionDto;
-  previous: VersionDto | null;
+  previousRun: RunSummaryDto | null;
   /** Daftar terpotong di batas API (`MAX_VERSIONS`): baris terakhir mungkin masih punya versi sebelumnya yang tidak terlihat. */
   capped: boolean;
 }) {
   const { run } = entry;
-  const date = formatDateTime(run.createdAt);
+  // Versi yang hanya punya run manual (Tahap 4 §5.1): kolom automated berisi "–".
+  const date = run === null ? "–" : formatDateTime(run.createdAt);
   return (
     <tr data-testid={`version-row-${entry.version}`}>
       <th scope="row" className={cn(TD_CLASS, "font-semibold [overflow-wrap:anywhere]")}>
@@ -193,9 +194,13 @@ function VersionRow({
         </span>
       </th>
       <td className={cn(TD_CLASS, "hidden md:table-cell")}>
-        <Link to={`/p/${encodeURIComponent(slug)}/runs/${run.id}`} className={INLINE_LINK_CLASS}>
-          {date}
-        </Link>
+        {run === null ? (
+          date
+        ) : (
+          <Link to={`/p/${encodeURIComponent(slug)}/runs/${run.id}`} className={INLINE_LINK_CLASS}>
+            {date}
+          </Link>
+        )}
       </td>
       <td className={cn(TD_CLASS, "hidden font-mono tabular-nums md:table-cell")}>{entry.runCount}</td>
       <td className={TD_CLASS}>
@@ -208,10 +213,12 @@ function VersionRow({
         <DeltaText delta={entry.passRateDelta} />
       </td>
       <td className={TD_CLASS}>
-        {previous || capped ? (
+        {run === null ? (
+          <span className="text-muted-foreground">–</span>
+        ) : previousRun || capped ? (
           <Link
             // Tanpa baris sebelumnya di daftar terpotong, pembanding default (versi di bawahnya) dipilih server.
-            to={compareHref(slug, previous ? { base: previous.run.id, target: run.id, branch } : { target: run.id, branch })}
+            to={compareHref(slug, previousRun ? { base: previousRun.id, target: run.id, branch } : { target: run.id, branch })}
             className={INLINE_LINK_CLASS}
             data-testid={`version-compare-${entry.version}`}
           >

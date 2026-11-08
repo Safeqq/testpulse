@@ -37,7 +37,11 @@ async function loadRunOptions(slug: string, branch: string): Promise<RunOptions>
     recentRuns = [...recentRuns, ...page.runs];
     cursor = page.nextCursor;
   }
-  return { versionRuns: versions.map((v) => v.run), recentRuns: recentRuns.slice(0, RECENT_RUN_OPTIONS) };
+  // Versi yang hanya punya run manual tidak punya run CI untuk dibandingkan.
+  return {
+    versionRuns: versions.flatMap((v) => (v.run === null ? [] : [v.run])),
+    recentRuns: recentRuns.slice(0, RECENT_RUN_OPTIONS),
+  };
 }
 
 /** `/p/:slug/compare?base=&target=&branch=`: perbandingan dua run, dapat dibagikan lewat URL. */

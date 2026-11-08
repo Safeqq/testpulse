@@ -106,7 +106,7 @@ test.describe("GET /versions lewat proxy", () => {
     const versions = await parseBody(await owner.request.get(`${base}/versions`), 200, versionDto.array());
 
     expect(versions.map((v) => v.version)).toEqual(["1.0.1", "1.0.0"]);
-    expect(versions.map((v) => v.run.id)).toEqual([run101, run100]);
+    expect(versions.map((v) => v.run?.id)).toEqual([run101, run100]);
     expect(versions.map((v) => v.runCount)).toEqual([1, 1]);
     // v1.0.0: 3 lulus dari 5 → 60%; v1.0.1: 3 dari 5 → 60%.
     expect(versions[1]).toMatchObject({ passRate: 60, passRateDelta: null });

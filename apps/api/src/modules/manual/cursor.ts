@@ -32,3 +32,44 @@ export function decodeCaseCursor(cursor: string): CaseCursor | null {
   if (suitePosition > MAX_INT4 || caseNumber > MAX_INT4) return null;
   return { suitePosition, number: caseNumber };
 }
+
+/**
+ * Cursor buram daftar run manual: nomor TR run terakhir di halaman (urutan "nomor terbesar dulu").
+ * Cursor daftar run case: `position` run case terakhir (posisi unik per run). Tag berbeda agar cursor satu daftar
+ * tidak diterima daftar lain.
+ */
+
+const RUN_TAG = "r";
+const RUN_CASE_TAG = "rc";
+
+function encodeTagged(tag: string, value: number): string {
+  return Buffer.from(`${tag}|${value}`, "utf8").toString("base64url");
+}
+
+function decodeTagged(cursor: string, tag: string, pattern: RegExp): number | null {
+  if (!BASE64URL.test(cursor)) return null;
+  const parts = Buffer.from(cursor, "base64url").toString("utf8").split("|");
+  if (parts.length !== 2 || parts[0] !== tag) return null;
+  const raw = parts[1] ?? "";
+  if (!pattern.test(raw)) return null;
+  const value = Number(raw);
+  return value > MAX_INT4 ? null : value;
+}
+
+export function encodeRunCursor(number: number): string {
+  return encodeTagged(RUN_TAG, number);
+}
+
+/** Nomor run dari cursor, atau `null` bila cursor rusak. */
+export function decodeRunCursor(cursor: string): number | null {
+  return decodeTagged(cursor, RUN_TAG, NUMBER);
+}
+
+export function encodeRunCaseCursor(position: number): string {
+  return encodeTagged(RUN_CASE_TAG, position);
+}
+
+/** Posisi run case dari cursor, atau `null` bila cursor rusak. */
+export function decodeRunCaseCursor(cursor: string): number | null {
+  return decodeTagged(cursor, RUN_CASE_TAG, POSITION);
+}

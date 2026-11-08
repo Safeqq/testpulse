@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { decodeCaseCursor, encodeCaseCursor } from "./cursor.js";
+import {
+  decodeCaseCursor,
+  decodeRunCaseCursor,
+  decodeRunCursor,
+  encodeCaseCursor,
+  encodeRunCaseCursor,
+  encodeRunCursor,
+} from "./cursor.js";
 
 const b64 = (text: string) => Buffer.from(text, "utf8").toString("base64url");
 
@@ -31,5 +38,43 @@ describe("cursor daftar case", () => {
     ["sampah acak", "Zm9vYmFy"],
   ])("cursor rusak (%s) → null", (_label, cursor) => {
     expect(decodeCaseCursor(cursor)).toBeNull();
+  });
+});
+
+describe("cursor daftar run dan run case", () => {
+  it.each([1, 25, 2_147_483_647])("round-trip nomor run %i", (number) => {
+    expect(decodeRunCursor(encodeRunCursor(number))).toBe(number);
+  });
+
+  it.each([0, 99, 2_147_483_647])("round-trip posisi run case %i", (position) => {
+    expect(decodeRunCaseCursor(encodeRunCaseCursor(position))).toBe(position);
+  });
+
+  it("cursor daftar lain tidak diterima", () => {
+    expect(decodeRunCursor(encodeRunCaseCursor(3))).toBeNull();
+    expect(decodeRunCaseCursor(encodeRunCursor(3))).toBeNull();
+    expect(decodeRunCursor(encodeCaseCursor({ suitePosition: 0, number: 1 }))).toBeNull();
+  });
+
+  it.each([
+    ["string kosong", ""],
+    ["karakter di luar base64url", "abc$def"],
+    ["nomor nol", b64("r|0")],
+    ["nomor negatif", b64("r|-1")],
+    ["berawalan nol", b64("r|01")],
+    ["melebihi int4", b64("r|2147483648")],
+    ["bagian berlebih", b64("r|1|2")],
+    ["bukan angka", b64("r|a")],
+  ])("cursor run rusak (%s) → null", (_label, cursor) => {
+    expect(decodeRunCursor(cursor)).toBeNull();
+  });
+
+  it.each([
+    ["posisi negatif", b64("rc|-1")],
+    ["berawalan nol", b64("rc|00")],
+    ["melebihi int4", b64("rc|2147483648")],
+    ["tanpa nilai", b64("rc|")],
+  ])("cursor run case rusak (%s) → null", (_label, cursor) => {
+    expect(decodeRunCaseCursor(cursor)).toBeNull();
   });
 });

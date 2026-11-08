@@ -19,3 +19,19 @@ export function caseNotFound(): AppError {
 export function caseConflict(): AppError {
   return new AppError(409, "CASE_CONFLICT", "Case sudah diubah orang lain. Muat ulang untuk melihat versi terbaru");
 }
+
+export function manualRunNotFound(): AppError {
+  return new AppError(404, "MANUAL_RUN_NOT_FOUND", "Run manual tidak ditemukan");
+}
+
+export function runCaseNotFound(): AppError {
+  return new AppError(404, "RUN_CASE_NOT_FOUND", "Case di run ini tidak ditemukan");
+}
+
+export function manualRunConflict(): AppError {
+  return new AppError(409, "MANUAL_RUN_CONFLICT", "Data sudah diubah orang lain. Muat ulang untuk melihat versi terbaru");
+}
+
+export function runCompleted(): AppError {
+  return new AppError(409, "RUN_COMPLETED", "Run sudah selesai. Buka ulang run untuk mengubah hasil");
+}

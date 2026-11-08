@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.js";
 import { memberships, projects, users } from "../../db/schema.js";
 import { clearAssigneeOnLeave } from "../bugs/write.repository.js";
+import { clearRunCaseAssigneesOnLeave } from "../manual/run-cases.repository.js";
 import { wouldLeaveNoAdmin } from "./domain/admins.js";
 
 export interface ProjectRecord {
@@ -180,6 +181,7 @@ export async function changeMemberRole(
     if (newRole === null) {
       await tx.delete(memberships).where(where);
       await clearAssigneeOnLeave(tx, projectId, userId, actorId);
+      await clearRunCaseAssigneesOnLeave(tx, projectId, userId);
     } else {
       await tx.update(memberships).set({ role: newRole }).where(where);
     }

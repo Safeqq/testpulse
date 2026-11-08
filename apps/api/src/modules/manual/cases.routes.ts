@@ -26,11 +26,16 @@ export const TEST_SEARCH_LIMIT = 20;
 const MAX_INT4 = 2_147_483_647;
 const NUMBER_PARAM = /^[1-9][0-9]{0,9}$/;
 
-/** Nomor case dari path; bentuk lain (bukan bilangan bulat positif kanonis ≤ int4) → 404 CASE_NOT_FOUND. */
-export function parseCaseNumber(raw: string): number {
+/** Nomor `TC-`/`TR-` dari path; bentuk lain (bukan bilangan bulat positif kanonis ≤ int4) → `notFound()`. */
+export function parsePathNumber(raw: string, notFound: () => AppError): number {
   const value = NUMBER_PARAM.test(raw) ? Number(raw) : Number.NaN;
-  if (!(value <= MAX_INT4)) throw caseNotFound();
+  if (!(value <= MAX_INT4)) throw notFound();
   return value;
+}
+
+/** Nomor case dari path; bentuk tidak sah → 404 CASE_NOT_FOUND. */
+export function parseCaseNumber(raw: string): number {
+  return parsePathNumber(raw, caseNotFound);
 }
 
 const SUITE_NOT_FOUND = "Suite tidak ditemukan di project ini";

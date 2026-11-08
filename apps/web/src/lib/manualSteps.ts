@@ -57,6 +57,23 @@ export interface StepErrors {
   byStep: Record<number, StepFieldErrors>;
 }
 
+export interface StepErrorsById {
+  general: string | undefined;
+  /** Error per langkah menurut `id` langkah, bukan posisinya: pesan tetap pada langkahnya saat langkah dipindah, dan hilang bersama langkah yang dihapus. */
+  byId: Record<string, StepFieldErrors>;
+}
+
+/** Seperti `stepErrors`, tetapi kunci indeks (`steps.<i>.*`) diubah menjadi `id` langkah pada daftar `steps` saat error terjadi. */
+export function stepErrorsById(fields: Record<string, string>, steps: readonly StepDraft[]): StepErrorsById {
+  const { general, byStep } = stepErrors(fields);
+  const byId: Record<string, StepFieldErrors> = {};
+  for (const [index, errors] of Object.entries(byStep)) {
+    const step = steps[Number(index)];
+    if (step) byId[step.id] = errors;
+  }
+  return { general, byId };
+}
+
 const STEP_KEY = /^steps\.(\d+)\.(action|expected)$/;
 
 /** Memetakan kunci error `steps.<i>.action|expected` (dari server atau skema bersama) ke langkahnya; `steps` ke error umum. */

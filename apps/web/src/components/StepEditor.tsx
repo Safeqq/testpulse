@@ -3,12 +3,12 @@ import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { MarkdownEditor, type EditorMode } from "@/components/MarkdownEditor";
 import { Button } from "@/components/ui/button";
-import { addStep, moveStep, removeStep, type StepDraft, type StepErrors } from "@/lib/manualSteps";
+import { addStep, moveStep, removeStep, type StepDraft, type StepErrorsById } from "@/lib/manualSteps";
 
 interface StepEditorProps {
   steps: StepDraft[];
   onChange: (steps: StepDraft[]) => void;
-  errors: StepErrors;
+  errors: StepErrorsById;
   /** Mode Tulis/Pratinjau tiap kolom, menurut `modeKey(step, field)`; dipegang induk agar bisa kembali ke Tulis saat memfokuskan error. */
   modes: Record<string, EditorMode>;
   onModeChange: (key: string, mode: EditorMode) => void;
@@ -76,7 +76,7 @@ export function StepEditor({ steps, onChange, errors, modes, onModeChange }: Ste
       <ol ref={listRef} className="m-0 grid list-none gap-4 p-0">
         {steps.map((step, index) => {
           const number = index + 1;
-          const stepError = errors.byStep[index];
+          const stepError = errors.byId[step.id];
           return (
             <li key={step.id} className="grid min-w-0 gap-3 rounded-lg border bg-card p-4" data-testid={`step-${index}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">

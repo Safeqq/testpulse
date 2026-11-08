@@ -1,6 +1,6 @@
 import { MAX_STEPS } from "@testpulse/shared";
 import { describe, expect, it } from "vitest";
-import { addStep, moveStep, removeStep, stepErrors, toCaseSteps, toStepDrafts, type StepDraft } from "./manualSteps";
+import { addStep, moveStep, removeStep, stepErrors, stepErrorsById, toCaseSteps, toStepDrafts, type StepDraft } from "./manualSteps";
 
 function drafts(...actions: string[]): StepDraft[] {
   return toStepDrafts(actions.map((action) => ({ action, expected: "" })));
@@ -106,5 +106,31 @@ describe("stepErrors", () => {
   it("kunci lain diabaikan", () => {
     const result = stepErrors({ title: "Judul wajib", "steps.x.action": "salah", "steps.3.other": "salah" });
     expect(result).toEqual({ general: undefined, byStep: {} });
+  });
+});
+
+describe("stepErrorsById", () => {
+  it("mengubah kunci indeks menjadi id langkah pada daftar saat error terjadi", () => {
+    const steps = drafts("a", "b", "c");
+    const result = stepErrorsById({ "steps.2.action": "Langkah wajib diisi", steps: "Minimal 1 langkah" }, steps);
+    expect(result.byId).toEqual({ [steps[2]!.id]: { action: "Langkah wajib diisi" } });
+    expect(result.general).toBe("Minimal 1 langkah");
+  });
+
+  it("error mengikuti langkahnya setelah dipindah dan hilang bersama langkah yang dihapus", () => {
+    const steps = drafts("a", "b", "c");
+    const { byId } = stepErrorsById({ "steps.2.action": "salah" }, steps);
+    const broken = steps[2]!;
+    const moved = moveStep(steps, 2, -1);
+    expect(byId[moved[1]!.id]).toEqual({ action: "salah" });
+    expect(byId[moved[2]!.id]).toBeUndefined();
+    const withoutFirst = removeStep(steps, 0);
+    expect(byId[withoutFirst[1]!.id]).toEqual({ action: "salah" });
+    expect(removeStep(steps, 2).some((step) => byId[step.id] !== undefined)).toBe(false);
+    expect(withoutFirst).toContain(broken);
+  });
+
+  it("indeks di luar daftar diabaikan", () => {
+    expect(stepErrorsById({ "steps.9.action": "x" }, drafts("a")).byId).toEqual({});
   });
 });

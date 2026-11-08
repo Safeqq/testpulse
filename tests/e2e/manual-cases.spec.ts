@@ -909,6 +909,49 @@ test.describe("Form case: editor langkah", () => {
     await expect(page).toHaveURL(`/p/${project.slug}/cases/1`);
   });
 
+  test("error langkah mengikuti langkahnya saat dipindah atau saat langkah lain dihapus, dan hilang bersama langkah yang dihapus", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project } = await seedManualProject(api, { suites: 1, casesPerSuite: 0 });
+    const { page } = await signedInPage(owner);
+    const form = new ManualCaseFormPage(page);
+    const invalid = (index: number) => form.action(index).and(page.locator('[aria-invalid="true"]'));
+
+    // Langkah 3 kosong → error di langkah 3; dipindah ke atas, error ikut ke posisi barunya.
+    await form.gotoNew(project.slug);
+    await form.title.fill("Judul valid");
+    await form.action(0).fill("Satu");
+    await form.addStep.click();
+    await form.action(1).fill("Dua");
+    await form.addStep.click();
+    await form.submit.click();
+    await expect(form.actionError(2)).toHaveText("Langkah wajib diisi");
+    await expect(invalid(2)).toHaveCount(1);
+    await form.stepAction(2, "up").click();
+    await expect(form.actionError(1)).toHaveText("Langkah wajib diisi");
+    await expect(invalid(1)).toHaveCount(1);
+    await expect(form.actionError(2)).toHaveCount(0);
+    await expect(form.action(2)).not.toHaveAttribute("aria-invalid", "true");
+    await expect(form.action(1)).toHaveValue("");
+
+    // Langkah 2 (kosong) bermasalah; menghapus langkah 1 yang valid memindahkan error bersama langkahnya ke posisi 1.
+    await form.submit.click();
+    await expect(form.actionError(1)).toBeVisible();
+    await form.stepAction(0, "remove").click();
+    await expect(form.steps).toHaveCount(2);
+    await expect(form.actionError(0)).toHaveText("Langkah wajib diisi");
+    await expect(invalid(0)).toHaveCount(1);
+    await expect(form.actionError(1)).toHaveCount(0);
+    await expect(form.action(1)).not.toHaveAttribute("aria-invalid", "true");
+
+    // Menghapus langkah yang bermasalah menghilangkan pesannya; langkah lain tidak ketularan.
+    await form.stepAction(0, "remove").click();
+    await expect(form.steps).toHaveCount(1);
+    await expect(page.locator('[data-testid^="field-error-steps."]')).toHaveCount(0);
+    await expect(page.locator('[aria-invalid="true"]')).toHaveCount(0);
+  });
+
   test("kesalahan langkah dari server dipetakan ke langkahnya; pratinjau yang menyembunyikan kolom kembali ke Tulis", async ({
     api,
     signedInPage,

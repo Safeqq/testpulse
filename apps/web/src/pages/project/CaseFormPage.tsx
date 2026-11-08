@@ -27,7 +27,7 @@ import { api, ApiError } from "@/lib/api";
 import { addLabels, normalizeErrorKey } from "@/lib/bugForm";
 import { focusField, serverErrorToForm, useDocumentTitle } from "@/lib/forms";
 import { caseCode, CASE_PRIORITY_LABEL, parseCaseNumber } from "@/lib/manual";
-import { addStep, stepErrors, toCaseSteps, toStepDrafts, type StepDraft } from "@/lib/manualSteps";
+import { addStep, stepErrorsById, toCaseSteps, toStepDrafts, type StepDraft, type StepErrorsById } from "@/lib/manualSteps";
 import { loginPathFor } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
 import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
@@ -175,6 +175,8 @@ function CaseForm({ slug, suites, existing, defaultSuiteId, focusTitle, onReload
     existing?.automatedTest ? { id: existing.automatedTest.id, suite: existing.automatedTest.suite, name: existing.automatedTest.name } : null,
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  // Error langkah disimpan menurut id langkah (bukan indeks) agar tetap pada langkahnya saat langkah dipindah atau dihapus.
+  const [stepErrs, setStepErrs] = useState<StepErrorsById>({ general: undefined, byId: {} });
   const [formError, setFormError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [reloading, setReloading] = useState(false);
@@ -191,6 +193,7 @@ function CaseForm({ slug, suites, existing, defaultSuiteId, focusTitle, onReload
     // Urutan kunci menentukan field yang menerima fokus: yang paling atas di formulir lebih dulu.
     const fields = Object.fromEntries(Object.entries(unordered).sort(([a], [b]) => fieldRank(a) - fieldRank(b)));
     setFieldErrors(fields);
+    setStepErrs(stepErrorsById(fields, steps));
     setFormError(message);
     // Kolom Markdown tersembunyi saat pratinjau dan tidak bisa difokus: kembali ke Tulis dulu (sinkron) sebelum memfokuskan.
     flushSync(() => {
@@ -238,6 +241,7 @@ function CaseForm({ slug, suites, existing, defaultSuiteId, focusTitle, onReload
     setLabels(pendingLabels.labels);
     setLabelDraft("");
     setFieldErrors({});
+    setStepErrs({ general: undefined, byId: {} });
     setFormError(null);
     setSubmitting(true);
     try {
@@ -251,6 +255,7 @@ function CaseForm({ slug, suites, existing, defaultSuiteId, focusTitle, onReload
         // Isian tetap di formulir (tidak dibuang); pengguna memutuskan kapan memuat ulang.
         setConflict(true);
         setFieldErrors({});
+        setStepErrs({ general: undefined, byId: {} });
         setFormError(null);
         return;
       }
@@ -274,7 +279,6 @@ function CaseForm({ slug, suites, existing, defaultSuiteId, focusTitle, onReload
   const backTo = existing
     ? `/p/${encodeURIComponent(slug)}/cases/${existing.number}`
     : `/p/${encodeURIComponent(slug)}/cases`;
-  const errors = stepErrors(fieldErrors);
 
   return (
     <section aria-labelledby="case-form-title" className="grid min-w-0 grid-cols-1 gap-6">
@@ -359,7 +363,7 @@ function CaseForm({ slug, suites, existing, defaultSuiteId, focusTitle, onReload
         <StepEditor
           steps={steps}
           onChange={setSteps}
-          errors={errors}
+          errors={stepErrs}
           modes={modes}
           onModeChange={(key, mode) => setModes((prev) => ({ ...prev, [key]: mode }))}
         />

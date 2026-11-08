@@ -25,7 +25,15 @@ export type ErrorCode =
   | "BUG_NOT_FOUND"
   | "COMMENT_NOT_FOUND"
   | "BUG_CONFLICT"
-  | "INVALID_TRANSITION";
+  | "INVALID_TRANSITION"
+  | "SUITE_NOT_FOUND"
+  | "SUITE_NOT_EMPTY"
+  | "CASE_NOT_FOUND"
+  | "CASE_CONFLICT"
+  | "MANUAL_RUN_NOT_FOUND"
+  | "RUN_CASE_NOT_FOUND"
+  | "MANUAL_RUN_CONFLICT"
+  | "RUN_COMPLETED";
 
 export interface ApiErrorBody {
   error: {

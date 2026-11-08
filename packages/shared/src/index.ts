@@ -9,3 +9,4 @@ export * from "./schemas/results.js";
 export * from "./schemas/tokens.js";
 export * from "./schemas/bugs.js";
 export * from "./schemas/compare.js";
+export * from "./schemas/manual.js";

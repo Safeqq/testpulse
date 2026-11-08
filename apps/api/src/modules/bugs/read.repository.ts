@@ -179,6 +179,8 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
     resolvedAt: row.resolvedAt?.toISOString() ?? null,
     closedAt: row.closedAt?.toISOString() ?? null,
     testHint: row.testCaseId === null ? null : await loadTestHint(db, row.projectId, row.testCaseId, row.runId),
+    // Diisi dari bugs.manual_run_case_id setelah migrasi 0005 (Tahap 4); sementara belum ada asal manual.
+    manualOrigin: null,
   };
 }
 

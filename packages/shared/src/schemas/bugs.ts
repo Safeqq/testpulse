@@ -103,10 +103,16 @@ export const createBugBody = z
     links: bugLinks.optional(),
     testCaseId: z.uuid("Test tidak valid").optional(),
     runId: z.uuid("Run tidak valid").optional(),
+    // Run case manual asal bug (spec Tahap 4 §5.4); eksklusif terhadap tautan ke test otomatis.
+    manualRunCaseId: z.uuid("Run case tidak valid").optional(),
   })
   .refine((body) => body.runId === undefined || body.testCaseId !== undefined, {
     message: "Run hanya boleh diisi bersama test",
     path: ["runId"],
+  })
+  .refine((body) => body.manualRunCaseId === undefined || (body.testCaseId === undefined && body.runId === undefined), {
+    message: "Run case manual tidak boleh diisi bersama test atau run",
+    path: ["manualRunCaseId"],
   });
 export type CreateBugBody = z.infer<typeof createBugBody>;
 
@@ -156,7 +162,7 @@ export const bugListQuery = z.object({
 });
 export type BugListQuery = z.infer<typeof bugListQuery>;
 
-const userRefDto = z.object({ id: z.string(), name: z.string() });
+export const userRefDto = z.object({ id: z.string(), name: z.string() });
 
 export const bugRefDto = z.object({
   number: z.number(),
@@ -205,6 +211,15 @@ export const bugDto = bugSummaryDto.extend({
   resolvedAt: z.string().nullable(),
   closedAt: z.string().nullable(),
   testHint: testHintDto.nullable(),
+  // Asal bug dari run case manual; `null` bila run atau case-nya sudah dihapus atau bug tidak berasal dari sana.
+  manualOrigin: z
+    .object({
+      runNumber: z.number(),
+      runName: z.string(),
+      caseNumber: z.number(),
+      caseTitle: z.string(),
+    })
+    .nullable(),
 });
 export type BugDto = z.infer<typeof bugDto>;
 

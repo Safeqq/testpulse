@@ -15,6 +15,7 @@ const loadCaseFormPage = () => import("./CaseFormPage").then((m) => ({ default: 
 const loadManualRunsPage = () => import("./ManualRunsPage").then((m) => ({ default: m.ManualRunsPage }));
 const loadManualRunNewPage = () => import("./ManualRunNewPage").then((m) => ({ default: m.ManualRunNewPage }));
 const loadManualRunPage = () => import("./ManualRunPage").then((m) => ({ default: m.ManualRunPage }));
+const loadManualExecutePage = () => import("./ManualExecutePage").then((m) => ({ default: m.ManualExecutePage }));
 const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage }));
 
 export const RunsPage = lazy(loadRunsPage);
@@ -30,6 +31,7 @@ export const CaseFormPage = lazy(loadCaseFormPage);
 export const ManualRunsPage = lazy(loadManualRunsPage);
 export const ManualRunNewPage = lazy(loadManualRunNewPage);
 export const ManualRunPage = lazy(loadManualRunPage);
+export const ManualExecutePage = lazy(loadManualExecutePage);
 export const ComparePage = lazy(loadComparePage);
 export const VersionsPage = lazy(loadVersionsPage);
 
@@ -49,6 +51,7 @@ const LOADERS = {
   manualRuns: loadManualRunsPage,
   manualRunNew: loadManualRunNewPage,
   manualRun: loadManualRunPage,
+  manualExecute: loadManualExecutePage,
 };
 
 /**

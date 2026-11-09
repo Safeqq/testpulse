@@ -500,7 +500,13 @@ describe("integrasi test manual", () => {
       await request("PATCH", fx, `/cases/${cases[0]!.number}`, fx.tester.cookie, { version: 1, title: "Judul baru" });
 
       const bug = await createBug(fx, { manualRunCaseId: ids[0] });
-      const origin = { runNumber: run.number, runName: "Regresi 0.4", caseNumber: cases[0]!.number, caseTitle: cases[0]!.title };
+      const origin = {
+        runNumber: run.number,
+        runName: "Regresi 0.4",
+        caseNumber: cases[0]!.number,
+        caseTitle: cases[0]!.title,
+        runCaseId: ids[0],
+      };
       expect(bug).toMatchObject({ manualOrigin: origin, testCase: null, runId: null });
       expect((await getBug(fx, bug.number)).manualOrigin).toEqual(origin);
 

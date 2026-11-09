@@ -18,6 +18,8 @@ interface MarkdownEditorProps {
   /** Mode tampilan; bila diisi, induk yang mengendalikannya (mis. kembali ke Tulis sebelum memfokuskan kolom yang salah). */
   mode?: EditorMode;
   onModeChange?: (mode: EditorMode) => void;
+  /** Hanya-baca: isi tetap terlihat, bisa dipilih dan dipratinjau, tetapi tidak bisa diubah. */
+  readOnly?: boolean;
 }
 
 export type EditorMode = "write" | "preview";
@@ -37,6 +39,7 @@ export function MarkdownEditor({
   rows = 8,
   mode: controlledMode,
   onModeChange,
+  readOnly = false,
 }: MarkdownEditorProps) {
   const id = useId();
   const errorId = `${id}-error`;
@@ -79,12 +82,13 @@ export function MarkdownEditor({
         value={value}
         rows={rows}
         hidden={mode !== "write"}
+        readOnly={readOnly}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
         data-testid={testId}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "min-h-24 w-full min-w-0 resize-y rounded-md border border-input bg-card px-3 py-2 font-mono text-base text-foreground shadow-xs transition-colors outline-hidden md:text-sm",
+          "min-h-24 w-full min-w-0 resize-y rounded-md border border-input bg-card px-3 py-2 font-mono text-base text-foreground shadow-xs transition-colors outline-hidden md:text-sm read-only:bg-muted/50",
           "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring",
           "aria-invalid:border-destructive aria-invalid:ring-destructive/30",
         )}

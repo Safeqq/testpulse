@@ -25,15 +25,19 @@ import { api, ApiError } from "@/lib/api";
 import { addLabels, remapLinkKeys } from "@/lib/bugForm";
 import { BUG_PRIORITY_LABEL, BUG_SEVERITY_LABEL } from "@/lib/bugs";
 import { focusField, serverErrorToForm } from "@/lib/forms";
+import { caseCode, parseRunNumber, runCode } from "@/lib/manual";
 import { loginPathFor } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
-import { loadBugReportSource, type BugReportPrefill } from "./bugReportSource";
+import { loadBugReportSource, loadManualBugReportSource, type BugReportPrefill } from "./bugReportSource";
 import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCALAR_FIELDS = ["title", "description", "priority", "severity", "assigneeId"] as const;
 
-/** `/p/:slug/bugs/new`: formulir bug baru; `?testCaseId=&runId=` mengisinya dari test gagal (spec Tahap 3 §7.5). */
+/**
+ * `/p/:slug/bugs/new`: formulir bug baru; `?testCaseId=&runId=` mengisinya dari test gagal (spec Tahap 3 §7.5),
+ * `?manualRun=&manualRunCase=` dari run case manual (spec Tahap 4 §5.4).
+ */
 export function BugNewPage() {
   const { slug = "" } = useParams();
   return (
@@ -54,6 +58,17 @@ function NewBug({ project }: { project: ProjectDto }) {
   const validTestCaseId = testCaseId !== null && UUID.test(testCaseId) ? testCaseId : undefined;
   const runParam = params.get("runId");
   const runId = validTestCaseId && runParam !== null && UUID.test(runParam) ? runParam : undefined;
+  // Sumber manual hanya bila tidak ada test (server menolak keduanya sekaligus); nomor run dan id run case harus sah.
+  const manualRunParam = params.get("manualRun");
+  const manualRun = validTestCaseId || manualRunParam === null ? null : parseRunNumber(manualRunParam);
+  const manualRunCaseParam = params.get("manualRunCase");
+  const manualRunCase =
+    manualRun !== null && manualRunCaseParam !== null && UUID.test(manualRunCaseParam) ? manualRunCaseParam : undefined;
+  const source: PrefillSource | null = validTestCaseId
+    ? { kind: "test", testCaseId: validTestCaseId, runId }
+    : manualRun !== null && manualRunCase !== undefined
+      ? { kind: "manual", runNumber: manualRun, runCaseId: manualRunCase }
+      : null;
 
   if (!canWrite) {
     return (
@@ -75,12 +90,11 @@ function NewBug({ project }: { project: ProjectDto }) {
     );
   }
 
-  return validTestCaseId && !skipPrefill ? (
+  return source && !skipPrefill ? (
     <WithPrefill
-      key={`${validTestCaseId}:${runId ?? ""}`}
+      key={source.kind === "test" ? `test:${source.testCaseId}:${source.runId ?? ""}` : `manual:${source.runNumber}:${source.runCaseId}`}
       slug={project.slug}
-      testCaseId={validTestCaseId}
-      runId={runId}
+      source={source}
       onSkip={() => setSkipPrefill(true)}
     />
   ) : (
@@ -88,26 +102,43 @@ function NewBug({ project }: { project: ProjectDto }) {
   );
 }
 
+/** Asal isian awal dari URL: test otomatis (dengan run asal bila ada) atau run case manual. */
+type PrefillSource =
+  | { kind: "test"; testCaseId: string; runId: string | undefined }
+  | { kind: "manual"; runNumber: number; runCaseId: string };
+
 interface WithPrefillProps {
   slug: string;
-  testCaseId: string;
-  runId: string | undefined;
+  source: PrefillSource;
   /** Menyerah pada prefill dan membuka formulir kosong. */
   onSkip: () => void;
 }
 
-/** Memuat data test (dan pesan error run) lebih dulu supaya formulir langsung tampil terisi. */
-function WithPrefill({ slug, testCaseId, runId, onSkip }: WithPrefillProps) {
+/** Memuat data test (dan pesan error run) atau run case lebih dulu supaya formulir langsung tampil terisi. */
+function WithPrefill({ slug, source, onSkip }: WithPrefillProps) {
   const navigate = useNavigate();
   const plainPath = `/p/${encodeURIComponent(slug)}/bugs/new`;
-  const fetchPrefill = useCallback(() => loadBugReportSource(slug, testCaseId, runId), [slug, testCaseId, runId]);
+  // Objek `source` dibuat ulang setiap render induk; key di induk memasang ulang komponen ini bila isinya berubah.
+  const [stableSource] = useState(source);
+  const fetchPrefill = useCallback(
+    (): Promise<BugReportPrefill> =>
+      stableSource.kind === "test"
+        ? loadBugReportSource(slug, stableSource.testCaseId, stableSource.runId)
+        : loadManualBugReportSource(slug, stableSource.runNumber, stableSource.runCaseId),
+    [slug, stableSource],
+  );
   const load = useLoad(fetchPrefill);
+  const manual = stableSource.kind === "manual";
   if (load.state === "loading") return <Loading label="Menyiapkan formulir…" />;
   if (load.state === "error") {
     return (
       <div className="grid min-w-0 gap-4">
         <h1 className="text-2xl font-semibold tracking-tight">Buat bug</h1>
-        <LoadError error={load.error} fallback="Gagal memuat data test. Coba lagi." onRetry={load.reload} />
+        <LoadError
+          error={load.error}
+          fallback={manual ? "Gagal memuat data case. Coba lagi." : "Gagal memuat data test. Coba lagi."}
+          onRetry={load.reload}
+        />
         <div>
           <Link
             to={plainPath}
@@ -123,7 +154,7 @@ function WithPrefill({ slug, testCaseId, runId, onSkip }: WithPrefillProps) {
               navigate(plainPath, { replace: true });
             }}
           >
-            Buat bug tanpa tautan test
+            {manual ? "Buat bug tanpa tautan case" : "Buat bug tanpa tautan test"}
           </Link>
         </div>
       </div>
@@ -176,7 +207,8 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
       labels: pendingLabels.labels,
       links: rowIndexes.map((index) => ({ url: links[index]!.url.trim(), title: links[index]!.title })),
       ...(assigneeId !== "" ? { assigneeId } : {}),
-      ...(prefill ? { testCaseId: prefill.testCaseId, ...(prefill.runId ? { runId: prefill.runId } : {}) } : {}),
+      ...(prefill?.kind === "test" ? { testCaseId: prefill.testCaseId, ...(prefill.runId ? { runId: prefill.runId } : {}) } : {}),
+      ...(prefill?.kind === "manual" ? { manualRunCaseId: prefill.manualRunCaseId } : {}),
     };
     const parsed = createBugBody.safeParse(body);
     if (!parsed.success || pendingLabels.error) {
@@ -219,10 +251,19 @@ function BugForm({ slug, prefill }: { slug: string; prefill: BugReportPrefill | 
         <h1 id="bug-new-title" className="text-2xl font-semibold tracking-tight">
           Buat bug
         </h1>
-        {prefill ? (
+        {prefill?.kind === "test" ? (
           <p className="m-0 text-sm text-muted-foreground [overflow-wrap:anywhere]" data-testid="bug-new-origin">
             Dilaporkan dari test <span className="font-medium text-foreground">{prefill.testName}</span> ({prefill.suite}
             ). Bug ini akan tertaut ke test{prefill.runId ? " dan run tersebut" : ""}.
+          </p>
+        ) : null}
+        {prefill?.kind === "manual" ? (
+          <p className="m-0 text-sm text-muted-foreground [overflow-wrap:anywhere]" data-testid="bug-new-origin">
+            Dilaporkan dari test run manual{" "}
+            <span className="font-medium text-foreground">
+              {runCode(prefill.runNumber)} · {caseCode(prefill.caseNumber)}
+            </span>{" "}
+            ({prefill.caseTitle}, run {prefill.runName}). Bug ini akan tertaut ke case di run tersebut.
           </p>
         ) : null}
       </div>

@@ -1,16 +1,21 @@
-import type { RunDetailDto, TestHistoryDto } from "@testpulse/shared";
+import type { ManualRunDto, RunCaseDto, RunDetailDto, TestHistoryDto } from "@testpulse/shared";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const run = vi.fn();
 const history = vi.fn();
+const manualRun = vi.fn();
+const runCase = vi.fn();
 
 vi.mock("@/lib/api", async (importOriginal) => {
   const original = await importOriginal<typeof import("@/lib/api")>();
-  return { ...original, api: { results: { run, history } } };
+  return {
+    ...original,
+    api: { results: { run, history }, manual: { runs: { get: manualRun }, runCases: { get: runCase } } },
+  };
 });
 
 const { ApiError } = await import("@/lib/api");
-const { loadBugReportSource } = await import("./bugReportSource");
+const { loadBugReportSource, loadManualBugReportSource } = await import("./bugReportSource");
 
 const TEST_ID = "11111111-1111-4111-8111-111111111111";
 const RUN_ID = "22222222-2222-4222-8222-222222222222";
@@ -58,6 +63,8 @@ const HISTORY: TestHistoryDto = {
 beforeEach(() => {
   run.mockReset();
   history.mockReset();
+  manualRun.mockReset();
+  runCase.mockReset();
 });
 
 describe("loadBugReportSource", () => {
@@ -122,5 +129,84 @@ describe("loadBugReportSource", () => {
     run.mockRejectedValue(new ApiError(500, "INTERNAL_ERROR", "Gagal"));
     await expect(loadBugReportSource("p", TEST_ID, RUN_ID)).rejects.toMatchObject({ status: 500 });
     expect(history).not.toHaveBeenCalled();
+  });
+});
+
+const USER = { id: "33333333-3333-4333-8333-333333333333", name: "Tester" };
+const RUN_CASE_ID = "44444444-4444-4444-8444-444444444444";
+
+const MANUAL_RUN: ManualRunDto = {
+  number: 3,
+  name: "Regresi rilis",
+  appVersion: "v0.4.0",
+  status: "completed",
+  total: 1,
+  counts: { untested: 0, passed: 0, failed: 1, blocked: 0, skipped: 0 },
+  progress: 1,
+  createdBy: USER,
+  createdAt: "2026-11-05T00:00:00.000Z",
+  completedAt: "2026-11-06T00:00:00.000Z",
+  completedBy: USER,
+  updatedAt: "2026-11-06T00:00:00.000Z",
+  version: 2,
+};
+
+const RUN_CASE: RunCaseDto = {
+  id: RUN_CASE_ID,
+  position: 0,
+  caseNumber: 12,
+  title: "Bayar dengan kartu",
+  suiteName: "Checkout",
+  priority: "high",
+  status: "failed",
+  assignee: null,
+  executedAt: "2026-11-05T01:00:00.000Z",
+  bugs: [],
+  preconditions: "Masuk",
+  steps: [{ action: "Klik bayar", expected: "Sukses" }],
+  stepResults: [{ status: "failed", note: "Tidak merespons" }],
+  note: "Catatan",
+  executedBy: USER,
+  version: 2,
+  updatedAt: "2026-11-05T01:00:00.000Z",
+  nextUntestedId: null,
+  caseId: null,
+  runStatus: "completed",
+};
+
+describe("loadManualBugReportSource", () => {
+  it("mengisi judul dan deskripsi dari snapshot run case serta nama dan versi run", async () => {
+    manualRun.mockResolvedValue(MANUAL_RUN);
+    runCase.mockResolvedValue(RUN_CASE);
+
+    const prefill = await loadManualBugReportSource("p", 3, RUN_CASE_ID);
+
+    expect(manualRun).toHaveBeenCalledWith("p", 3);
+    expect(runCase).toHaveBeenCalledWith("p", 3, RUN_CASE_ID);
+    expect(prefill).toMatchObject({
+      kind: "manual",
+      manualRunCaseId: RUN_CASE_ID,
+      runNumber: 3,
+      runName: "Regresi rilis",
+      caseNumber: 12,
+      caseTitle: "Bayar dengan kartu",
+      title: "TC-12 gagal: Bayar dengan kartu",
+    });
+    expect(prefill.description).toContain("- **Run:** TR-3 · `Regresi rilis`");
+    expect(prefill.description).toContain("- **Versi:** `v0.4.0`");
+    expect(prefill.description).toContain("| 1 | `Klik bayar` | `Sukses` | **✗ Gagal** | `Tidak merespons` |");
+  });
+
+  it("run atau run case yang tidak ada dilempar ke pemanggil", async () => {
+    manualRun.mockResolvedValue(MANUAL_RUN);
+    runCase.mockRejectedValue(new ApiError(404, "RUN_CASE_NOT_FOUND", "Case di run ini tidak ditemukan"));
+    await expect(loadManualBugReportSource("p", 3, RUN_CASE_ID)).rejects.toMatchObject({ code: "RUN_CASE_NOT_FOUND" });
+  });
+});
+
+describe("loadBugReportSource (jenis)", () => {
+  it("isian dari test bertanda kind test", async () => {
+    history.mockResolvedValue(HISTORY);
+    expect(await loadBugReportSource("p", TEST_ID, undefined)).toMatchObject({ kind: "test" });
   });
 });

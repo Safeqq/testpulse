@@ -136,8 +136,8 @@ async function loadTestHint(
 
 /**
  * Detail bug (spec §6), termasuk `testHint` bila bug tertaut ke test dan `manualOrigin` (Tahap 4 §5.4) dari run case
- * asal: nomor & nama run serta nomor & judul case dari snapshot run case. Run yang dihapus menghapus run case-nya
- * dan mengosongkan `manual_run_case_id`, sehingga `manualOrigin` menjadi `null`.
+ * asal: nomor & nama run, nomor & judul case dari snapshot run case, dan id run case (tautan ke halaman eksekusinya).
+ * Run yang dihapus menghapus run case-nya dan mengosongkan `manual_run_case_id`, sehingga `manualOrigin` menjadi `null`.
  */
 export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> {
   const [row] = await db
@@ -158,6 +158,7 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
       originRunName: manualRuns.name,
       originCaseNumber: manualRunCases.caseNumber,
       originCaseTitle: manualRunCases.title,
+      originRunCaseId: manualRunCases.id,
     })
     .from(bugs)
     .innerJoin(reporterUser, eq(reporterUser.id, bugs.reporterId))
@@ -190,12 +191,17 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
     closedAt: row.closedAt?.toISOString() ?? null,
     testHint: row.testCaseId === null ? null : await loadTestHint(db, row.projectId, row.testCaseId, row.runId),
     manualOrigin:
-      row.originRunNumber !== null && row.originRunName !== null && row.originCaseNumber !== null && row.originCaseTitle !== null
+      row.originRunNumber !== null &&
+      row.originRunName !== null &&
+      row.originCaseNumber !== null &&
+      row.originCaseTitle !== null &&
+      row.originRunCaseId !== null
         ? {
             runNumber: row.originRunNumber,
             runName: row.originRunName,
             caseNumber: row.originCaseNumber,
             caseTitle: row.originCaseTitle,
+            runCaseId: row.originRunCaseId,
           }
         : null,
   };

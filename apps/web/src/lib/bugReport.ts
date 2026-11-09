@@ -2,8 +2,9 @@ import { stripControlChars } from "@testpulse/shared";
 
 /** Batas judul dan deskripsi bug di server (spec Tahap 3 §3.1), dalam code unit UTF-16 seperti `.max()` zod. */
 const MAX_TITLE = 200;
-const MAX_DESCRIPTION = 20_000;
-const TRUNCATED = "… (dipotong)";
+export const MAX_DESCRIPTION = 20_000;
+/** Penanda teks yang dipotong agar deskripsi muat dalam batas server. */
+export const TRUNCATED = "… (dipotong)";
 
 export interface BugReportSource {
   suite: string;
@@ -26,7 +27,7 @@ function longestBacktickRun(text: string): number {
  * tidak pernah ditafsirkan sebagai Markdown, jadi data dari pihak lain (suite, branch, commit) tidak bisa menyisipkan
  * tautan atau judul.
  */
-function codeSpan(text: string): string {
+export function codeSpan(text: string): string {
   const flat = text.replace(/\s+/g, " ").trim();
   const ticks = "`".repeat(longestBacktickRun(flat) + 1);
   const pad = flat.startsWith("`") || flat.endsWith("`") ? " " : "";
@@ -34,7 +35,7 @@ function codeSpan(text: string): string {
 }
 
 /** Pagar blok kode: lebih panjang daripada deretan backtick terpanjang di dalam teks (minimal tiga). */
-function fenceFor(text: string): string {
+export function fenceFor(text: string): string {
   return "`".repeat(Math.max(3, longestBacktickRun(text) + 1));
 }
 

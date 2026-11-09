@@ -8,6 +8,7 @@ import { BugDescription } from "@/components/BugDescription";
 import { BugFields } from "@/components/BugFields";
 import { BugLabelsEditor } from "@/components/BugLabelsEditor";
 import { BugLinksEditor } from "@/components/BugLinksEditor";
+import { BugManualOrigin } from "@/components/BugManualOrigin";
 import { BugStatus as BugStatusLabel } from "@/components/BugStatus";
 import { BugTestOrigin } from "@/components/BugTestOrigin";
 import { BugTitleEditor } from "@/components/BugTitleEditor";
@@ -243,6 +244,11 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
           {bug.testCase ? (
             <div className="border-t pt-4">
               <BugTestOrigin slug={slug} bug={bug} />
+            </div>
+          ) : null}
+          {bug.manualOrigin ? (
+            <div className="border-t pt-4">
+              <BugManualOrigin slug={slug} bug={bug} />
             </div>
           ) : null}
           {isAdmin ? (

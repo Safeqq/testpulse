@@ -135,6 +135,11 @@ export function countSelection(
   return fromSuites + picked.filter((item) => !selectedSuiteIds.has(item.suiteId)).length;
 }
 
+/** State navigasi ke detail run: `allExecuted` setelah case terakhir disimpan dengan "Simpan & lanjut" (spec §8.8 butir 5). */
+export interface RunLocationState {
+  allExecuted?: boolean;
+}
+
 /** Nomor run dari URL; aturannya sama dengan nomor case (bilangan bulat positif yang mungkin ada). */
 export const parseRunNumber = parseCaseNumber;
 

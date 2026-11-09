@@ -212,12 +212,14 @@ export const bugDto = bugSummaryDto.extend({
   closedAt: z.string().nullable(),
   testHint: testHintDto.nullable(),
   // Asal bug dari run case manual; `null` bila run atau case-nya sudah dihapus atau bug tidak berasal dari sana.
+  // `runCaseId` untuk menaut ke halaman eksekusinya (spec Tahap 4 §5.4).
   manualOrigin: z
     .object({
       runNumber: z.number(),
       runName: z.string(),
       caseNumber: z.number(),
       caseTitle: z.string(),
+      runCaseId: z.string(),
     })
     .nullable(),
 });

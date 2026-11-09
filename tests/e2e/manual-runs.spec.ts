@@ -1,4 +1,7 @@
-import type { ManualRunDto, RunCaseListItemDto } from "@testpulse/shared";
+import type { Dialog, Page } from "@playwright/test";
+import type { CaseStep, ManualRunDto, RunCaseListItemDto } from "@testpulse/shared";
+import { BugNewPage } from "../pages/BugNewPage.js";
+import { ManualExecutePage } from "../pages/ManualExecutePage.js";
 import { ManualRunNewPage } from "../pages/ManualRunNewPage.js";
 import { ManualRunPage } from "../pages/ManualRunPage.js";
 import { ManualRunsPage } from "../pages/ManualRunsPage.js";
@@ -656,6 +659,408 @@ test.describe("Detail run manual", () => {
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
     await detail.completeCancel.click();
     await detail.rename.click();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+  });
+});
+
+// --- Eksekusi case ------------------------------------------------------------------------------------------------
+
+const TWO_STEPS: CaseStep[] = [
+  { action: "Buka keranjang", expected: "Keranjang tampil" },
+  { action: "Klik bayar", expected: "Pembayaran sukses" },
+];
+
+interface ExecCase {
+  title: string;
+  steps?: CaseStep[];
+  preconditions?: string;
+}
+
+/** Project baru dengan satu suite berisi `cases` (berurutan TC-1, TC-2, ...) dan satu run dari suite itu. */
+async function seedExecRun(
+  api: TestApi,
+  cases: ExecCase[],
+  runBody: { name: string; appVersion?: string } = { name: "Regresi rilis", appVersion: "v0.4.0" },
+  options: { visibility?: "public"; suiteName?: string } = {},
+) {
+  const owner = await api.register();
+  const project = await api.createProject(owner);
+  if (options.visibility) await api.setVisibility(owner, project.slug, options.visibility);
+  const suite = await api.createSuite(owner, project.slug, { name: options.suiteName ?? "Checkout" });
+  for (const item of cases) {
+    await api.createCase(owner, project.slug, {
+      suiteId: suite.id,
+      title: item.title,
+      steps: item.steps ?? TWO_STEPS,
+      ...(item.preconditions ? { preconditions: item.preconditions } : {}),
+    });
+  }
+  const run = await api.createManualRun(owner, project.slug, { ...runBody, suiteIds: [suite.id] });
+  const runCases = await fetchRunCases(owner, project.slug, run.number);
+  return { owner, project, run, runCases };
+}
+
+/** Mencatat dialog (alert/confirm/prompt) yang muncul; semuanya langsung ditutup agar halaman tidak menggantung. */
+function recordDialogs(page: Page): Dialog[] {
+  const dialogs: Dialog[] = [];
+  page.on("dialog", (dialog) => {
+    dialogs.push(dialog);
+    void dialog.dismiss();
+  });
+  return dialogs;
+}
+
+test.describe("Eksekusi case manual", () => {
+  test("eksekusi beruntun: saran status, Simpan & lanjut, Laporkan bug dengan isian awal, badge, dan akhir run", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project, run, runCases } = await seedExecRun(api, [
+      { title: "Bayar dengan kartu" },
+      { title: "Bayar dengan transfer", preconditions: "Sudah masuk sebagai pembeli" },
+      { title: "Batalkan pesanan", steps: [TWO_STEPS[0]!] },
+    ]);
+    const { page } = await signedInPage(owner);
+    const detail = new ManualRunPage(page);
+    const exec = new ManualExecutePage(page);
+    const base = `/p/${project.slug}/manual-runs/${run.number}`;
+
+    await detail.goto(project.slug, run.number);
+    await detail.start.click();
+    await expect(page).toHaveURL(`${base}/cases/${runCases[0]!.id}`);
+    await expect(exec.title).toHaveText("Bayar dengan kartu");
+    await expect(exec.suite).toHaveText("Checkout");
+    await expect(exec.suggestion).toContainText("Belum ada saran");
+    await exec.stepResult(0, "Lulus").check();
+    // Satu langkah belum diisi: belum ada saran.
+    await expect(exec.suggestion).toContainText("Belum ada saran");
+    await exec.stepResult(1, "Lulus").check();
+    await expect(exec.suggestion).toContainText("Saran dari hasil langkah: Lulus");
+    // Saran tidak pernah diterapkan sendiri.
+    await expect(exec.caseStatus("Belum dites")).toBeChecked();
+    await expect(exec.useSuggestion).toHaveText("Pakai saran: Lulus");
+    await exec.useSuggestion.click();
+    await expect(exec.caseStatus("Lulus")).toBeChecked();
+    await expect(exec.useSuggestion).toHaveCount(0);
+    await exec.saveNext.click();
+
+    await expect(page).toHaveURL(`${base}/cases/${runCases[1]!.id}`);
+    await expect(exec.title).toHaveText("Bayar dengan transfer");
+    await expect(exec.title).toBeFocused();
+    await expect(exec.preconditions).toContainText("Sudah masuk sebagai pembeli");
+    await exec.stepResult(0, "Lulus").check();
+    await exec.stepResult(1, "Gagal").check();
+    await exec.stepNote(1).fill("Tombol bayar tidak merespons");
+    await expect(exec.suggestion).toContainText("Saran dari hasil langkah: Gagal");
+    await exec.useSuggestion.click();
+    await expect(exec.caseStatus("Gagal")).toBeChecked();
+    await exec.note.fill("Hanya di **Firefox**");
+    await expectNoA11yViolationsInBothThemes(page);
+    // Tombol laporan hanya untuk hasil gagal yang sudah tersimpan.
+    await expect(exec.reportBug).toHaveCount(0);
+    await exec.save.click();
+    await expect(exec.saved).toHaveText("Hasil tersimpan.");
+    await expect(exec.reportBug).toBeVisible();
+
+    await exec.reportBug.click();
+    const form = new BugNewPage(page);
+    await expect(form.title).toHaveValue("TC-2 gagal: Bayar dengan transfer");
+    await expect(form.origin).toContainText("TR-1 · TC-2");
+    await expect(form.severity).toHaveValue("major");
+    const description = await form.description.inputValue();
+    expect(description).toContain("- **Run:** TR-1 · `Regresi rilis`");
+    expect(description).toContain("- **Versi:** `v0.4.0`");
+    expect(description).toContain("- **Suite:** `Checkout`");
+    expect(description).toContain("Sudah masuk sebagai pembeli");
+    expect(description).toContain("| 1 | `Buka keranjang` | `Keranjang tampil` | Lulus | – |");
+    expect(description).toContain("| 2 | `Klik bayar` | `Pembayaran sukses` | **✗ Gagal** | `Tombol bayar tidak merespons` |");
+    expect(description).toContain("Hanya di **Firefox**");
+    await form.submit.click();
+
+    await expect(page).toHaveURL(`/p/${project.slug}/bugs/1`);
+    const origin = page.getByTestId("bug-manual-origin");
+    await expect(origin).toContainText("Dari test run manual TR-1 · TC-2");
+    await expect(origin).toContainText("Bayar dengan transfer");
+    await expect(page.getByTestId("bug-test-hint")).toHaveCount(0);
+    await expectNoA11yViolationsInBothThemes(page);
+    await page.getByTestId("bug-manual-origin-link").click();
+
+    await expect(page).toHaveURL(`${base}/cases/${runCases[1]!.id}`);
+    await expect(exec.bugs.getByTestId("bug-badge-1")).toContainText("Bug #1");
+    await expect(exec.reportBug).toHaveCount(0);
+    // Hasil tersimpan dimuat dari server.
+    await expect(exec.stepResult(1, "Gagal")).toBeChecked();
+    await expect(exec.stepNote(1)).toHaveValue("Tombol bayar tidak merespons");
+    await expect(exec.caseStatus("Gagal")).toBeChecked();
+
+    await exec.runLink.click();
+    await expect(detail.row(runCases[1]!.id).getByTestId("bug-badge-1")).toBeVisible();
+    await detail.start.click();
+    await expect(page).toHaveURL(`${base}/cases/${runCases[2]!.id}`);
+    await exec.caseStatus("Dilewati").check();
+    await exec.saveNext.click();
+    await expect(page).toHaveURL(base);
+    await expect(page.getByTestId("run-all-executed")).toHaveText("Semua case sudah dieksekusi.");
+    await expect(detail.progress).toContainText("3/3 dieksekusi · 1 lulus · 1 gagal · 1 dilewati");
+  });
+
+  test("dua tab: case sama → banner bentrok dan isian tetap sampai dimuat ulang; case berbeda → keduanya tersimpan", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project, run, runCases } = await seedExecRun(api, [{ title: "Case pertama" }, { title: "Case kedua" }]);
+    const tester = await api.addMember(owner, project.slug, "tester");
+    const { page: pageA } = await signedInPage(owner);
+    const { page: pageB } = await signedInPage(tester);
+    const a = new ManualExecutePage(pageA);
+    const b = new ManualExecutePage(pageB);
+
+    await a.goto(project.slug, run.number, runCases[0]!.id);
+    await b.goto(project.slug, run.number, runCases[0]!.id);
+    await a.caseStatus("Lulus").check();
+    await a.save.click();
+    await expect(a.saved).toBeVisible();
+
+    await b.caseStatus("Gagal").check();
+    await b.note.fill("Draf dari tab B");
+    await b.save.click();
+    await expect(b.conflict).toBeVisible();
+    await expect(b.conflict).toContainText("Case ini baru saja disimpan orang lain");
+    await expect(b.caseStatus("Gagal")).toBeChecked();
+    await expect(b.note).toHaveValue("Draf dari tab B");
+    await expect(b.save).toBeDisabled();
+    await b.conflictReload.click();
+    await expect(b.conflict).toHaveCount(0);
+    await expect(b.caseStatus("Lulus")).toBeChecked();
+    await expect(b.note).toHaveValue("");
+    await expect(b.title).toBeFocused();
+
+    // Case berbeda di run yang sama tidak saling bentrok.
+    await a.goto(project.slug, run.number, runCases[1]!.id);
+    await a.caseStatus("Diblokir").check();
+    await b.caseStatus("Dilewati").check();
+    await Promise.all([a.save.click(), b.save.click()]);
+    await expect(a.saved).toBeVisible();
+    await expect(b.saved).toBeVisible();
+    expect((await fetchRunCases(owner, project.slug, run.number)).map((item) => item.status)).toEqual(["skipped", "blocked"]);
+  });
+
+  test("run diselesaikan di tab lain saat mengisi hasil: banner selesai, form hanya-baca, isian tetap terlihat", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project, run, runCases } = await seedExecRun(api, [{ title: "Bayar dengan kartu" }]);
+    const { page: pageA } = await signedInPage(owner);
+    const { page: pageB } = await signedInPage(owner);
+    const detail = new ManualRunPage(pageA);
+    const exec = new ManualExecutePage(pageB);
+
+    await exec.goto(project.slug, run.number, runCases[0]!.id);
+    await exec.stepResult(0, "Gagal").check();
+    await exec.stepNote(0).fill("Catatan langkah belum tersimpan");
+    await exec.caseStatus("Gagal").check();
+    await exec.note.fill("Catatan case belum tersimpan");
+
+    await detail.goto(project.slug, run.number);
+    await detail.complete.click();
+    await detail.completeConfirm.click();
+    await expect(detail.status).toHaveText("Selesai");
+
+    await exec.save.click();
+    await expect(exec.completed).toBeVisible();
+    await expect(exec.completed).toContainText("Run ini sudah diselesaikan");
+    await expect(exec.note).toBeVisible();
+    await expect(exec.note).toHaveValue("Catatan case belum tersimpan");
+    await expect(exec.note).not.toBeEditable();
+    await expect(exec.stepNote(0)).toHaveValue("Catatan langkah belum tersimpan");
+    await expect(exec.stepNote(0)).not.toBeEditable();
+    await expect(exec.stepResult(0, "Gagal")).toBeChecked();
+    await expect(exec.stepResult(0, "Gagal")).toBeDisabled();
+    await expect(exec.caseStatus("Gagal")).toBeChecked();
+    await expect(exec.caseStatus("Lulus")).toBeDisabled();
+    await expect(exec.assignee).toBeDisabled();
+    await expect(exec.save).toHaveCount(0);
+    await expect(exec.saveNext).toHaveCount(0);
+    await expect(exec.useSuggestion).toHaveCount(0);
+    await expectNoA11yViolationsInBothThemes(pageB);
+    expect((await fetchRunCases(owner, project.slug, run.number))[0]!.status).toBe("untested");
+
+    // Dibuka lagi setelah selesai: hanya-baca sejak awal, tanpa banner peringatan.
+    await pageB.reload();
+    await exec.waitForLoaded();
+    await expect(exec.completed).toContainText("Run ini sudah diselesaikan");
+    await expect(exec.completed).not.toHaveAttribute("role", "alert");
+    await expect(exec.caseStatus("Belum dites")).toBeChecked();
+    await expect(exec.caseStatus("Lulus")).toBeDisabled();
+    await expect(exec.assigneeText).toContainText("Belum di-assign");
+    await expect(exec.save).toHaveCount(0);
+  });
+
+  test("snapshot: edit case setelah run dibuat tidak mengubah halaman eksekusi; case dihapus → catatan salinan", async ({
+    api,
+    signedInPage,
+  }) => {
+    const { owner, project, run, runCases } = await seedExecRun(api, [
+      { title: "Judul lama", preconditions: "Prasyarat lama", steps: [{ action: "Langkah lama", expected: "Hasil lama" }] },
+    ]);
+    await api.updateCase(owner, project.slug, 1, {
+      version: 1,
+      title: "Judul baru",
+      preconditions: "Prasyarat baru",
+      steps: [{ action: "Langkah baru", expected: "" }],
+    });
+    const { page } = await signedInPage(owner);
+    const exec = new ManualExecutePage(page);
+
+    await exec.goto(project.slug, run.number, runCases[0]!.id);
+    await expect(exec.title).toHaveText("Judul lama");
+    await expect(exec.preconditions).toContainText("Prasyarat lama");
+    await expect(exec.step(0)).toContainText("Langkah lama");
+    await expect(exec.step(0)).toContainText("Hasil lama");
+    await expect(page.getByText("Langkah baru")).toHaveCount(0);
+    await expect(exec.caseLink).toHaveAttribute("href", `/p/${project.slug}/cases/1`);
+    await expect(exec.caseDeleted).toHaveCount(0);
+
+    const res = await owner.request.delete(`/api/v1/projects/${project.slug}/cases/1`);
+    expect(res.status(), await res.text()).toBe(204);
+    await page.reload();
+    await exec.waitForLoaded();
+    await expect(exec.caseDeleted).toHaveText("Case asli sudah dihapus; ini salinan saat run dibuat.");
+    await expect(exec.step(0)).toContainText("Langkah lama");
+    await expect(exec.caseLink).toHaveCount(0);
+    // Hasil tetap bisa diisi pada salinan.
+    await exec.caseStatus("Lulus").check();
+    await exec.save.click();
+    await expect(exec.saved).toBeVisible();
+  });
+
+  test("Markdown berbahaya di prasyarat, langkah, dan catatan tampil inert, juga di isian awal bug", async ({ api, signedInPage }) => {
+    const payload = ["<script>alert(1)</script>", "<img src=x onerror=alert(1)>", "[klik](javascript:alert(1))"].join("\n\n");
+    const { owner, project, run, runCases } = await seedExecRun(api, [
+      { title: "Case berbahaya", preconditions: payload, steps: [{ action: payload, expected: payload }] },
+    ]);
+    await api.updateRunCase(owner, project.slug, run.number, runCases[0]!.id, {
+      version: 1,
+      status: "failed",
+      stepResults: [{ status: "failed", note: "<img src=x onerror=alert(1)> ](javascript:alert(1))" }],
+      note: payload,
+    });
+    const { page } = await signedInPage(owner);
+    const dialogs = recordDialogs(page);
+    const exec = new ManualExecutePage(page);
+
+    await exec.goto(project.slug, run.number, runCases[0]!.id);
+    await page.getByTestId("exec-note-tab-preview").click();
+    const blocks = page.getByTestId("markdown");
+    // Prasyarat, aksi, hasil yang diharapkan, dan pratinjau catatan case.
+    await expect(blocks).toHaveCount(4);
+    for (const block of await blocks.all()) {
+      await expect(block).toContainText("<script>alert(1)</script>");
+      await expect(block).toContainText("<img src=x onerror=alert(1)>");
+      await expect(block.locator("script, img, iframe, style")).toHaveCount(0);
+      await expect(block.locator('a[href^="javascript" i]')).toHaveCount(0);
+      await expect(block.getByRole("link", { name: "klik" })).toHaveCount(0);
+    }
+    await expect(exec.stepNote(0)).toHaveValue("<img src=x onerror=alert(1)> ](javascript:alert(1))");
+
+    await exec.reportBug.click();
+    const form = new BugNewPage(page);
+    await expect(form.title).toHaveValue("TC-1 gagal: Case berbahaya");
+    await form.descriptionPreviewTab.click();
+    await expect(form.descriptionPreview).toContainText("<script>alert(1)</script>");
+    await expect(form.descriptionPreview.locator("script, img, iframe, style")).toHaveCount(0);
+    await expect(form.descriptionPreview.locator('a[href^="javascript" i]')).toHaveCount(0);
+    await expect(form.descriptionPreview.getByRole("link")).toHaveCount(0);
+
+    expect(await page.locator("img").count(), "tidak ada <img> di halaman").toBe(0);
+    await page.waitForTimeout(300);
+    expect(dialogs.map((dialog) => dialog.message())).toEqual([]);
+  });
+
+  test("viewer dan anonim di project publik hanya membaca; run case tidak dikenal → tidak ditemukan", async ({
+    api,
+    signedInPage,
+    newContext,
+  }) => {
+    const { owner, project, run, runCases } = await seedExecRun(api, [{ title: "Case publik" }], { name: "Regresi publik" }, { visibility: "public" });
+    await api.updateRunCase(owner, project.slug, run.number, runCases[0]!.id, {
+      version: 1,
+      status: "failed",
+      stepResults: [
+        { status: "passed", note: "" },
+        { status: "failed", note: "Rusak" },
+      ],
+    });
+    const viewer = await api.addMember(owner, project.slug, "viewer");
+    const { page: viewerPage } = await signedInPage(viewer);
+    const anonymous = await (await newContext()).newPage();
+
+    for (const page of [viewerPage, anonymous]) {
+      const exec = new ManualExecutePage(page);
+      await exec.goto(project.slug, run.number, runCases[0]!.id);
+      await expect(exec.title).toHaveText("Case publik");
+      await expect(exec.stepResult(1, "Gagal")).toBeChecked();
+      await expect(exec.stepResult(1, "Gagal")).toBeDisabled();
+      await expect(exec.stepNote(1)).toHaveValue("Rusak");
+      await expect(exec.stepNote(1)).not.toBeEditable();
+      await expect(exec.caseStatus("Gagal")).toBeChecked();
+      await expect(exec.assigneeText).toContainText("Belum di-assign");
+      for (const control of [exec.save, exec.saveNext, exec.reportBug, exec.useSuggestion, exec.assignee]) {
+        await expect(control).toHaveCount(0);
+      }
+    }
+
+    const exec = new ManualExecutePage(anonymous);
+    await exec.goto(project.slug, run.number, "00000000-0000-4000-8000-000000000000");
+    await expect(exec.notFound).toBeVisible();
+    await exec.goto(project.slug, 99, runCases[0]!.id);
+    await expect(exec.notFound).toBeVisible();
+  });
+
+  test("di 375 px teks panjang tanpa spasi, emoji, dan blok kode tidak membuat scroll horizontal", async ({ api, newContext }) => {
+    const long = "x".repeat(400);
+    const emoji = "😀".repeat(80);
+    const code = ["```", "y".repeat(300), "```"].join("\n");
+    const { owner, project, run, runCases } = await seedExecRun(
+      api,
+      [
+        {
+          title: `Judul${"j".repeat(190)}`,
+          preconditions: `${long}\n\n${code}`,
+          steps: [
+            { action: `${long} ${emoji}`, expected: code },
+            { action: emoji, expected: long },
+          ],
+        },
+      ],
+      { name: LONG_NAME, appVersion: "v".padEnd(50, "9") },
+      { suiteName: "s".repeat(100) },
+    );
+    const page = await (await newContext(await mobileContextOptions(owner))).newPage();
+    const exec = new ManualExecutePage(page);
+
+    await exec.goto(project.slug, run.number, runCases[0]!.id);
+    await expect(exec.step(1)).toContainText("😀");
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+    await exec.stepResult(0, "Gagal").check();
+    // Catatan langkah melebihi 1000 karakter ditolak sebelum dikirim, dengan pesan di bawah kolomnya.
+    await exec.stepNote(0).fill("x".repeat(1001));
+    await exec.save.click();
+    await expect(page.getByTestId("field-error-stepResults.0.note")).toHaveText("Catatan langkah maksimal 1000 karakter");
+    await expect(exec.stepNote(0)).toBeFocused();
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+    await exec.stepNote(0).fill(long);
+    await exec.note.fill(`${long}\n\n${code}`);
+    await page.getByTestId("exec-note-tab-preview").click();
+    await expect(page.getByTestId("exec-note-preview")).toContainText("yyy");
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
+
+    await exec.useSuggestion.click();
+    await exec.save.click();
+    await expect(exec.reportBug).toBeVisible();
     expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0);
   });
 });

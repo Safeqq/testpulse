@@ -400,7 +400,10 @@ describe("DTO manual", () => {
     const shape = bugDto.shape;
     expect(Object.keys(shape)).toContain("manualOrigin");
     expect(ok(shape.manualOrigin, null)).toBe(true);
-    expect(ok(shape.manualOrigin, { runNumber: 3, runName: "Rilis", caseNumber: 12, caseTitle: "Login" })).toBe(true);
+    const origin = { runNumber: 3, runName: "Rilis", caseNumber: 12, caseTitle: "Login" };
+    expect(ok(shape.manualOrigin, { ...origin, runCaseId: "44444444-4444-4444-8444-444444444444" })).toBe(true);
+    // Tanpa `runCaseId` detail bug tidak bisa menaut ke halaman eksekusi.
+    expect(ok(shape.manualOrigin, origin)).toBe(false);
     expect(ok(shape.manualOrigin, undefined)).toBe(false);
   });
 });

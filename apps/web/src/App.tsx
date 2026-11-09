@@ -20,6 +20,7 @@ import {
   CasesPage,
   ComparePage,
   FlakyPage,
+  ManualExecutePage,
   ManualRunNewPage,
   ManualRunPage,
   ManualRunsPage,
@@ -72,6 +73,7 @@ export function App() {
           <Route path="/p/:slug/manual-runs" element={<ManualRunsPage />} />
           <Route path="/p/:slug/manual-runs/new" element={<ManualRunNewPage />} />
           <Route path="/p/:slug/manual-runs/:number" element={<ManualRunPage />} />
+          <Route path="/p/:slug/manual-runs/:number/cases/:id" element={<ManualExecutePage />} />
           <Route path="/p/:slug/bugs" element={<BugsPage />} />
           <Route path="/p/:slug/bugs/new" element={<BugNewPage />} />
           <Route path="/p/:slug/bugs/:number" element={<BugPage />} />

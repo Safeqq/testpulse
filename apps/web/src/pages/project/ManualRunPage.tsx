@@ -7,7 +7,7 @@ import {
 } from "@testpulse/shared";
 import { ArrowLeft, CheckCheck, ClipboardList, ListChecks, Loader2, Pencil, Play, RotateCcw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type Ref } from "react";
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { BugBadge } from "@/components/BugBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { FilterSelect } from "@/components/FilterSelect";
@@ -33,9 +33,11 @@ import {
   RUN_CASE_FILTER_KEYS,
   runCode,
   type RunCaseFilters,
+  type RunLocationState,
 } from "@/lib/manual";
 import { useCursorList } from "@/lib/useCursorList";
 import { useLoad } from "@/lib/useLoad";
+import { preloadPages } from "./lazyPages";
 import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
 
 /** `/p/:slug/manual-runs/:number`: header run, progres, aksi (selesaikan/buka ulang/ganti nama/hapus), dan case per suite. */
@@ -96,6 +98,9 @@ type Clash = "changed" | "completed";
 
 function RunView({ slug, isMember, canWrite, canDelete, initial }: Access & { initial: ManualRunDto }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  // Datang dari "Simpan & lanjut" pada case terakhir; dibaca sekali saat halaman dipasang.
+  const [allExecuted] = useState(() => Boolean((location.state as RunLocationState | null)?.allExecuted));
   const [run, setRun] = useState(initial);
   const [clash, setClash] = useState<Clash | null>(null);
   const [reloading, setReloading] = useState(false);
@@ -112,6 +117,7 @@ function RunView({ slug, isMember, canWrite, canDelete, initial }: Access & { in
   const code = runCode(run.number);
   const base = `/p/${encodeURIComponent(slug)}`;
   useDocumentTitle(`${code} · ${run.name}`);
+  useEffect(() => preloadPages("manualExecute"), []);
 
   useEffect(() => {
     if (reloads > 0 && focusHeading.current) {
@@ -227,6 +233,12 @@ function RunView({ slug, isMember, canWrite, canDelete, initial }: Access & { in
         </div>
 
         <RunProgress counts={run.counts} total={run.total} />
+
+        {allExecuted && run.counts.untested === 0 ? (
+          <p role="status" className="m-0 rounded-md border bg-muted/50 px-3 py-2 text-sm font-medium" data-testid="run-all-executed">
+            Semua case sudah dieksekusi.
+          </p>
+        ) : null}
 
         {completed ? (
           <p className="m-0 rounded-md border bg-muted/50 px-3 py-2 text-sm" data-testid="run-completed-note">

@@ -107,6 +107,8 @@ function RunView({ slug, isMember, canWrite, canDelete, initial }: Access & { in
   const headingRef = useRef<HTMLHeadingElement>(null);
   const focusHeading = useRef(false);
   const completed = run.status === "completed";
+  // Selesai di sini, atau diketahui selesai di tempat lain (RUN_COMPLETED): hanya-baca sampai dimuat ulang.
+  const locked = completed || clash === "completed";
   const code = runCode(run.number);
   const base = `/p/${encodeURIComponent(slug)}`;
   useDocumentTitle(`${code} · ${run.name}`);
@@ -209,7 +211,7 @@ function RunView({ slug, isMember, canWrite, canDelete, initial }: Access & { in
           <RunTitle
             name={run.name}
             version={run.version}
-            canEdit={canWrite && !completed}
+            canEdit={canWrite && !locked}
             headingRef={headingRef}
             onSave={(name) => patch({ name }, "rename")}
           />
@@ -254,7 +256,7 @@ function RunView({ slug, isMember, canWrite, canDelete, initial }: Access & { in
           </div>
         ) : null}
 
-        {canWrite ? (
+        {canWrite && clash !== "completed" ? (
           <div className="flex flex-wrap items-start gap-2">
             {!completed && run.counts.untested > 0 ? (
               <Button type="button" onClick={() => void start()} disabled={starting} data-testid="run-start">
@@ -319,6 +321,13 @@ function RunTitle({
   const [draft, setDraft] = useState(name);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  // Run menjadi hanya-baca (diselesaikan di sini atau di tempat lain) selagi formulir terbuka: keluar dari mode edit.
+  // Draf dibuang; saat run dibuka ulang pengguna memulai dari nama terbaru.
+  if (editing && !canEdit) {
+    setEditing(false);
+    setError(null);
+  }
 
   // Fokus mengikuti mode: ke kolom saat edit dimulai, kembali ke tombol Ubah nama saat selesai atau dibatalkan.
   useEffect(() => {

@@ -482,6 +482,61 @@ test.describe("Detail run manual", () => {
     expect((await fetchManualRun(owner, project.slug, run.number)).name).toBe("Regresi rilis 0.4.1");
   });
 
+  test("formulir ganti nama yang terbuka tertutup saat run diselesaikan", async ({ api, signedInPage }) => {
+    const seed = await seedManualProject(api, { suites: ["Login"], casesPerSuite: 1 });
+    const { run } = await seedRun(api, seed, { name: "Satu case" }, [{ status: "passed" }]);
+    const { page } = await signedInPage(seed.owner);
+    const detail = new ManualRunPage(page);
+
+    await detail.goto(seed.project.slug, run.number);
+    await detail.rename.click();
+    await expect(detail.renameInput).toBeVisible();
+    // Tanpa case belum dites: langsung selesai, formulir tidak boleh tersisa.
+    await page.getByTestId("run-complete").click();
+    await expect(detail.status).toHaveText("Selesai");
+    await expect(detail.renameInput).toHaveCount(0);
+    await expect(detail.renameSave).toHaveCount(0);
+    await expect(detail.title).toHaveText("Satu case");
+    await expect(detail.rename).toHaveCount(0);
+    await expect(detail.completedNote).toBeVisible();
+
+    // Dibuka ulang: tombol kembali, formulir tidak terbuka sendiri.
+    await detail.reopen.click();
+    await expect(detail.rename).toBeVisible();
+    await expect(detail.renameInput).toHaveCount(0);
+  });
+
+  test("menyimpan nama setelah run diselesaikan orang lain menampilkan banner selesai dan hanya-baca", async ({
+    api,
+    signedInPage,
+  }) => {
+    const seed = await seedManualProject(api, { suites: ["Login"], casesPerSuite: 2 });
+    const { run } = await seedRun(api, seed, { name: "Regresi rilis" }, [{ status: "passed" }]);
+    const { page } = await signedInPage(seed.owner);
+    const detail = new ManualRunPage(page);
+
+    await detail.goto(seed.project.slug, run.number);
+    await detail.rename.click();
+    await detail.renameInput.fill("Nama baru");
+    await completeViaApi(seed.owner, seed.project.slug, run.number);
+
+    await detail.renameSave.click();
+    await expect(detail.conflict).toContainText("Run ini sudah diselesaikan orang lain");
+    await expect(detail.renameInput).toHaveCount(0);
+    await expect(detail.rename).toHaveCount(0);
+    await expect(detail.complete).toHaveCount(0);
+    await expect(detail.start).toHaveCount(0);
+    await expect(detail.title).toHaveText("Regresi rilis");
+
+    await detail.conflictReload.click();
+    await expect(detail.conflict).toHaveCount(0);
+    await expect(detail.status).toHaveText("Selesai");
+    await expect(detail.completedNote).toBeVisible();
+    await expect(detail.reopen).toBeVisible();
+    await expect(detail.rename).toHaveCount(0);
+    expect((await fetchManualRun(seed.owner, seed.project.slug, run.number)).name).toBe("Regresi rilis");
+  });
+
   test("hanya admin melihat Hapus run; konfirmasi inline menghapus lalu kembali ke daftar", async ({ api, signedInPage }) => {
     const { owner, project, run } = await seedDetail(api);
     const tester = await api.addMember(owner, project.slug, "tester");

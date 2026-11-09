@@ -1,4 +1,11 @@
-import type { ManualCaseDto, ProjectDto, SuiteDto } from "@testpulse/shared";
+import type {
+  ManualCaseDto,
+  ManualRunDto,
+  ProjectDto,
+  RunCaseListItemDto,
+  RunCasesPageDto,
+  SuiteDto,
+} from "@testpulse/shared";
 import type { TestApi, TestUser } from "./api-client.js";
 
 /** Helper data uji untuk spec test manual (suite, case, run): menyiapkan project berisi suite dan case lewat API. */
@@ -45,4 +52,18 @@ export async function seedManualProject(api: TestApi, options: ManualSeedOptions
     }
   }
   return { owner, project, suites, cases };
+}
+
+/** Run case sebuah run menurut server (urut posisi); satu halaman cukup untuk seed test (maks 100 case). */
+export async function fetchRunCases(user: TestUser, slug: string, runNumber: number): Promise<RunCaseListItemDto[]> {
+  const res = await user.request.get(`/api/v1/projects/${slug}/manual-runs/${runNumber}/cases`);
+  if (res.status() !== 200) throw new Error(`fetchRunCases: diharapkan 200, diterima ${res.status()} ${await res.text()}`);
+  return ((await res.json()) as RunCasesPageDto).items;
+}
+
+/** Run manual terkini menurut server (bukan menurut UI). */
+export async function fetchManualRun(user: TestUser, slug: string, runNumber: number): Promise<ManualRunDto> {
+  const res = await user.request.get(`/api/v1/projects/${slug}/manual-runs/${runNumber}`);
+  if (res.status() !== 200) throw new Error(`fetchManualRun: diharapkan 200, diterima ${res.status()} ${await res.text()}`);
+  return (await res.json()) as ManualRunDto;
 }

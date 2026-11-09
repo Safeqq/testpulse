@@ -12,6 +12,9 @@ const loadVersionsPage = () => import("./VersionsPage").then((m) => ({ default: 
 const loadCasesPage = () => import("./CasesPage").then((m) => ({ default: m.CasesPage }));
 const loadCasePage = () => import("./CasePage").then((m) => ({ default: m.CasePage }));
 const loadCaseFormPage = () => import("./CaseFormPage").then((m) => ({ default: m.CaseFormPage }));
+const loadManualRunsPage = () => import("./ManualRunsPage").then((m) => ({ default: m.ManualRunsPage }));
+const loadManualRunNewPage = () => import("./ManualRunNewPage").then((m) => ({ default: m.ManualRunNewPage }));
+const loadManualRunPage = () => import("./ManualRunPage").then((m) => ({ default: m.ManualRunPage }));
 const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage }));
 
 export const RunsPage = lazy(loadRunsPage);
@@ -24,6 +27,9 @@ export const BugPage = lazy(loadBugPage);
 export const CasesPage = lazy(loadCasesPage);
 export const CasePage = lazy(loadCasePage);
 export const CaseFormPage = lazy(loadCaseFormPage);
+export const ManualRunsPage = lazy(loadManualRunsPage);
+export const ManualRunNewPage = lazy(loadManualRunNewPage);
+export const ManualRunPage = lazy(loadManualRunPage);
 export const ComparePage = lazy(loadComparePage);
 export const VersionsPage = lazy(loadVersionsPage);
 
@@ -40,6 +46,9 @@ const LOADERS = {
   cases: loadCasesPage,
   case: loadCasePage,
   caseForm: loadCaseFormPage,
+  manualRuns: loadManualRunsPage,
+  manualRunNew: loadManualRunNewPage,
+  manualRun: loadManualRunPage,
 };
 
 /**

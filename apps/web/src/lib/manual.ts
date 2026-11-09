@@ -1,4 +1,15 @@
-import { caseListQuery, type CaseListQuery, type CasePriority, type ManualResultStatus } from "@testpulse/shared";
+import {
+  caseListQuery,
+  manualRunListQuery,
+  runCaseListQuery,
+  type CaseListQuery,
+  type CasePriority,
+  type ManualCountsDto,
+  type ManualResultStatus,
+  type ManualRunListQuery,
+  type ManualRunStatus,
+  type RunCaseListQuery,
+} from "@testpulse/shared";
 import { BUG_PRIORITY_LABEL } from "./bugs";
 
 /** Prioritas case memakai himpunan dan istilah yang sama dengan prioritas bug. */
@@ -48,9 +59,95 @@ export function parseCaseNumber(raw: string): number | null {
 
 /** Istilah hasil eksekusi manual (case maupun langkah). */
 export const MANUAL_STATUS_LABEL: Record<ManualResultStatus, string> = {
-  untested: "Belum diuji",
+  untested: "Belum dites",
   passed: "Lulus",
   failed: "Gagal",
-  blocked: "Terblokir",
+  blocked: "Diblokir",
   skipped: "Dilewati",
 };
+
+/** Status run manual. */
+export const MANUAL_RUN_STATUS_LABEL: Record<ManualRunStatus, string> = { open: "Terbuka", completed: "Selesai" };
+
+/** Kode tampil sebuah run manual, mis. `TR-3`. */
+export function runCode(number: number): string {
+  return `TR-${number}`;
+}
+
+/**
+ * Legenda progres run: "18/25 dieksekusi · 15 lulus · 2 gagal · 1 diblokir". Hanya status yang punya hitungan yang
+ * disebut; yang belum dites tidak ditulis (selisihnya terlihat dari total).
+ */
+export function runProgressLegend(counts: ManualCountsDto, total: number): string {
+  const parts = [
+    `${total - counts.untested}/${total} dieksekusi`,
+    ...(counts.passed > 0 ? [`${counts.passed} lulus`] : []),
+    ...(counts.failed > 0 ? [`${counts.failed} gagal`] : []),
+    ...(counts.blocked > 0 ? [`${counts.blocked} diblokir`] : []),
+    ...(counts.skipped > 0 ? [`${counts.skipped} dilewati`] : []),
+  ];
+  return parts.join(" · ");
+}
+
+/** Kunci filter daftar run manual di URL. */
+export const RUN_FILTER_KEYS = ["status", "appVersion"] as const;
+
+export type RunFilters = Pick<ManualRunListQuery, "status" | "appVersion">;
+
+/** Filter daftar run dari URL; tiap kunci divalidasi sendiri (nilai tidak valid hanya menggugurkan kunci itu). */
+export function parseRunFilters(params: URLSearchParams): RunFilters {
+  const { shape } = manualRunListQuery;
+  const status = shape.status.safeParse(params.get("status") ?? undefined);
+  const filters: RunFilters = { status: status.success ? status.data : "all" };
+  const appVersion = shape.appVersion.safeParse(params.get("appVersion") ?? undefined);
+  if (appVersion.success && appVersion.data !== undefined) filters.appVersion = appVersion.data;
+  return filters;
+}
+
+/** Kunci filter daftar case dalam satu run di URL. */
+export const RUN_CASE_FILTER_KEYS = ["status", "assignee", "suite"] as const;
+
+export type RunCaseFilters = Pick<RunCaseListQuery, "status" | "assignee" | "suite">;
+
+/** Filter daftar case run dari URL; tiap kunci divalidasi sendiri. */
+export function parseRunCaseFilters(params: URLSearchParams): RunCaseFilters {
+  const { shape } = runCaseListQuery;
+  const filters: RunCaseFilters = {};
+  const status = shape.status.safeParse(params.get("status") ?? undefined);
+  if (status.success && status.data !== undefined) filters.status = status.data;
+  const assignee = shape.assignee.safeParse(params.get("assignee") ?? undefined);
+  if (assignee.success && assignee.data !== undefined) filters.assignee = assignee.data;
+  const suite = shape.suite.safeParse(params.get("suite") ?? undefined);
+  if (suite.success && suite.data !== undefined && suite.data !== "") filters.suite = suite.data;
+  return filters;
+}
+
+/**
+ * Jumlah case yang akan disalin ke run baru: case aktif semua suite terpilih ditambah case satuan yang suitenya tidak
+ * ikut terpilih (case di suite terpilih sudah terhitung, sama seperti dedupe di server).
+ */
+export function countSelection(
+  suites: readonly { id: string; activeCount: number }[],
+  selectedSuiteIds: ReadonlySet<string>,
+  picked: readonly { suiteId: string }[],
+): number {
+  const fromSuites = suites.reduce((sum, suite) => sum + (selectedSuiteIds.has(suite.id) ? suite.activeCount : 0), 0);
+  return fromSuites + picked.filter((item) => !selectedSuiteIds.has(item.suiteId)).length;
+}
+
+/** Nomor run dari URL; aturannya sama dengan nomor case (bilangan bulat positif yang mungkin ada). */
+export const parseRunNumber = parseCaseNumber;
+
+/**
+ * Mengelompokkan item run case yang berurutan menurut nama suite snapshot. Server mengurutkan menurut posisi (suite lalu
+ * nomor case), jadi case satu suite berdampingan; halaman berikutnya yang melanjutkan suite terakhir menyambung kelompoknya.
+ */
+export function groupBySuite<T extends { suiteName: string }>(items: readonly T[]): { suiteName: string; items: T[] }[] {
+  const groups: { suiteName: string; items: T[] }[] = [];
+  for (const item of items) {
+    const last = groups.at(-1);
+    if (last && last.suiteName === item.suiteName) last.items.push(item);
+    else groups.push({ suiteName: item.suiteName, items: [item] });
+  }
+  return groups;
+}

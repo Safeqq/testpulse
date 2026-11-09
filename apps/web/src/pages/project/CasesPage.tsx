@@ -72,7 +72,7 @@ function useSuites(slug: string): { state: SuitesState; refresh: () => Promise<v
 }
 
 function CasesView({ slug, canWrite, canDelete }: { slug: string; canWrite: boolean; canDelete: boolean }) {
-  useEffect(() => preloadPages("case", "caseForm"), []);
+  useEffect(() => preloadPages("case", "caseForm", "manualRuns"), []);
   const [params, setParams] = useSearchParams();
   const filters = useMemo(() => parseCaseFilters(params), [params]);
   // Berdasarkan URL (bukan filter yang lolos validasi) agar "Atur ulang filter" juga membersihkan parameter yang tidak valid.

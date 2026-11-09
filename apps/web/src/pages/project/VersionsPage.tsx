@@ -1,4 +1,4 @@
-import { MAX_VERSIONS, type RunSummaryDto, type VersionDto } from "@testpulse/shared";
+import { MAX_VERSIONS, type ManualRunRefDto, type RunSummaryDto, type VersionDto } from "@testpulse/shared";
 import { Tag } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -9,6 +9,7 @@ import { Loading } from "@/components/Loading";
 import { api } from "@/lib/api";
 import { formatPassRateDelta, runLabel, versionLabel } from "@/lib/compareSummary";
 import { formatDateTime, formatPassRate } from "@/lib/format";
+import { manualRefSummary, runCode } from "@/lib/manual";
 import { compareHref } from "@/lib/navigation";
 import { useLoad } from "@/lib/useLoad";
 import { cn } from "@/lib/utils";
@@ -128,6 +129,9 @@ function VersionsTable({ slug, branch, versions }: { slug: string; branch: strin
             <th scope="col" className={cn(TH_CLASS, "hidden md:table-cell")}>
               Perubahan
             </th>
+            <th scope="col" className={cn(TH_CLASS, "hidden md:table-cell")}>
+              Manual
+            </th>
             <th scope="col" className={TH_CLASS}>
               Perbandingan
             </th>
@@ -166,6 +170,22 @@ function DeltaText({ delta }: { delta: number | null }) {
   );
 }
 
+/** Run manual terbaru versi ini: "TR-3 · 15/25 lulus · 2 gagal" dengan TR-nya sebagai link, atau "–". */
+function ManualRef({ slug, manual }: { slug: string; manual: ManualRunRefDto | null }) {
+  if (manual === null) return <span className="text-muted-foreground">–</span>;
+  return (
+    <>
+      <Link to={`/p/${encodeURIComponent(slug)}/manual-runs/${manual.number}`} className={INLINE_LINK_CLASS}>
+        {runCode(manual.number)}
+      </Link>
+      <span>
+        {" · "}
+        {manualRefSummary(manual.counts, manual.total)}
+      </span>
+    </>
+  );
+}
+
 function VersionRow({
   slug,
   branch,
@@ -191,6 +211,11 @@ function VersionRow({
         <span className="mt-1 grid gap-0.5 text-xs font-normal text-muted-foreground md:hidden">
           <span>{date}</span>
           <span>{entry.runCount} run</span>
+          {entry.manual ? (
+            <span data-testid={`version-manual-compact-${entry.version}`}>
+              <ManualRef slug={slug} manual={entry.manual} />
+            </span>
+          ) : null}
         </span>
       </th>
       <td className={cn(TD_CLASS, "hidden md:table-cell")}>
@@ -211,6 +236,9 @@ function VersionRow({
       </td>
       <td className={cn(TD_CLASS, "hidden md:table-cell")}>
         <DeltaText delta={entry.passRateDelta} />
+      </td>
+      <td className={cn(TD_CLASS, "hidden md:table-cell")} data-testid={`version-manual-${entry.version}`}>
+        <ManualRef slug={slug} manual={entry.manual} />
       </td>
       <td className={TD_CLASS}>
         {run === null ? (

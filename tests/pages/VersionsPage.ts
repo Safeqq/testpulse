@@ -18,6 +18,16 @@ export class VersionsPage {
     return this.page.getByTestId(`version-row-${version}`);
   }
 
+  /** Sel kolom Manual (layar lebar). */
+  manual(version: string): Locator {
+    return this.page.getByTestId(`version-manual-${version}`);
+  }
+
+  /** Ringkasan Manual di bawah versi (layar sempit, saat kolomnya disembunyikan). */
+  manualCompact(version: string): Locator {
+    return this.page.getByTestId(`version-manual-compact-${version}`);
+  }
+
   compareLink(version: string): Locator {
     return this.page.getByTestId(`version-compare-${version}`);
   }

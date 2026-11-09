@@ -89,6 +89,11 @@ export function runProgressLegend(counts: ManualCountsDto, total: number): strin
   return parts.join(" · ");
 }
 
+/** Ringkasan satu run manual pada baris versi: "15/25 lulus · 2 gagal" ("gagal" hanya bila ada yang gagal). */
+export function manualRefSummary(counts: Pick<ManualCountsDto, "passed" | "failed">, total: number): string {
+  return [`${counts.passed}/${total} lulus`, ...(counts.failed > 0 ? [`${counts.failed} gagal`] : [])].join(" · ");
+}
+
 /** Kunci filter daftar run manual di URL. */
 export const RUN_FILTER_KEYS = ["status", "appVersion"] as const;
 

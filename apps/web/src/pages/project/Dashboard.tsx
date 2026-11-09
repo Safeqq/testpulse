@@ -16,6 +16,7 @@ import { useCompareSummary } from "@/lib/useCompareSummary";
 import { useLoad } from "@/lib/useLoad";
 import { CompareSummaryCard } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
+import { ManualCard } from "./ManualCard";
 
 const RECENT_RUNS = 5;
 const TOP_FLAKY = 5;
@@ -33,7 +34,13 @@ export function Dashboard({ slug, branch }: DashboardProps) {
   // Tujuan "Lihat semua" dan tautan item: unduh chunk-nya selagi pengguna membaca dashboard.
   useEffect(() => preloadPages("runs", "run", "flaky", "test", "compare"), []);
   // key: pindah branch memulai muat baru dengan status loading, bukan menampilkan angka branch sebelumnya.
-  return <BranchSummary key={branch} slug={slug} branch={branch} />;
+  // Kartu Test manual tidak terikat branch: tetap di luar `key` agar tidak dimuat ulang tiap ganti branch.
+  return (
+    <>
+      <BranchSummary key={branch} slug={slug} branch={branch} />
+      <ManualCard slug={slug} />
+    </>
+  );
 }
 
 interface Summary {

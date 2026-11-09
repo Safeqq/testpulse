@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   caseCode,
+  manualRefSummary,
   countSelection,
   groupBySuite,
   MANUAL_STATUS_LABEL,
@@ -178,5 +179,18 @@ describe("parseRunNumber", () => {
     expect(parseRunNumber("3")).toBe(3);
     expect(parseRunNumber("0")).toBeNull();
     expect(parseRunNumber("abc")).toBeNull();
+  });
+});
+
+describe("manualRefSummary", () => {
+  const counts = { untested: 0, passed: 0, failed: 0, blocked: 0, skipped: 0 };
+
+  it("menyebut lulus dari total dan jumlah gagal bila ada", () => {
+    expect(manualRefSummary({ passed: 15, failed: 2 }, 25)).toBe("15/25 lulus · 2 gagal");
+    expect(manualRefSummary({ ...counts, passed: 2, failed: 1 }, 3)).toBe("2/3 lulus · 1 gagal");
+  });
+
+  it("menghilangkan 'gagal' bila tidak ada yang gagal", () => {
+    expect(manualRefSummary({ passed: 0, failed: 0 }, 3)).toBe("0/3 lulus");
   });
 });

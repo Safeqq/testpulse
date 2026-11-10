@@ -33,6 +33,18 @@ describe("selectRunCases", () => {
     expect(select(["s-login"], [5])).toEqual({ ok: true, caseIds: ["c1", "c3", "c5"] });
   });
 
+  it("case satu suite yang masuk tidak urut tetap diurutkan menurut nomor", () => {
+    const unordered = [
+      { id: "c9", number: 9, suiteId: "s-login", archived: false },
+      { id: "c7", number: 7, suiteId: "s-login", archived: false },
+      { id: "c8", number: 8, suiteId: "s-login", archived: false },
+    ];
+    expect(selectRunCases({ suites, cases: unordered, suiteIds: ["s-login"], caseNumbers: [] })).toEqual({
+      ok: true,
+      caseIds: ["c7", "c8", "c9"],
+    });
+  });
+
   it("mengurutkan menurut posisi suite lalu nomor, bukan urutan input", () => {
     expect(select(["s-pay", "s-login"], [2])).toEqual({ ok: true, caseIds: ["c1", "c3", "c2", "c5"] });
     expect(select([], [5, 2, 1])).toEqual({ ok: true, caseIds: ["c1", "c2", "c5"] });

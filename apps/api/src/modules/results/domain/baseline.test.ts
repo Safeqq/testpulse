@@ -100,15 +100,17 @@ describe("pickDefaultTarget", () => {
   it("returns the latest run when no run has a version", () => {
     const a = run("a", null);
     const b = run("b", null);
-    expect(pickDefaultTarget([a, b])?.id).toBe("b");
+    const c = run("c", null);
+    expect(pickDefaultTarget([a, b, c])?.id).toBe("c");
   });
 
   it("returns the last run of the highest version, not the latest run", () => {
     const hi1 = run("hi1", "2.0.0");
     const hi2 = run("hi2", "2.0.0");
+    const hi3 = run("hi3", "2.0.0");
     const lo = run("lo", "1.9.0");
     const none = run("none", null);
-    expect(pickDefaultTarget([hi1, hi2, lo, none])?.id).toBe("hi2");
+    expect(pickDefaultTarget([hi1, hi2, hi3, lo, none])?.id).toBe("hi3");
   });
 
   it("merges semver-equal spellings when finding the highest version", () => {

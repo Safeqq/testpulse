@@ -93,6 +93,10 @@ describe("applyStatusChange", () => {
     });
   });
 
+  it.each(["open", "in_progress"] as const)("does not reuse a stale resolution on %s -> closed (only resolved may)", (from) => {
+    expect(applyStatusChange({ status: from, resolution: "fixed" }, { status: "closed" }, NOW)).toEqual({ error: "RESOLUTION_REQUIRED" });
+  });
+
   it("requires a resolution on resolved -> closed when none exists at all", () => {
     expect(applyStatusChange({ status: "resolved", resolution: null }, { status: "closed" }, NOW)).toEqual({ error: "RESOLUTION_REQUIRED" });
   });

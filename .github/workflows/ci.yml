@@ -317,6 +317,10 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      # gh run list / gh run download of the latest mutation.yml artifact.
+      actions: read
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -348,6 +352,26 @@ jobs:
           name: allure-report
           path: allure-report
           retention-days: 14
+
+      # deploy-pages replaces the whole site, so every deploy carries the latest mutation report under /mutation/.
+      # Never fails the job: without a successful mutation.yml run on main, or when the download fails, /mutation/
+      # gets a placeholder page instead.
+      - name: Fetch latest mutation report
+        if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          dest=allure-report/mutation
+          run_id=$(gh run list --workflow mutation.yml --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')
+          if [ -n "$run_id" ] && [ "$run_id" != "null" ] && gh run download "$run_id" -n mutation-report -D "$dest"; then
+            echo "Mutation report from mutation.yml run $run_id."
+          else
+            echo "::notice::No mutation report available, publishing a placeholder at /mutation/."
+            rm -rf "$dest"
+            node .github/scripts/mutation-index.mjs --placeholder "$dest"
+          fi
+          exit 0
 
       - name: Upload Pages artifact
         if: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}

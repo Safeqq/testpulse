@@ -52,6 +52,22 @@ describe("parseSemver", () => {
   });
 });
 
+describe("compareSemver - aturan pre-release (mutation testing)", () => {
+  it.each([
+    ["1.0.0-123", "1.0.0-a", -1], // numerik < alfanumerik walau lebih panjang
+    ["1.0.0-a", "1.0.0-123", 1],
+    ["1.0.0-1", "1.0.0--a", -1], // numerik < alfanumerik walau "-" lebih kecil di ASCII
+    ["1.0.0--a", "1.0.0-1", 1],
+    ["1.0.0-beta", "1.0.0-alpha", 1],
+    ["1.0.0-alpha", "1.0.0-alpha.1", -1],
+    ["1.0.0-alpha.1", "1.0.0-alpha", 1],
+  ])("%s vs %s -> %i", (a, b, expected) => expect(cmp(a, b)).toBe(expected));
+
+  it.each(["1.0.0-a01", "1.0.0-01a"])("identifier alfanumerik berisi angka berawalan nol tetap sah: %s", (v) => {
+    expect(parseSemver(v)?.prerelease).toEqual([v.slice(6)]);
+  });
+});
+
 describe("compareSemver", () => {
   it("compares numerically, not lexically", () => {
     expect(cmp("1.0.10", "1.0.9")).toBe(1);
@@ -128,6 +144,43 @@ describe("orderVersions", () => {
 
   it("returns an empty list for no entries", () => {
     expect(orderVersions([])).toEqual([]);
+  });
+
+  it("keeps distinct pre-releases of one version apart", () => {
+    const t = at("2026-01-01T00:00:00Z");
+    expect(
+      orderVersions([
+        { version: "1.0.0-rc.2", latestRunAt: t },
+        { version: "1.0.0", latestRunAt: t },
+        { version: "1.0.0-rc.1", latestRunAt: t },
+      ]),
+    ).toEqual(["1.0.0-rc.1", "1.0.0-rc.2", "1.0.0"]);
+  });
+
+  it("does not merge pre-releases that differ only in their dots (rc.1 vs rc1)", () => {
+    const t = at("2026-01-01T00:00:00Z");
+    expect(
+      orderVersions([
+        { version: "1.0.0-rc.1", latestRunAt: t },
+        { version: "1.0.0-rc1", latestRunAt: t },
+      ]),
+    ).toEqual(["1.0.0-rc.1", "1.0.0-rc1"]);
+  });
+
+  it.each([
+    [["1.0.0", "v1.0.0"]],
+    [["v1.0.0", "1.0.0"]],
+  ])("labels semver-equal spellings run at the same time with the larger string (%j)", (versions) => {
+    const t = at("2026-01-01T00:00:00Z");
+    expect(orderVersions(versions.map((version) => ({ version, latestRunAt: t })))).toEqual(["v1.0.0"]);
+  });
+
+  it.each([
+    [["build-b", "build-a"]],
+    [["build-a", "build-b"]],
+  ])("orders non-semver versions run at the same time by string (%j)", (versions) => {
+    const t = at("2026-01-01T00:00:00Z");
+    expect(orderVersions(versions.map((version) => ({ version, latestRunAt: t })))).toEqual(["build-a", "build-b"]);
   });
 
   it("orders semver ascending regardless of run time", () => {

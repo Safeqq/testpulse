@@ -2,6 +2,7 @@ import { randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
 const KEY_LENGTH = 64;
 const SALT_BYTES = 16;
+const HEX = /^[0-9a-f]+$/i;
 
 // Hash dummy untuk menyetarakan waktu respons saat email tidak ditemukan.
 const DUMMY_HASH = `${"00".repeat(SALT_BYTES)}:${"00".repeat(KEY_LENGTH)}`;
@@ -25,7 +26,8 @@ export async function hashPassword(password: string): Promise<string> {
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {
   const [saltHex, hashHex, ...rest] = stored.split(":");
   if (!saltHex || !hashHex || rest.length > 0) return false;
-  if (!/^[0-9a-f]+$/i.test(saltHex) || !/^[0-9a-f]+$/i.test(hashHex)) return false;
+  // Buffer.from(hex) silently stops at the first non-hex character, so the format is checked first.
+  if (!HEX.test(saltHex) || !HEX.test(hashHex)) return false;
   const expected = Buffer.from(hashHex, "hex");
   if (expected.length !== KEY_LENGTH) return false;
   const actual = await derive(password, Buffer.from(saltHex, "hex"));

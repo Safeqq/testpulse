@@ -112,7 +112,7 @@ describe("parseJUnit - durasi", () => {
     expect(report.durationMs).toBe(1000);
   });
 
-  it.each(["1.", ".5", "0012.500", "1".repeat(32)])("time valid %j diterima", (time) => {
+  it.each(["1.", ".5", ".25", "0012.500", "1".repeat(32)])("time valid %j diterima", (time) => {
     expect(parseJUnit(suite(`<testcase name="a" time="${time}"/>`)).results[0]?.durationMs).toBe(
       Math.min(2_147_483_647, Math.round(Number(time) * 1000)),
     );
@@ -465,4 +465,95 @@ describe("parseJUnit - fix round 1", () => {
     const xml = suite('<testcase name="a"><flakyError message="e"/><flakyFailure message="f"/></testcase>');
     expect(parseJUnit(xml).results[0]).toMatchObject({ status: "passed", flakyInRun: true, retries: 2 });
   });
+});
+
+// Diperkuat lewat mutation testing (Tahap 4 §9): pesan error tampil ke pengunggah, dan beberapa cabang hanya terlihat
+// dari isi hasil, bukan dari ada/tidaknya error.
+describe("parseJUnit - pesan penolakan", () => {
+  const rejects = (xml: string, message: string) => expect(() => parseJUnit(xml)).toThrow(new InvalidReportError(message));
+
+  it.each([
+    ["DOCTYPE", '<!DOCTYPE x><testsuite name="S"><testcase name="a"/></testsuite>', "DOCTYPE tidak diizinkan"],
+    ["karakter terlarang", suite('<testcase name="a\u0001"/>'), "XML memuat karakter yang tidak diizinkan"],
+    ["XML rusak", '<testsuite name="S"><testcase name="a"></testsuite>', "XML tidak valid"],
+    ["root lain", "<html><body><testcase name='a'/></body></html>", "Root elemen harus <testsuites> atau <testsuite>"],
+    ["dua root berbeda", '<testsuites/><testsuite name="S"><testcase name="a"/></testsuite>', "Root elemen harus <testsuites> atau <testsuite>"],
+    ["tanpa testcase", "<testsuites/>", "Laporan tidak memuat testcase"],
+    ["testcase tanpa name", suite("<testcase/>"), "Setiap testcase wajib memiliki atribut name yang tidak kosong"],
+  ])("%s", (_label, xml, message) => rejects(xml, message));
+
+  it("nesting tepat satu tingkat di atas batas ditolak oleh cek kedalaman", () => {
+    const depth = MAX_SUITE_DEPTH + 1;
+    const xml = '<testsuite name="S">'.repeat(depth) + '<testcase name="a"/>' + "</testsuite>".repeat(depth);
+    rejects(xml, `Testsuite bersarang lebih dari ${MAX_SUITE_DEPTH} tingkat`);
+  });
+
+  it("nesting yang ditolak parser (melewati batas tag bersarangnya) menjadi XML tidak valid", () => {
+    const depth = 200;
+    const xml = '<testsuite name="S">'.repeat(depth) + '<testcase name="a"/>' + "</testsuite>".repeat(depth);
+    rejects(xml, "XML tidak valid");
+  });
+
+  it("lebih dari 20.000 testcase", () => {
+    const xml = suite(Array.from({ length: MAX_TESTCASES + 1 }, (_, i) => `<testcase name="t${i}"/>`).join(""));
+    rejects(xml, `Laporan memuat lebih dari ${MAX_TESTCASES} testcase`);
+  });
+});
+
+describe("parseJUnit - detail parsing", () => {
+  it("referensi karakter LF dan CR di tengah nama didekode", () => {
+    expect(parseJUnit(suite('<testcase name="a&#10;b&#13;c"/>')).results[0]?.name).toBe("a\nb\rc");
+  });
+
+  it("spasi hasil dekode entity di ujung atribut dan teks failure ikut di-trim", () => {
+    const report = parseJUnit(suite('<testcase name="&#32;a&#32;"><failure>&#32;boom&#32;</failure></testcase>'));
+    expect(report.results[0]).toMatchObject({ name: "a", message: "boom" });
+  });
+
+  it("teks failure berupa angka tetap string (nilai tag tidak di-parse)", () => {
+    expect(parseJUnit(suite('<testcase name="a"><failure>42</failure></testcase>')).results[0]?.message).toBe("42");
+  });
+
+  it("kelima entity bernama XML didekode", () => {
+    expect(parseJUnit(suite('<testcase name="&lt;&gt;&amp;&quot;&apos;"/>')).results[0]?.name).toBe(`<>&"'`);
+  });
+
+  it("failure yang hanya berisi teks memakai teks itu sebagai pesan", () => {
+    expect(parseJUnit(suite('<testcase name="a"><failure>boom</failure></testcase>')).results[0]?.message).toBe("boom");
+  });
+
+  it("teks failure yang juga punya atribut di-trim setelah dekode entity", () => {
+    const r = parseJUnit(suite('<testcase name="a"><failure type="X">&#32;stack&#32;</failure></testcase>')).results[0];
+    expect(r?.message).toBe("stack");
+  });
+
+  it("failure dengan atribut tanpa message dan tanpa teks -> pesan null", () => {
+    const r = parseJUnit(suite('<testcase name="a"><failure type="AssertionError"></failure></testcase>')).results[0];
+    expect(r).toMatchObject({ status: "failed", message: null });
+  });
+
+  it("whitespace sebelum deklarasi XML diabaikan", () => {
+    const report = parseJUnit('  \n<?xml version="1.0"?><testsuite name="S"><testcase name="a"/></testsuite>');
+    expect(report.results[0]?.name).toBe("a");
+  });
+
+  it("hanya BOM di awal dokumen yang dibuang; U+FEFF di dalam nama tetap", () => {
+    expect(parseJUnit(suite('<testcase name="a﻿b"/>')).results[0]?.name).toBe("a﻿b");
+  });
+
+  it("testsuite tanpa name sebagai root -> suite kosong", () => {
+    expect(parseJUnit('<testsuite><testcase name="a"/></testsuite>').results[0]?.suite).toBe("");
+  });
+
+  it("name pada <testsuites> tidak diwariskan ke testsuite anak yang tak bernama", () => {
+    const report = parseJUnit('<testsuites name="All"><testsuite><testcase name="a"/></testsuite></testsuites>');
+    expect(report.results[0]?.suite).toBe("");
+  });
+});
+
+describe("truncateUtf8 - batas lebar karakter", () => {
+  it("U+0080 dihitung 2 byte", () => expect(truncateUtf8("\u0080\u0080", 3)).toBe("\u0080"));
+  it("U+0800 dihitung 3 byte", () => expect(truncateUtf8("ࠀࠀ", 5)).toBe("ࠀ"));
+  it("U+FFFF dihitung 3 byte", () => expect(truncateUtf8("￿￿￿", 7)).toBe("￿￿"));
+  it("U+10000 dihitung 4 byte", () => expect(truncateUtf8("\u{10000}\u{10000}", 7)).toBe("\u{10000}"));
 });

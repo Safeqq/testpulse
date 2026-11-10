@@ -1,0 +1,54 @@
+name: Mutation testing
+
+# StrykerJS on the domain code (spec Tahap 4 §9): weekly and on demand, not on every push (a full run is slow).
+# ci.yml's report job publishes the artifact of the latest successful run under /mutation/ on GitHub Pages.
+on:
+  schedule:
+    - cron: "0 2 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: mutation-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: Mutation testing (gate 80%)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
+      # Incremental mode: only mutants in changed source files are run again. The api package uses the command runner,
+      # which reports a single pseudo-test, so Stryker cannot see test changes there: the test files' hash is part of
+      # the key and any test change starts from an empty incremental file (a full run) instead of reusing stale results.
+      - name: Restore Stryker incremental files
+        uses: actions/cache@v4
+        with:
+          path: "**/reports/stryker-incremental.json"
+          key: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts') }}-${{ github.sha }}
+          restore-keys: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts') }}-
+
+      - name: Mutation tests (api, shared)
+        run: pnpm test:mutation
+
+      # Also when the gate failed: the report is what explains the failure.
+      - name: Collect reports and write the index page
+        if: ${{ always() }}
+        run: |
+          mkdir -p mutation-report/api mutation-report/shared
+          cp -r apps/api/reports/mutation/. mutation-report/api/ || echo "No api report." >&2
+          cp -r packages/shared/reports/mutation/. mutation-report/shared/ || echo "No shared report." >&2
+          node .github/scripts/mutation-index.mjs mutation-report
+
+      - name: Upload mutation report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: mutation-report
+          retention-days: 90

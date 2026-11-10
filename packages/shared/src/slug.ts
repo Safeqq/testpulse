@@ -3,6 +3,8 @@ import { z } from "zod";
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const RESERVED_SLUGS = ["api", "new", "settings", "invite", "login", "register"] as const;
 
+// Stryker disable next-line Regex: slugify first collapses every run of separators into one "-", so the string has at most one dash at each end and "-+" behaves exactly like "-".
+const EDGE_DASHES = /^-+|-+$/g;
 const SLUG_MIN = 3;
 const SLUG_MAX = 40;
 
@@ -14,7 +16,7 @@ export function slugify(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .slice(0, SLUG_MAX)
-    .replace(/^-+|-+$/g, "");
+    .replace(EDGE_DASHES, "");
 }
 
 export const slugSchema = z

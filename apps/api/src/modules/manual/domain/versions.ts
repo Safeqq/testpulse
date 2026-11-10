@@ -47,7 +47,11 @@ function orderByLatest(entries: ReadonlyArray<{ version: string; latestRunAt: Da
   const latest = new Map<string, number>();
   for (const e of entries) latest.set(e.version, Math.max(latest.get(e.version) ?? -Infinity, e.latestRunAt.getTime()));
   return [...latest]
-    .sort(([va, ta], [vb, tb]) => ta - tb || (va < vb ? -1 : va > vb ? 1 : 0))
+    .sort(([va, ta], [vb, tb]) => {
+      if (ta !== tb) return ta - tb;
+      // Stryker disable next-line EqualityOperator: Map keys are distinct, so va === vb never happens here and "<" behaves exactly like "<=" (the ">=" mutant is killed by the tie test but cannot be disabled separately).
+      return va < vb ? -1 : 1;
+    })
     .map(([version]) => version);
 }
 

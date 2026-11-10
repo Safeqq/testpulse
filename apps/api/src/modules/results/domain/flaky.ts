@@ -19,6 +19,7 @@ export function flakyScore(results: ReadonlyArray<{ status: ResultStatus; flakyI
   let flakyRuns = 0;
   executed.forEach((r, i) => {
     if (r.flakyInRun) flakyRuns += 1;
+    // Stryker disable next-line ArithmeticOperator: comparing each result with the next one instead of the previous one counts the same adjacent pairs, so the number of flips is identical.
     const previous = executed[i - 1];
     if (previous && previous.status !== r.status) flips += 1;
   });

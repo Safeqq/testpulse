@@ -18,6 +18,7 @@ export function parseSemver(version: string): Semver | null {
 
   const plus = rest.indexOf("+");
   const withoutBuild = plus === -1 ? rest : rest.slice(0, plus);
+  // Stryker disable next-line ConditionalExpression,UnaryOperator: without "+" the check would run on the whole version, whose characters (digits, letters, "-", ".") always pass isDotSeparated unless the core check below rejects it anyway; skipping it for "+" at index 1 changes nothing either, since a one-character core is never MAJOR.MINOR.PATCH.
   if (plus !== -1 && !isDotSeparated(rest.slice(plus + 1))) return null;
 
   const dash = withoutBuild.indexOf("-");
@@ -27,6 +28,7 @@ export function parseSemver(version: string): Semver | null {
   const numbers = core.split(".");
   if (numbers.length !== 3 || !numbers.every((n) => NUMERIC.test(n))) return null;
 
+  // Stryker disable next-line ConditionalExpression,UnaryOperator: without "-" the prerelease list is empty and every() on it is true, so the guard only skips work.
   if (dash !== -1) {
     // Identifier numerik tidak boleh berawalan nol (semver 2.0 butir 9).
     const valid = prerelease.every((id) => IDENTIFIER.test(id) && (!ALL_DIGITS.test(id) || NUMERIC.test(id)));
@@ -41,6 +43,7 @@ function isDotSeparated(s: string): boolean {
 }
 
 function compareNumeric(a: string, b: string): number {
+  // Stryker disable next-line EqualityOperator: the lengths differ on this line, so "<" and "<=" are the same test.
   if (a.length !== b.length) return a.length < b.length ? -1 : 1;
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -67,7 +70,9 @@ export function compareSemver(a: Semver, b: Semver): number {
     const c = compareIdentifier(a.prerelease[i]!, b.prerelease[i]!);
     if (c !== 0) return c;
   }
-  return a.prerelease.length === b.prerelease.length ? 0 : a.prerelease.length < b.prerelease.length ? -1 : 1;
+  if (a.prerelease.length === b.prerelease.length) return 0;
+  // Stryker disable next-line EqualityOperator: the lengths differ here, so "<" behaves exactly like "<=" (the ">=" mutant is caught by the prefix tests but cannot be disabled separately).
+  return a.prerelease.length < b.prerelease.length ? -1 : 1;
 }
 
 /** True bila setiap versi cocok semver. Aturan urutan memakai semver hanya bila ini true. */
@@ -85,8 +90,9 @@ export function sameVersion(a: string, b: string, allSemver: boolean): boolean {
   return pa !== null && pb !== null && compareSemver(pa, pb) === 0;
 }
 
+/** Kunci pengelompokan saja: rilis menjadi `1.0.0-`, tidak pernah bentrok dengan pre-release (identifier-nya tidak kosong). */
 function semverKey(s: Semver): string {
-  return `${s.major}.${s.minor}.${s.patch}${s.prerelease.length > 0 ? `-${s.prerelease.join(".")}` : ""}`;
+  return `${s.major}.${s.minor}.${s.patch}-${s.prerelease.join(".")}`;
 }
 
 /**
@@ -105,7 +111,9 @@ export function orderVersions(entries: ReadonlyArray<{ version: string; latestRu
     const newer =
       !existing ||
       e.latestRunAt.getTime() > existing.latestRunAt.getTime() ||
-      (e.latestRunAt.getTime() === existing.latestRunAt.getTime() && e.version > existing.label);
+      (e.latestRunAt.getTime() === existing.latestRunAt.getTime() &&
+        // Stryker disable next-line EqualityOperator: equal strings give the same label either way, so ">" behaves like ">=" (the "<=" mutant is caught by the tie test but cannot be disabled separately).
+        e.version > existing.label);
     if (newer) groups.set(key, { label: e.version, latestRunAt: e.latestRunAt, semver: e.semver });
   }
 
@@ -114,7 +122,8 @@ export function orderVersions(entries: ReadonlyArray<{ version: string; latestRu
     if (allSemver) return compareSemver(a.semver!, b.semver!);
     const byTime = a.latestRunAt.getTime() - b.latestRunAt.getTime();
     if (byTime !== 0) return byTime;
-    return a.label < b.label ? -1 : a.label > b.label ? 1 : 0;
+    // Stryker disable next-line EqualityOperator: without semver the labels are the distinct map keys, so "<" behaves like "<=" (the ">=" mutant is caught by the tie test but cannot be disabled separately).
+    return a.label < b.label ? -1 : 1;
   });
   return merged.map((g) => g.label);
 }

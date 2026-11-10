@@ -3,7 +3,16 @@ import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
   {
-    ignores: ["**/dist/**", "**/drizzle/**", "**/playwright-report/**", "**/node_modules/**", "**/coverage/**"],
+    ignores: [
+      "**/dist/**",
+      "**/drizzle/**",
+      "**/playwright-report/**",
+      "**/node_modules/**",
+      "**/coverage/**",
+      // StrykerJS: reports and sandbox copies of the sources.
+      "**/reports/**",
+      "**/.stryker-tmp/**",
+    ],
   },
   ...tseslint.configs.recommended,
   {

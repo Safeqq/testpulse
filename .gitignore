@@ -16,3 +16,6 @@ zap/
 
 tests/perf/.state/
 perf-results/
+
+reports/
+.stryker-tmp/

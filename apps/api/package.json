@@ -13,6 +13,7 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test:unit": "vitest run --project unit",
+    "test:mutation": "stryker run",
     "test:int": "vitest run --project integration",
     "db:generate": "drizzle-kit generate",
     "test:contract": "vitest run --project contract"
@@ -31,6 +32,8 @@
   "devDependencies": {
     "@faker-js/faker": "^10.6.0",
     "@pact-foundation/pact": "^17.1.4",
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/typescript-checker": "^10.1.1",
     "@testcontainers/postgresql": "^12.2.1",
     "@types/node": "^24.19.2",
     "@types/pg": "^8.23.1",

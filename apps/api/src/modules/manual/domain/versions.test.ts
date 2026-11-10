@@ -109,6 +109,14 @@ describe("mergeManualVersions", () => {
     ]);
   });
 
+  it.each([
+    [["build-b", "build-a"]],
+    [["build-a", "build-b"]],
+  ])("manual-saja non-semver dengan waktu sama diurutkan menurut string, apa pun urutan input (%j)", (versions) => {
+    const { rows } = mergeManualVersions({ automated: ["0.4.0"], manual: versions.map((v) => manual(v, 4)) });
+    expect(labels(rows)).toEqual(["build-a", "build-b", "0.4.0"]);
+  });
+
   it("pencocokan berpasangan: automated berisi non-semver, v0.4.0 tetap cocok dengan 0.4.0", () => {
     const { rows, matchOf } = mergeManualVersions({
       automated: ["0.3.0", "build-5", "0.4.0"],

@@ -18,12 +18,16 @@
     "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "test:mutation": "stryker run"
   },
   "dependencies": {
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "^10.1.1",
+    "@stryker-mutator/typescript-checker": "^10.1.1",
+    "@stryker-mutator/vitest-runner": "^10.1.1",
     "vitest": "^5.0.5"
   }
 }

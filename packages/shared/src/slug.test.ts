@@ -25,4 +25,14 @@ describe("slugSchema", () => {
   it.each(["abc", "a".repeat(40), "qa-2026"])("menerima %j", (s) =>
     expect(slugSchema.safeParse(s).success).toBe(true),
   );
+
+  // Pesan tampil di form pembuatan project: dikunci per aturan agar tidak diam-diam kosong.
+  it.each([
+    ["ab", "Slug minimal 3 karakter"],
+    ["a".repeat(41), "Slug maksimal 40 karakter"],
+    ["a--b", "Slug hanya boleh berisi huruf kecil, angka, dan tanda hubung tunggal (tidak di awal/akhir)"],
+    ["login", "Slug ini tidak boleh dipakai"],
+  ])("pesan error untuk %j", (s, message) =>
+    expect(slugSchema.safeParse(s).error?.issues.map((i) => i.message)).toEqual([message]),
+  );
 });

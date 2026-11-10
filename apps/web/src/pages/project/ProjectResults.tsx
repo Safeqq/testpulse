@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { curlExample } from "@/lib/ingest";
 import { useLoad } from "@/lib/useLoad";
 import { BranchFilter } from "./BranchFilter";
+import { ManualCard } from "./ManualCard";
 
 // Dashboard (grafik + kartu) dipecah ke chunk sendiri agar bundle utama tidak bertambah; baru diunduh bila project punya run.
 const loadDashboard = () => import("./Dashboard").then((m) => ({ default: m.Dashboard }));
@@ -35,12 +36,18 @@ export function ProjectResults({ project }: { project: ProjectDto }) {
   }
 
   if (load.data.length === 0) {
-    return project.myRole === null ? (
-      <EmptyState icon={BarChart3} title="Belum ada hasil test" data-testid="empty-results">
-        <p>Dashboard hasil test akan tampil di sini setelah pipeline CI project ini mengunggah laporan pertamanya.</p>
-      </EmptyState>
-    ) : (
-      <SetupInstructions project={project} />
+    // Kartu Test manual tidak bergantung pada unggahan CI: project yang baru punya case manual tetap menampilkannya.
+    return (
+      <div className="grid min-w-0 grid-cols-1 gap-6">
+        {project.myRole === null ? (
+          <EmptyState icon={BarChart3} title="Belum ada hasil test" data-testid="empty-results">
+            <p>Dashboard hasil test akan tampil di sini setelah pipeline CI project ini mengunggah laporan pertamanya.</p>
+          </EmptyState>
+        ) : (
+          <SetupInstructions project={project} />
+        )}
+        <ManualCard slug={slug} />
+      </div>
     );
   }
 

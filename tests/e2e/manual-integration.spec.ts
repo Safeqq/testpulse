@@ -103,7 +103,14 @@ test.describe("Kolom Manual di halaman Versi", () => {
     await expect(versions.manual("build-7")).not.toContainText("gagal");
     await expect(only).toContainText("build-7");
     await expect(versions.compareLink("build-7")).toHaveCount(0);
-    await expect(only.getByRole("cell", { name: "–" }).first()).toBeVisible();
+    // Kolom td berurutan: Run terakhir, Jumlah run, Pass rate, Perubahan, Manual, Perbandingan.
+    const cells = only.locator("td");
+    await expect(cells).toHaveCount(6);
+    await expect(cells.nth(0)).toHaveText("–");
+    await expect(cells.nth(1)).toHaveText("0");
+    await expect(cells.nth(2)).toContainText("–");
+    await expect(cells.nth(3)).toHaveText("–");
+    await expect(cells.nth(5)).toHaveText("–");
 
     // Pembanding tetap versi automated sebelumnya.
     expect(new URL((await versions.compareLink("0.4.0").getAttribute("href"))!, "http://x").searchParams.get("base")).toBe(runIds["0.3.0"]);
@@ -227,5 +234,63 @@ test.describe("Kartu Test manual di dashboard", () => {
     await expect(phone.getByTestId("manual-card")).toBeVisible();
     await expectNoOverflow(phone);
     await expectNoA11yViolationsInBothThemes(phone);
+  });
+});
+
+test.describe("Kartu Test manual tanpa unggahan CI", () => {
+  /** Project tanpa unggahan CI: satu suite berisi tiga case aktif, dengan atau tanpa satu run manual. */
+  async function seedNoCi(api: TestApi, options: { cases: boolean; run?: boolean }) {
+    const owner = await api.register();
+    const project = await api.createProject(owner);
+    if (options.cases) {
+      const suite = await api.createSuite(owner, project.slug, { name: "Login" });
+      for (const n of [1, 2, 3]) {
+        await api.createCase(owner, project.slug, {
+          suiteId: suite.id,
+          title: `Case ${n}`,
+          steps: [{ action: "Buka halaman", expected: "Halaman tampil" }],
+        });
+      }
+      if (options.run) await manualRun(api, owner, project.slug, suite.id, { name: "Smoke", appVersion: "v1.0.0" }, ["passed", "failed"]);
+    }
+    return { owner, project };
+  }
+
+  test("case dan run manual tanpa unggahan CI: kartu tampil di bawah panduan setup", async ({
+    api,
+    signedInPage,
+    expectNoA11yViolationsInBothThemes,
+  }) => {
+    const { owner, project } = await seedNoCi(api, { cases: true, run: true });
+    const { page } = await signedInPage(owner);
+
+    await page.goto(`/p/${project.slug}`);
+    await expect(page.getByTestId("setup-instructions")).toBeVisible();
+    const card = page.getByTestId("manual-card");
+    await expect(card).toContainText("TR-1");
+    await expect(card.getByTestId("run-progress-legend")).toHaveText("2/3 dieksekusi · 1 lulus · 1 gagal");
+    await expect(card.getByTestId("coverage-meter")).toContainText("0 dari 3 case aktif sudah diotomasi (0%)");
+    await expectNoA11yViolationsInBothThemes(page);
+  });
+
+  test("hanya case: anonim di project publik melihat keadaan kosong dan kartu", async ({ api, newContext }) => {
+    const { owner, project } = await seedNoCi(api, { cases: true });
+    await api.setVisibility(owner, project.slug, "public");
+
+    const anonymous = await (await newContext()).newPage();
+    await anonymous.goto(`/p/${project.slug}`);
+    await expect(anonymous.getByTestId("empty-results")).toBeVisible();
+    await expect(anonymous.getByTestId("manual-card")).toContainText("Belum ada run manual.");
+  });
+
+  test("tanpa CI dan tanpa case: kartu tidak ada", async ({ api, signedInPage }) => {
+    const { owner, project } = await seedNoCi(api, { cases: false });
+    const { page } = await signedInPage(owner);
+
+    const summary = page.waitForResponse((res) => res.url().includes("/manual/summary"));
+    await page.goto(`/p/${project.slug}`);
+    await expect(page.getByTestId("setup-instructions")).toBeVisible();
+    expect((await summary).status()).toBe(200);
+    await expect(page.getByTestId("manual-card")).toHaveCount(0);
   });
 });

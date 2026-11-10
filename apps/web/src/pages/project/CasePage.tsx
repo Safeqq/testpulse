@@ -230,23 +230,23 @@ function CaseView({ project, initial }: { project: ProjectDto; initial: ManualCa
           <dl className="m-0 grid min-w-0 gap-3 text-sm">
             <div className="grid min-w-0 gap-0.5">
               <dt className="text-muted-foreground">Suite</dt>
-              <dd className="m-0 font-medium [overflow-wrap:anywhere]" data-testid="case-suite">
+              <dd className="m-0 min-w-0 font-medium [overflow-wrap:anywhere]" data-testid="case-suite">
                 {item.suite.name}
               </dd>
             </div>
             <div className="grid min-w-0 gap-0.5">
               <dt className="text-muted-foreground">Prioritas</dt>
-              <dd className="m-0 font-medium" data-testid="case-priority">
+              <dd className="m-0 min-w-0 font-medium" data-testid="case-priority">
                 {CASE_PRIORITY_LABEL[item.priority]}
               </dd>
             </div>
             <div className="grid min-w-0 gap-1">
               <dt className="text-muted-foreground">Label</dt>
-              <dd className="m-0" data-testid="case-labels">
+              <dd className="m-0 min-w-0" data-testid="case-labels">
                 {item.labels.length === 0 ? (
                   <span className="text-muted-foreground">Tanpa label</span>
                 ) : (
-                  <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
+                  <ul className="m-0 flex min-w-0 list-none flex-wrap gap-1.5 p-0">
                     {item.labels.map((label) => (
                       <li key={label} className="max-w-full">
                         <Badge variant="secondary" className="max-w-full">

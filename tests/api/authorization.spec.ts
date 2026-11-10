@@ -64,6 +64,24 @@ async function setup(api: TestApi, actor: Actor, visibility: Visibility, bearer 
   const seededBug = () => (bug ??= api.createBug(owner, project.slug, { title: "Bug awal matriks" }).then((b) => b.number));
   let comment: Promise<string> | undefined;
 
+  // Test manual: dibuat admin project. Suite untuk DELETE sengaja terpisah dari suite berisi case agar tetap kosong.
+  let emptySuite: Promise<string> | undefined;
+  let manualCase: Promise<number> | undefined;
+  let manualRun: Promise<{ number: number; runCaseId: string }> | undefined;
+  const seededCase = () =>
+    (manualCase ??= (async () => {
+      const suite = await api.createSuite(owner, project.slug, { name: "Suite berisi case" });
+      return (await api.createCase(owner, project.slug, { suiteId: suite.id, title: "Case awal matriks", steps: [{ action: "Buka halaman", expected: "Tampil" }] })).number;
+    })());
+  const seededManualRun = () =>
+    (manualRun ??= (async () => {
+      const caseNumber = await seededCase();
+      const created = await api.createManualRun(owner, project.slug, { name: "Run awal matriks", caseNumbers: [caseNumber] });
+      const [first] = await api.listRunCases(owner, project.slug, created.number);
+      if (!first) throw new Error("run manual awal tidak memuat run case");
+      return { number: created.number, runCaseId: first.id };
+    })());
+
   return {
     http,
     slug: project.slug,
@@ -80,6 +98,10 @@ async function setup(api: TestApi, actor: Actor, visibility: Visibility, bearer 
         const author = await api.addMember(owner, project.slug, "tester");
         return (await api.addComment(author, project.slug, number, { body: "Komentar orang lain" })).id;
       })()),
+    suiteId: () => (emptySuite ??= api.createSuite(owner, project.slug, { name: "Suite kosong matriks" }).then((s) => s.id)),
+    caseNumber: seededCase,
+    manualRunNumber: async () => (await seededManualRun()).number,
+    runCaseId: async () => (await seededManualRun()).runCaseId,
   };
 }
 
@@ -164,6 +186,10 @@ test.describe("Urutan pengecekan (spec §7)", () => {
         tokenId: async () => randomUUID(),
         bugNumber: async () => 1,
         commentId: async () => randomUUID(),
+        suiteId: async () => randomUUID(),
+        caseNumber: async () => 1,
+        manualRunNumber: async () => 1,
+        runCaseId: async () => randomUUID(),
       };
       await expectApiError(await row.request(ctx), 401, "UNAUTHENTICATED");
     }

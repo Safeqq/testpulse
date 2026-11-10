@@ -30,6 +30,14 @@ export interface MatrixContext {
   bugNumber(): Promise<number>;
   /** Komentar pada bug tersebut yang ditulis tester lain (bukan aktor), dibuat saat pertama diminta. */
   commentId(): Promise<string>;
+  /** Suite kosong (tanpa case) di project yang sama, dibuat saat pertama diminta; aman untuk DELETE suite. */
+  suiteId(): Promise<string>;
+  /** Nomor case aktif (TC-n) di project yang sama, dibuat saat pertama diminta. */
+  caseNumber(): Promise<number>;
+  /** Nomor run manual (TR-n) berisi case di atas, dibuat saat pertama diminta. */
+  manualRunNumber(): Promise<number>;
+  /** Id run case pertama dari run manual tersebut, dibuat saat pertama diminta. */
+  runCaseId(): Promise<string>;
 }
 
 export interface MatrixRow {
@@ -178,6 +186,9 @@ export const MATRIX: MatrixRow[] = [
   // Tahap 3, §6.3: bug, label, aktivitas, versi, dan perbandingan.
   ...bugReadRows(),
   ...bugWriteRows(),
+  // Tahap 4, §7.1: test manual (suite, case, run manual, run case).
+  ...manualReadRows(),
+  ...manualWriteRows(),
   // Tahap 2, §7.1 baris 4: cookie sesi tanpa token tidak berlaku di endpoint upload, apa pun role-nya.
   {
     name: "POST runs dengan cookie sesi (tanpa token)",
@@ -297,6 +308,124 @@ function bugWriteRows(): MatrixRow[] {
       specRow: "DELETE komentar orang lain",
       request: async (ctx) =>
         ctx.http.delete(`${P}/${ctx.slug}/bugs/${await ctx.bugNumber()}/comments/${await ctx.commentId()}`),
+      expected: adminOnly(204),
+    },
+  ];
+}
+
+/** Tahap 4 §7.1 baris 1: semua `GET` baru mengikuti aturan baca project (token CI = anonim). */
+function manualReadRows(): MatrixRow[] {
+  const read: Record<Actor, number> = {
+    anonymous: 404,
+    nonMemberPrivate: 404,
+    nonMemberPublic: 200,
+    viewer: 200,
+    tester: 200,
+    admin: 200,
+  };
+  const endpoints: Array<{ name: string; path: (ctx: MatrixContext) => Promise<string> | string }> = [
+    { name: "GET suites", path: ({ slug }) => `${P}/${slug}/suites` },
+    { name: "GET cases", path: ({ slug }) => `${P}/${slug}/cases` },
+    { name: "GET cases/labels", path: ({ slug }) => `${P}/${slug}/cases/labels` },
+    { name: "GET case", path: async (ctx) => `${P}/${ctx.slug}/cases/${await ctx.caseNumber()}` },
+    { name: "GET tests?q=", path: ({ slug }) => `${P}/${slug}/tests?q=ab` },
+    { name: "GET manual-runs", path: ({ slug }) => `${P}/${slug}/manual-runs` },
+    { name: "GET manual-run", path: async (ctx) => `${P}/${ctx.slug}/manual-runs/${await ctx.manualRunNumber()}` },
+    { name: "GET manual-run cases", path: async (ctx) => `${P}/${ctx.slug}/manual-runs/${await ctx.manualRunNumber()}/cases` },
+    {
+      name: "GET manual-run case",
+      path: async (ctx) => `${P}/${ctx.slug}/manual-runs/${await ctx.manualRunNumber()}/cases/${await ctx.runCaseId()}`,
+    },
+    { name: "GET manual/summary", path: ({ slug }) => `${P}/${slug}/manual/summary` },
+  ];
+  return endpoints.map(({ name, path }) => ({
+    name,
+    specRow: "Semua GET baru",
+    request: async (ctx) => ctx.http.get(await path(ctx)),
+    expected: read,
+    anonymousOnPublic: 200,
+  }));
+}
+
+/** Tahap 4 §7.1 baris 2–3: tulis suite/case/run/run case = tester+ (2xx), hapus suite/case/run = admin (204). */
+function manualWriteRows(): MatrixRow[] {
+  const testerPlus = (status: number): Record<Actor, number> => ({
+    anonymous: 401,
+    nonMemberPrivate: 404,
+    nonMemberPublic: 403,
+    viewer: 403,
+    tester: status,
+    admin: status,
+  });
+  const runPath = async (ctx: MatrixContext) => `${P}/${ctx.slug}/manual-runs/${await ctx.manualRunNumber()}`;
+  return [
+    {
+      name: "POST suite",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: ({ http, slug }) => http.post(`${P}/${slug}/suites`, { data: { name: "Suite baru matriks" } }),
+      expected: testerPlus(201),
+    },
+    {
+      name: "PATCH suite",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: async (ctx) =>
+        ctx.http.patch(`${P}/${ctx.slug}/suites/${await ctx.suiteId()}`, { data: { description: "Diubah matriks" } }),
+      expected: testerPlus(200),
+    },
+    {
+      name: "POST case",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: async (ctx) =>
+        ctx.http.post(`${P}/${ctx.slug}/cases`, {
+          data: { suiteId: await ctx.suiteId(), title: "Case baru matriks", steps: [{ action: "Buka halaman", expected: "" }] },
+        }),
+      expected: testerPlus(201),
+    },
+    {
+      name: "PATCH case",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: async (ctx) =>
+        ctx.http.patch(`${P}/${ctx.slug}/cases/${await ctx.caseNumber()}`, { data: { version: 1, priority: "high" } }),
+      expected: testerPlus(200),
+    },
+    {
+      name: "POST manual-run",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: async (ctx) =>
+        ctx.http.post(`${P}/${ctx.slug}/manual-runs`, {
+          data: { name: "Run baru matriks", caseNumbers: [await ctx.caseNumber()] },
+        }),
+      expected: testerPlus(201),
+    },
+    {
+      name: "PATCH manual-run",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: async (ctx) => ctx.http.patch(await runPath(ctx), { data: { version: 1, name: "Run diubah matriks" } }),
+      expected: testerPlus(200),
+    },
+    {
+      name: "PATCH manual-run case",
+      specRow: "POST/PATCH suite, case, run, run case",
+      request: async (ctx) =>
+        ctx.http.patch(`${await runPath(ctx)}/cases/${await ctx.runCaseId()}`, { data: { version: 1, status: "passed" } }),
+      expected: testerPlus(200),
+    },
+    {
+      name: "DELETE suite",
+      specRow: "DELETE suite, case, run",
+      request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/suites/${await ctx.suiteId()}`),
+      expected: adminOnly(204),
+    },
+    {
+      name: "DELETE case",
+      specRow: "DELETE suite, case, run",
+      request: async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/cases/${await ctx.caseNumber()}`),
+      expected: adminOnly(204),
+    },
+    {
+      name: "DELETE manual-run",
+      specRow: "DELETE suite, case, run",
+      request: async (ctx) => ctx.http.delete(await runPath(ctx)),
       expected: adminOnly(204),
     },
   ];

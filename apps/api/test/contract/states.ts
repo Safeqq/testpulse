@@ -8,7 +8,10 @@ import {
   bugLabels,
   bugLinks,
   bugs,
+  caseSuites,
   invitations,
+  manualCaseLabels,
+  manualCases,
   manualRunCases,
   manualRuns,
   memberships,
@@ -45,6 +48,11 @@ const COMMENT_ID = "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa";
 const BASE_RUN_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const TARGET_RUN_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const REGRESSION_TEST_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+// Test manual (Tahap 4); id harus UUID v4 sah. Sama dengan consumer (apps/web/test/contract/pact.ts).
+const SUITE_ID = "12121212-1212-4212-8212-121212121212";
+const EMPTY_SUITE_ID = "13131313-1313-4313-8313-131313131313";
+const RUN_CASE_ID = "14141414-1414-4414-8414-141414141414";
+const RUN_CASE_2_ID = "15151515-1515-4515-8515-151515151515";
 const MAX_ACTIVE_TOKENS = 10;
 /** Jumlah regresi pada state halaman kelompok: lebih dari halaman pertama (200), sisanya 50 di halaman berikutnya. */
 const MANY_REGRESSIONS = 250;
@@ -287,6 +295,51 @@ export function createContractStates(db: Db): ContractStates {
     ]);
   }
 
+  /**
+   * Data test manual tetap (Tahap 4): suite "Checkout" berisi TC-1 (prioritas high, label `ui`, tertaut ke test otomatis
+   * "goyang") dan TC-2, serta run manual TR-1 "Regresi 1.0.1" (`v1.0.1`) yang memilih keduanya, dengan dua run case
+   * `untested`. Dengan `completed`, TR-1 berstatus selesai. Harus sama dengan nilai di apps/web/test/contract/manual.pact.test.ts.
+   */
+  async function ensureManualData(project: { id: string }, options: { completed?: boolean } = {}) {
+    const [existing] = await db.select({ id: caseSuites.id }).from(caseSuites).where(eq(caseSuites.id, SUITE_ID));
+    if (existing) return;
+    await ensureUser(OWNER);
+    await ensureRun(project);
+    await db.insert(caseSuites).values({ id: SUITE_ID, projectId: project.id, name: "Checkout", description: "Alur bayar", position: 0 });
+    const steps = [
+      { action: "Buka halaman bayar", expected: "Form bayar tampil" },
+      { action: "Klik Bayar", expected: "Pembayaran berhasil" },
+    ];
+    const common = { projectId: project.id, suiteId: SUITE_ID, createdBy: OWNER.id, updatedBy: OWNER.id };
+    const [tc1, tc2] = await db
+      .insert(manualCases)
+      .values([
+        { ...common, number: 1, title: "Bayar dengan kartu", preconditions: "Keranjang berisi satu barang", steps, priority: "high", automatedTestId: TEST_CASE_ID },
+        { ...common, number: 2, title: "Bayar dengan transfer", steps: steps.slice(0, 1) },
+      ])
+      .returning({ id: manualCases.id });
+    if (!tc1 || !tc2) throw new Error("gagal membuat case manual");
+    await db.insert(manualCaseLabels).values({ caseId: tc1.id, label: "ui" });
+    const [run] = await db
+      .insert(manualRuns)
+      .values({
+        projectId: project.id,
+        number: 1,
+        name: "Regresi 1.0.1",
+        appVersion: "v1.0.1",
+        createdBy: OWNER.id,
+        ...(options.completed ? { status: "completed" as const, completedBy: OWNER.id, completedAt: new Date("2026-01-03T00:00:00.000Z") } : {}),
+      })
+      .returning({ id: manualRuns.id });
+    if (!run) throw new Error("gagal membuat run manual");
+    await db.update(projects).set({ caseSeq: 2, manualRunSeq: 1 }).where(eq(projects.id, project.id));
+    const snapshot = { runId: run.id, suiteName: "Checkout", suitePosition: 0, priority: "medium" as const };
+    await db.insert(manualRunCases).values([
+      { ...snapshot, id: RUN_CASE_ID, caseId: tc1.id, position: 0, caseNumber: 1, title: "Bayar dengan kartu", preconditions: "Keranjang berisi satu barang", priority: "high", steps, stepResults: steps.map(() => ({ status: null, note: "" })) },
+      { ...snapshot, id: RUN_CASE_2_ID, caseId: tc2.id, position: 1, caseNumber: 2, title: "Bayar dengan transfer", steps: steps.slice(0, 1), stepResults: [{ status: null, note: "" }] },
+    ]);
+  }
+
   async function insertTokens(project: { id: string; createdBy: string }, count: number, firstId?: string) {
     await db.insert(projectTokens).values(
       Array.from({ length: count }, (_, i) => ({
@@ -413,6 +466,35 @@ export function createContractStates(db: Db): ContractStates {
     "pact-project punya run manual TR-1 v1.0.1 dan TR-2 0.9.0": async () => {
       const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
       await ensureManualVersionRuns(project);
+    },
+
+    "pact-project punya suite Checkout, case TC-1 dan TC-2, dan run manual TR-1 terbuka dengan dua run case": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureManualData(project);
+    },
+
+    "pact-project punya suite Checkout, case TC-1 dan TC-2, dan run manual TR-1 yang sudah selesai": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureManualData(project, { completed: true });
+    },
+
+    "pact-project punya suite kosong Kosong": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await db
+        .insert(caseSuites)
+        .values({ id: EMPTY_SUITE_ID, projectId: project.id, name: "Kosong", position: 0 })
+        .onConflictDoNothing();
+    },
+
+    "pact-project punya bug #1 dari run case TR-1 untuk TC-1": async () => {
+      const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+      await ensureManualData(project);
+      await ensureBug(project, 1, {
+        title: "Tombol bayar tidak merespons",
+        manualRunCaseId: RUN_CASE_ID,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        updatedAt: new Date("2026-01-01T02:00:00.000Z"),
+      });
     },
 
     "sari anggota tester di pact-project": async () => {

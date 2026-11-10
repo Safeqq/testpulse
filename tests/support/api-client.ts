@@ -17,6 +17,8 @@ import type {
   RegisterBody,
   Role,
   RunCaseDto,
+  RunCaseListItemDto,
+  RunCasesPageDto,
   SuiteBody,
   SuiteDto,
   UpdateBugBody,
@@ -184,6 +186,16 @@ export class TestApi {
       200,
       "updateRunCase",
     );
+  }
+
+  /** Run case halaman pertama (urut posisi) sebuah run manual; cukup untuk run kecil. */
+  async listRunCases(user: TestUser, slug: string, runNumber: number): Promise<RunCaseListItemDto[]> {
+    const page = await expectStatus<RunCasesPageDto>(
+      await user.request.get(`${API}/projects/${slug}/manual-runs/${runNumber}/cases`),
+      200,
+      "listRunCases",
+    );
+    return page.items;
   }
 
   /** Daftarkan user baru, undang, terima; role `admin` dicapai dengan mengubah role setelah bergabung. */

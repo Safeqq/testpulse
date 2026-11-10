@@ -32,6 +32,12 @@ export const REGRESSION_TEST_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 export const BUG_NUMBER = 1;
 export const CLOSED_BUG_NUMBER = 2;
 export const MISSING_BUG_NUMBER = 99;
+// Test manual (Tahap 4): id dan nomor tetap yang dibuat provider state; UUID v4 sah.
+export const SUITE_ID = "12121212-1212-4212-8212-121212121212";
+export const EMPTY_SUITE_ID = "13131313-1313-4313-8313-131313131313";
+export const RUN_CASE_ID = "14141414-1414-4414-8414-141414141414";
+export const RUN_CASE_2_ID = "15151515-1515-4515-8515-151515151515";
+export const MISSING_UUID = "16161616-1616-4616-8616-161616161616";
 export const BRANCH = "main";
 export const INVITE_TOKEN = "pact-invite-token";
 export const EXPIRED_INVITE_TOKEN = "pact-expired-token";
@@ -58,6 +64,13 @@ export const STATE = {
   manyRegressions: "pact-project punya 250 regresi antara run v1.0.0 dan v1.0.1 di branch main",
   /** Tahap 4: TR-1 `v1.0.1` (2 run case: 1 lulus, 1 belum dites) dan TR-2 `0.9.0` (manual-saja, tanpa run case). */
   manualVersionsSeeded: "pact-project punya run manual TR-1 v1.0.1 dan TR-2 0.9.0",
+  /** Tahap 4: suite Checkout (SUITE_ID) dengan TC-1 (tertaut ke test goyang) dan TC-2; TR-1 terbuka dengan dua run case (RUN_CASE_ID, RUN_CASE_2_ID). */
+  manualSeeded: "pact-project punya suite Checkout, case TC-1 dan TC-2, dan run manual TR-1 terbuka dengan dua run case",
+  /** Sama dengan `manualSeeded`, tetapi TR-1 sudah selesai. */
+  manualRunCompleted: "pact-project punya suite Checkout, case TC-1 dan TC-2, dan run manual TR-1 yang sudah selesai",
+  emptySuite: "pact-project punya suite kosong Kosong",
+  /** Bug #1 berasal dari run case RUN_CASE_ID (TR-1, TC-1). */
+  manualBugSeeded: "pact-project punya bug #1 dari run case TR-1 untuk TC-1",
 } as const;
 
 const { like, uuid, regex, iso8601DateTimeWithMillis } = MatchersV3;

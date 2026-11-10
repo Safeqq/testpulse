@@ -11,6 +11,7 @@ import {
   MISSING_COMMENT_ID,
   OWNER_ID,
   PROJECT_SLUG,
+  RUN_CASE_ID,
   RUN_ID,
   STATE,
   TEST_CASE_ID,
@@ -63,6 +64,8 @@ const bugDetail = {
   version: integer(1),
   resolvedAt: null,
   closedAt: null,
+  // Bug ini tidak berasal dari run case manual (Tahap 4 §5.4).
+  manualOrigin: null,
   testHint: {
     branch: text("main"),
     results: eachLike({
@@ -73,6 +76,15 @@ const bugDetail = {
     consecutivePasses: integer(1),
     lastStatus: oneOf(["passed", "failed", "skipped"], "passed"),
   },
+};
+
+/** Asal bug dari state `manualSeeded`/`manualBugSeeded`: TC-1 pada TR-1. */
+const manualOrigin = {
+  runNumber: integer(1),
+  runName: text("Regresi 1.0.1"),
+  caseNumber: integer(1),
+  caseTitle: text("Bayar dengan kartu"),
+  runCaseId: uuidLike(RUN_CASE_ID),
 };
 
 const commentBody = (author: typeof budi, body: string) => ({
@@ -170,6 +182,73 @@ describe("kontrak bug tracker: bug", () => {
           labels: ["ui"],
         });
         expect(bug).toMatchObject({ number: 1, status: "open", version: 1, testCase: null, testHint: null });
+      });
+  });
+
+  it("POST /projects/:slug/bugs dari run case manual mengisi manualOrigin (201)", async () => {
+    await pact
+      .addInteraction()
+      .given(STATE.budiAdmin)
+      .given(STATE.manualSeeded)
+      .uponReceiving("membuat bug dari run case manual")
+      .withRequest("POST", `${BASE}/bugs`, (b) =>
+        b.headers(JSON_COOKIE_HEADERS).jsonBody({ title: "Tombol bayar tidak merespons", manualRunCaseId: RUN_CASE_ID }),
+      )
+      .willRespondWith(201, (b) =>
+        b.jsonBody({
+          ...bugDetail,
+          title: text("Tombol bayar tidak merespons"),
+          priority: priority("medium"),
+          reporter: budi,
+          description: text(""),
+          labels: [],
+          links: [],
+          testCase: null,
+          runId: null,
+          testHint: null,
+          manualOrigin,
+        }),
+      )
+      .executeTest(async (server) => {
+        const bug = await clientFor(server, true).bugs.create(PROJECT_SLUG, {
+          title: "Tombol bayar tidak merespons",
+          manualRunCaseId: RUN_CASE_ID,
+        });
+        expect(bug).toMatchObject({ number: 1, testCase: null, testHint: null });
+        expect(bug.manualOrigin).toEqual({
+          runNumber: 1,
+          runName: "Regresi 1.0.1",
+          caseNumber: 1,
+          caseTitle: "Bayar dengan kartu",
+          runCaseId: RUN_CASE_ID,
+        });
+      });
+  });
+
+  it("GET /projects/:slug/bugs/:number memuat manualOrigin dengan runCaseId untuk bug dari run case (200)", async () => {
+    await pact
+      .addInteraction()
+      .given(STATE.budiAdmin)
+      .given(STATE.manualBugSeeded)
+      .uponReceiving("detail bug asal run case manual")
+      .withRequest("GET", `${BASE}/bugs/${BUG_NUMBER}`, (b) => b.headers(COOKIE_HEADERS))
+      .willRespondWith(200, (b) =>
+        b.jsonBody({
+          ...bugDetail,
+          title: text("Tombol bayar tidak merespons"),
+          description: text(""),
+          labels: [],
+          links: [],
+          testCase: null,
+          runId: null,
+          testHint: null,
+          manualOrigin,
+        }),
+      )
+      .executeTest(async (server) => {
+        const bug = await clientFor(server, true).bugs.get(PROJECT_SLUG, BUG_NUMBER);
+        expect(bug.manualOrigin?.runCaseId).toBe(RUN_CASE_ID);
+        expect(bug.manualOrigin).toMatchObject({ runNumber: 1, caseNumber: 1 });
       });
   });
 

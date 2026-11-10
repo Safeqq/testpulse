@@ -42,6 +42,8 @@ interface PageCase {
   /** `tester`: context masuk sebagai tester project, sehingga kontrol tulis tampil. */
   viewer: "anonymous" | "tester";
   path: (seed: VisualSeed) => string;
+  /** Slug project tempat halaman ini hidup (project utama bila tidak diisi). */
+  slug?: (seed: VisualSeed) => string;
   /** Elemen yang menandai halaman sudah menampilkan data sungguhan (bukan kerangka atau status memuat). */
   ready: (page: Page) => Locator;
   /** Halaman berisi slug acak dari seed yang perlu di-mask; landing statis tidak. */
@@ -111,11 +113,38 @@ const PAGES: PageCase[] = [
     hasSlug: true,
     elements: bugDetailElements,
   },
+  {
+    name: "manual-cases",
+    viewer: "anonymous",
+    path: (s) => `/p/${s.manual.slug}/cases`,
+    slug: (s) => s.manual.slug,
+    ready: (page) => page.getByTestId("case-row-4"),
+    hasSlug: true,
+    elements: [{ name: "row-4", locator: (page) => page.getByTestId("case-row-4") }],
+  },
+  {
+    name: "manual-run",
+    viewer: "tester",
+    path: (s) => `/p/${s.manual.slug}/manual-runs/${s.manual.runNumber}`,
+    slug: (s) => s.manual.slug,
+    ready: (page) => page.getByTestId("run-case-list"),
+    hasSlug: true,
+    elements: [{ name: "header", locator: (page) => page.getByTestId("run-header") }],
+  },
+  {
+    name: "manual-execute",
+    viewer: "tester",
+    path: (s) => `/p/${s.manual.slug}/manual-runs/${s.manual.runNumber}/cases/${s.manual.partialRunCaseId}`,
+    slug: (s) => s.manual.slug,
+    ready: (page) => page.getByTestId("exec-use-suggestion"),
+    hasSlug: true,
+    elements: [{ name: "suggestion", locator: (page) => page.getByTestId("exec-suggestion") }],
+  },
 ];
 
 /** Satu-satunya yang tetap di-mask: slug project acak per seed, tampil sebagai "/p/<slug>" di bawah judul project. */
-function slugMask(page: Page, seed: VisualSeed): Locator[] {
-  return [page.getByText(`/p/${seed.slug}`, { exact: true })];
+function slugMask(page: Page, slug: string): Locator[] {
+  return [page.getByText(`/p/${slug}`, { exact: true })];
 }
 
 for (const pageCase of PAGES) {
@@ -146,7 +175,7 @@ for (const pageCase of PAGES) {
         const suffix = `${theme}-${viewportName}.png`;
         await expect.soft(page).toHaveScreenshot(`${pageCase.name}-${suffix}`, {
           fullPage: true,
-          mask: pageCase.hasSlug ? slugMask(page, seed) : [],
+          mask: pageCase.hasSlug ? slugMask(page, pageCase.slug?.(seed) ?? seed.slug) : [],
           animations: "disabled",
           ...FULL_PAGE,
         });

@@ -251,7 +251,7 @@ Mulai Tahap 4, TestPulse juga mengelola test case manual, dan project `testpulse
 
 Skrip memakai akun **tester atau admin** di project `testpulse` (akun pribadi pemilik project dari Langkah 9, bukan akun smoke) dengan email dan password yang Anda isi di environment shell lokal. Jangan menaruhnya di berkas repo, issue, atau chat; skrip tidak mencetak password maupun cookie sesi.
 
-1. Pastikan deploy `0.4.0` sudah selesai (API sudah memuat migrasi 0005; `/p/testpulse` menampilkan tab **Test manual**).
+1. Pastikan deploy `0.4.0` sudah selesai (API sudah memuat migrasi 0005 dan 0006; `/p/testpulse` menampilkan tab **Test manual**), dan pastikan halaman **Versi** `/p/testpulse` sudah menampilkan baris CI `0.4.0` (run CI dari dogfooding Langkah 12). Tanpa run itu, `GET /tests?q=` belum menemukan automated test-nya dan case dibuat tanpa tautan.
 2. Isi environment, lalu jalankan skrip:
 
    ```bash
@@ -262,13 +262,15 @@ Skrip memakai akun **tester atau admin** di project `testpulse` (akun pribadi pe
    ```
 
    Di PowerShell: `$env:TP_EMAIL = "anda@contoh.com"; $env:TP_PASSWORD = Read-Host "Password"; node scripts/seed-dogfood-manual.mjs`. Request pertama setelah Render idle bisa sekitar satu menit.
-3. **Cek:** keluaran mencantumkan tiap suite dan case baru ("5 suite dan 12 case baru"). Jalankan ulang: harus mencetak "0 suite dan 0 case baru" (idempoten; judul yang sudah ada dilewati, juga yang diarsipkan). Buka `/p/testpulse/cases` di jendela incognito: suite dan case tampil, meter cakupan menunjukkan case yang sudah tertaut.
+   Skrip mencetak `Tujuan: <origin>` sebelum login; hentikan (Ctrl+C) bila itu bukan alamat yang Anda maksud. `TP_BASE_URL` harus `https` (http hanya untuk host lokal), dan skrip tidak mengikuti redirect.
+3. **Cek:** keluaran mencantumkan tiap suite dan case baru ("5 suite dan 12 case baru"). Jalankan ulang: harus mencetak "0 suite dan 0 case baru" dan "0 case lama baru ditautkan" (idempoten; judul yang sudah ada dilewati, juga yang diarsipkan). Buka `/p/testpulse/cases` di jendela incognito: suite dan case tampil, meter cakupan menunjukkan case yang sudah tertaut.
 4. Di UI, **Buat run** bernama "Regresi 0.4.0" dengan versi `0.4.0` dari semua suite, lalu eksekusi tiap case sungguhan (hasil per langkah, **Simpan & lanjut**) sampai selesai. Halaman **Versi** lalu menampilkan baris `0.4.0` dengan hasil CI dan kolom Manual berdampingan.
 
 Catatan:
 
 - Kode keluar `2` berarti `TP_EMAIL` atau `TP_PASSWORD` kosong; `1` berarti login atau permintaan gagal (pesan menyebut status dan kode galat API, mis. `403 FORBIDDEN` bila `TP_BASE_URL` tidak sama dengan `APP_ORIGIN`, atau `403` bila akun hanya viewer).
 - Endpoint login dibatasi 10 percobaan per menit per IP; satu kali jalan memakai satu login.
+- **Pemulihan bila skrip terlanjur dijalankan sebelum baris CI `0.4.0` ada:** case dibuat tanpa tautan (keluaran "belum ada automated test yang cocok"). Setelah run CI `0.4.0` tampil di halaman Versi, jalankan skrip sekali lagi: case aktif yang belum tertaut dan kini punya padanan ditautkan lewat `PATCH` ("sudah ada; kini tertaut ke automated test"), tanpa membuat case ganda. Case yang sudah tertaut atau diarsipkan tidak diubah, dan jalan berikutnya tidak mengubah apa pun.
 - Skrip membuat data sungguhan di production. Jangan dijalankan terhadap project yang bukan milik Anda, dan jangan dijalankan dari CI.
 
 ---

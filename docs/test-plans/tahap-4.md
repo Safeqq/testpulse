@@ -21,7 +21,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 
 ## 2. Kriteria masuk
 
-- Kode ter-merge ke branch kerja dan `pnpm install` berhasil; migrasi 0005 (tabel `case_suites`, `manual_cases`, `manual_case_labels`, `manual_runs`, `manual_run_cases`; kolom `projects.case_seq`, `projects.manual_run_seq`, dan `bugs.manual_run_case_id`) berjalan tanpa error di atas data Tahap 3.
+- Kode ter-merge ke branch kerja dan `pnpm install` berhasil; migrasi 0005 (tabel `case_suites`, `manual_cases`, `manual_case_labels`, `manual_runs`, `manual_run_cases`; kolom `projects.case_seq`, `projects.manual_run_seq`, dan `bugs.manual_run_case_id`) berjalan tanpa error di atas data Tahap 3; migrasi 0006 (indeks penuh `bugs_manual_run_case_idx`) berjalan di atas data 0005.
 - Docker tersedia (Testcontainers, Docker Compose, container Playwright untuk visual regression, dan image k6).
 - `packages/shared` ter-build (schema manual dan kode error baru: `SUITE_NOT_FOUND`, `SUITE_NOT_EMPTY`, `CASE_NOT_FOUND`, `CASE_CONFLICT`, `MANUAL_RUN_NOT_FOUND`, `RUN_CASE_NOT_FOUND`, `MANUAL_RUN_CONFLICT`, `RUN_COMPLETED`; aksi izin `manual:write` dan `manual:delete`).
 - Untuk smoke dan dogfooding di production: Tahap 3 sudah live dan `TESTPULSE_TOKEN` terpasang ([deploy.md](../deploy.md), Langkah 12).
@@ -31,7 +31,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 - Lint, typecheck, dan `pnpm audit --audit-level high` bersih.
 - Semua test unit, integration, contract (web dan reporter sebagai consumer), API, dan E2E (3 browser) lulus di CI; test yang lulus hanya setelah retry dicatat sebagai flaky dan diselidiki.
 - Coverage `src/modules/**/domain` >= 80% (domain manual termasuk di dalamnya).
-- **Mutation score >= 80%** di `apps/api` dan `packages/shared` (`pnpm test:mutation`); hasil akhir 100% di keduanya, dengan 29 mutan setara yang dikecualikan dan beralasan (TEST_STRATEGY).
+- **Mutation score >= 80%** di `apps/api` dan `packages/shared` (`pnpm test:mutation`); hasil akhir 100% di keduanya, dengan 29 mutan yang dikecualikan lewat komentar beralasan: 23 setara dengan kode asli dan 6 saudara yang terbunuh pada ekspresi yang sama (TEST_STRATEGY).
 - Visual regression hijau (100 screenshot, toleransi ketat) dan gate k6 hijau: p95 baca < 300 ms (kini termasuk `cases`, `manual-runs/:number`, `manual-runs/:number/cases`, dan `versions` dengan data manual), `http_req_failed` < 1%.
 - ZAP baseline: 0 temuan High; gate CSP hijau di seluruh E2E, termasuk halaman manual dan Markdown berbahaya.
 - Setelah deploy: `/p/testpulse` di production berisi test case manual TestPulse sendiri (skrip seed) dan run "Regresi 0.4.0" yang dieksekusi pemilik repo lewat UI; baris versi `0.4.0` menampilkan kolom Manual.
@@ -80,7 +80,7 @@ Singkatan lapisan: **U** unit, **I** integration, **A** API (Playwright request)
 | RUN-07 | Selesai dan buka ulang | Selesai: PATCH run case dan ganti nama 409 `RUN_COMPLETED`, hanya `status: open` diterima; buka ulang menulis lagi; menyelesaikan run sementara PATCH run case berjalan tidak meninggalkan hasil bertanggal setelah `completed` | I, A, C, E | manual-runs.int.test.ts, manual.spec.ts, manual.pact.test.ts, manual-runs.spec.ts |
 | RUN-08 | Hapus run (admin) | 204; run case ikut terhapus; tautan bug menjadi null dan bug tetap ada; tester 403 | I, C, E | manual-runs.int.test.ts, manual-integration.int.test.ts, manual-runs.spec.ts |
 | RUN-09 | Anggota dikeluarkan | `assigneeId` run case project itu menjadi `null` (hanya di project itu) | I | manual-runs.int.test.ts |
-| RUN-10 | Skema database | Tabel, indeks, `CHECK` enum, nomor unik per project, `ON DELETE` (run case dan bug `SET NULL`, anak run `CASCADE`, suite `RESTRICT`); data Tahap 3 utuh; counter baru 0 | I | [migration-0005.int.test.ts](../../apps/api/test/integration/migration-0005.int.test.ts) |
+| RUN-10 | Skema database | Tabel, indeks, `CHECK` enum, nomor unik per project, `ON DELETE` (run case dan bug `SET NULL`, anak run `CASCADE`, suite `RESTRICT`); data Tahap 3 utuh; counter baru 0. Migrasi 0006: indeks penuh `bugs.manual_run_case_id` dipakai pencarian FK `SET NULL` (EXPLAIN, termasuk bug `closed`). Hapus project berisi suite, case (termasuk arsip), run, run case, dan bug dari run case → `204`, semua baris terhapus | I | [migration-0005.int.test.ts](../../apps/api/test/integration/migration-0005.int.test.ts), [migration-0006.int.test.ts](../../apps/api/test/integration/migration-0006.int.test.ts), [manual-integration.int.test.ts](../../apps/api/test/integration/manual-integration.int.test.ts) |
 
 ### 4.4 Eksekusi
 
@@ -146,7 +146,7 @@ Semua halaman di bawah lolos `expectNoA11yViolationsInBothThemes` (0 pelanggaran
 |---|---|---|---|---|
 | MUT-01 | Gate skor | `pnpm test:mutation` (shared lalu api, satu per satu, `--no-bail`): skor >= 80 atau keluar bukan nol; dibuktikan bisa gagal dengan `thresholds.break` sementara di atas skor terukur (exit 1), lalu dikembalikan | M | `stryker.config.mjs` ([api](../../apps/api/stryker.config.mjs), [shared](../../packages/shared/stryker.config.mjs)) |
 | MUT-02 | Skor akhir dan skor awal | `packages/shared` 90,63% menjadi 100%; `apps/api` 80,31% menjadi 100% (runner Vitest sebelum beralih ke runner `command`) | M | Task 14 (TEST_STRATEGY) |
-| MUT-03 | Mutan selamat ditindaklanjuti | Test diperkuat untuk yang menunjukkan celah (pesan galat, batas "lebih lambat", `.at(-1)`, urutan seleksi, `scrypt` dummy, pesan parser JUnit, urutan pre-release semver); hanya mutan setara yang diberi `// Stryker disable next-line <mutator>: <alasan>` (29: 25 di api dan 4 di shared); tiap komentar sah | U, M | unit test domain dan shared, daftar di [TEST_STRATEGY.md](../TEST_STRATEGY.md#mutation-testing-tahap-4) |
+| MUT-03 | Mutan selamat ditindaklanjuti | Test diperkuat untuk yang menunjukkan celah (pesan galat, batas "lebih lambat", `.at(-1)`, urutan seleksi, `scrypt` dummy, pesan parser JUnit, urutan pre-release semver); hanya mutan setara yang diberi `// Stryker disable next-line <mutator>: <alasan>` (29 mutan tercakup, 25 di api dan 4 di shared: 23 setara dan 6 saudara yang terbunuh pada ekspresi yang sama, disebut di komentarnya); tiap komentar sah | U, M | unit test domain dan shared, daftar di [TEST_STRATEGY.md](../TEST_STRATEGY.md#mutation-testing-tahap-4) |
 | MUT-04 | Workflow `mutation.yml` | Senin 02.00 UTC dan `workflow_dispatch`; cache incremental dengan kunci memuat hash test dan konfigurasi Vitest; artifact `mutation-report` (retensi 90 hari) tetap dibuat saat gate gagal; ringkasan skor di job summary | (CI) | [mutation.yml](../../.github/workflows/mutation.yml), [mutation-index.mjs](../../.github/scripts/mutation-index.mjs) |
 | MUT-05 | Publikasi | Job `report` di `ci.yml` mengambil artifact run sukses terakhir ke `/mutation/` di samping Allure (tidak pernah menggagalkan job; halaman keterangan bila belum ada); ditautkan dari README dan landing | (CI), E | [ci.yml](../../.github/workflows/ci.yml), landing.spec.ts |
 
@@ -157,7 +157,7 @@ Semua halaman di bawah lolos `expectNoA11yViolationsInBothThemes` (0 pelanggaran
 | VIS-03 | Daftar case (dengan sidebar dan meter), detail run, halaman eksekusi dengan saran status; tema terang dan gelap; 1280 x 800 dan 375 x 812 | 24 screenshot baru (halaman penuh dan elemen kunci) cocok dengan baseline dengan toleransi ketat; total 100 screenshot, 40 test | V | [pages.spec.ts](../../tests/visual/pages.spec.ts), [seed.ts](../../tests/visual/seed.ts) |
 | VIS-04 | Baseline lama yang berubah karena landing baru | Baseline landing dibuat ulang setelah gambarnya ditinjau (Ruling R7) | V | pages.spec.ts |
 | PRF-04 | `read`: 10 VU x 30 detik, ditambah `cases` (halaman pertama), `manual-runs/:number`, `manual-runs/:number/cases`, dan `versions` dengan kolom Manual, pada project berisi 12 suite, 240 case, dan satu run 200 case yang sebagian dieksekusi (120 hasil) | p95 durasi < 300 ms; `http_req_failed` < 1%; `checks` > 0,99 (isi respons diperiksa: 50 case dengan cursor dan cakupan >= 200, run 200 case yang sebagian sudah dites, halaman pertama 100 run case dengan cursor, minimal satu versi dengan `manual`); gate dibuktikan bisa gagal dengan threshold sementara (p95 < 10 ms: exit 99) | P | [read.js](../../tests/perf/read.js), [setup.mjs](../../tests/perf/setup.mjs) |
-| DOG-06 | Skrip `scripts/seed-dogfood-manual.mjs` | Membuat 5 suite dan 12 case milik TestPulse (langkah nyata, sebagian ditautkan ke automated test lewat `GET /tests?q=`); idempoten (jalan kedua tidak membuat apa pun); keluar 2 bila `TP_EMAIL`/`TP_PASSWORD` kosong dan 1 bila login gagal; tidak pernah mencetak cookie atau password; diverifikasi terhadap stack Docker lokal dengan user uji, bukan production | (manual, dicatat di laporan tugas) | [seed-dogfood-manual.mjs](../../scripts/seed-dogfood-manual.mjs) |
+| DOG-06 | Skrip `scripts/seed-dogfood-manual.mjs` | Membuat 5 suite dan 12 case milik TestPulse (langkah nyata, sebagian ditautkan ke automated test lewat `GET /tests?q=`); idempoten (jalan kedua tidak membuat atau mengubah apa pun); case aktif lama yang belum tertaut ditautkan lewat `PATCH` bila kini ada padanannya; mencetak origin sebelum login, menolak `TP_BASE_URL` non-https selain host lokal, tidak mengikuti redirect; keluar 2 bila `TP_EMAIL`/`TP_PASSWORD` kosong atau `TP_BASE_URL` tidak sah dan 1 bila login gagal; tidak pernah mencetak cookie atau password; diverifikasi terhadap stack Docker lokal dengan user uji, bukan production | (manual, dicatat di laporan tugas) | [seed-dogfood-manual.mjs](../../scripts/seed-dogfood-manual.mjs) |
 | DOG-07 | Versi `0.4.0` | `deploy.yml` meneruskan `version` root (`0.4.0`) sebagai `--app-version`; run CI yang diunggah menjadi baris versi `0.4.0` | (CI) | [deploy.yml](../../.github/workflows/deploy.yml) |
 | SMK-03 | Setelah deploy | `/p/testpulse` memuat test case manual dari skrip seed; pemilik repo membuat run "Regresi 0.4.0" di UI dan mengeksekusi semua case-nya sendiri, sehingga hasilnya test manual sungguhan; baris versi `0.4.0` menampilkan kolom Manual (pemeriksaan manual; smoke otomatis tetap hanya membaca) | (manual) | [smoke.spec.ts](../../tests/smoke/smoke.spec.ts) |
 
@@ -168,7 +168,7 @@ Perintah lengkap per lapisan ada di [README](../../README.md#menjalankan-test-pe
 Tambahan untuk Tahap 4:
 
 ```bash
-pnpm test:mutation                                # StrykerJS: shared lalu api (api sekitar 20 menit); gate skor >= 80
+pnpm test:mutation                                # StrykerJS: shared lalu api (api sekitar 21 menit); gate skor >= 80
 pnpm test:contract                                # kini juga manual.pact.test.ts (suite, case, run, run case, ringkasan)
 docker compose up -d --build --wait
 pnpm test:visual                                  # 100 screenshot; pnpm test:visual:update bila perubahan disengaja
@@ -192,6 +192,6 @@ TP_BASE_URL=http://localhost:8080 TP_EMAIL=... TP_PASSWORD=... TP_SLUG=<slug> no
 | Mutation score palsu (timeout dihitung terbunuh, mutan statis tidak aktif) | Runner `command` untuk api, `timeoutMS` dan `concurrency` tetap, jumlah timeout ditampilkan di hasil; kunci cache incremental memuat hash test |
 | Laporan mutation tidak tersedia atau basi di Pages | Langkah publikasi tidak pernah menggagalkan job dan menulis halaman keterangan; laporan dari run sukses terakhir (jadwal mingguan) |
 | Gate k6 lolos karena data manual kosong | `ok` memeriksa isi respons (50 case, run 200 case sebagian dites, 100 run case, kolom Manual terisi) dan gate dibuktikan bisa gagal |
-| Perubahan skema merusak data production | Migrasi 0005 hanya menambah; diuji di atas database berisi data Tahap 3 |
+| Perubahan skema merusak data production | Migrasi 0005 dan 0006 hanya menambah; diuji di atas database berisi data Tahap 3 dan data 0005 |
 | Skrip seed merusak atau menggandakan data production, atau membocorkan kredensial | Idempoten (judul yang ada dilewati), kredensial hanya dari environment shell pemilik dan tidak pernah dicetak, diverifikasi dua kali di stack lokal dengan user uji; dijalankan pemilik repo, bukan CI |
 | Tampilan berubah tanpa disengaja | Visual regression ketat di container resmi; baseline diperbarui hanya lewat `test:visual:update` setelah gambar ditinjau |

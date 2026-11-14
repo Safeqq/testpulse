@@ -4,7 +4,8 @@
 //   TP_EMAIL=... TP_PASSWORD=... node scripts/seed-dogfood-manual.mjs
 //
 // Environment:
-//   TP_BASE_URL   alamat aplikasi, default https://testpulse-d2p.pages.dev
+//   TP_BASE_URL   alamat aplikasi, default https://testpulse-d2p.pages.dev; wajib https kecuali host lokal
+//                 (localhost, 127.0.0.1, [::1], *.localhost)
 //   TP_EMAIL      email akun tester/admin di project itu (wajib)
 //   TP_PASSWORD   password akun itu (wajib)
 //   TP_SLUG       slug project, default `testpulse`
@@ -13,13 +14,17 @@
 // mencetak cookie sesi maupun password, dan tidak menulis apa pun ke disk.
 //
 // Perilaku:
-//   - login lewat POST /api/v1/auth/login dengan header Origin = TP_BASE_URL (pemeriksaan CSRF API), lalu memakai
-//     cookie `tp_session` yang diterima;
+//   - mencetak origin tujuan sebelum login, lalu login lewat POST /api/v1/auth/login dengan header Origin = TP_BASE_URL
+//     (pemeriksaan CSRF API) dan memakai cookie `tp_session` yang diterima;
+//   - tidak pernah mengikuti redirect (`redirect: "error"`), supaya password dan cookie sesi tidak terkirim ulang ke
+//     alamat lain;
 //   - idempoten: suite dan case yang judulnya sudah ada (tanpa peduli huruf besar/kecil, termasuk case yang diarsipkan)
-//     dilewati, jadi menjalankannya ulang tidak membuat apa pun;
-//   - case baru ditautkan ke automated test yang setara lewat GET /tests?q= bila ada padanannya; case yang sudah ada
-//     tidak diubah;
-//   - keluar dengan kode 2 bila environment wajib kosong, dan kode 1 bila login atau permintaan lain gagal.
+//     tidak dibuat ulang, jadi menjalankannya ulang tidak membuat apa pun;
+//   - case ditautkan ke automated test yang setara lewat GET /tests?q= bila ada padanannya. Case aktif yang sudah ada
+//     tetapi belum tertaut (mis. dibuat sebelum CI mengunggah hasil 0.4.0) ditautkan lewat PATCH bila kini ada
+//     padanannya; selain itu case yang sudah ada tidak diubah. Jalankan ulang skrip setelah upload CI untuk memulihkan;
+//   - keluar dengan kode 2 bila environment wajib kosong atau TP_BASE_URL tidak sah, dan kode 1 bila login atau
+//     permintaan lain gagal.
 //
 // Jangan dijalankan terhadap production tanpa sengaja: ia membuat data sungguhan di project itu.
 
@@ -200,14 +205,23 @@ if (!EMAIL || !PASSWORD) {
   process.exit(2);
 }
 
-let origin;
+let target;
 try {
-  origin = new URL(BASE_URL).origin;
+  target = new URL(BASE_URL);
 } catch {
   console.error("TP_BASE_URL bukan URL yang sah.");
   process.exit(2);
 }
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+const isLocal = LOCAL_HOSTS.has(target.hostname) || target.hostname.endsWith(".localhost");
+if (target.protocol !== "https:" && !(target.protocol === "http:" && isLocal)) {
+  // Password dan cookie sesi tidak boleh lewat koneksi tanpa enkripsi ke host lain.
+  console.error("TP_BASE_URL harus https (http hanya untuk localhost, 127.0.0.1, [::1], atau *.localhost).");
+  process.exit(2);
+}
+const origin = target.origin;
 const API = `${BASE_URL}/api/v1`;
+const PROJECT = `/projects/${encodeURIComponent(SLUG)}`;
 
 let cookie = "";
 
@@ -221,6 +235,8 @@ async function request(method, path, json) {
       ...(cookie ? { cookie } : {}),
     },
     body: json === undefined ? undefined : JSON.stringify(json),
+    // API tidak pernah me-redirect; redirect berarti alamat salah, dan mengikutinya mengirim ulang password/cookie.
+    redirect: "error",
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   return res;
@@ -252,56 +268,84 @@ async function login() {
 
 const key = (text) => text.trim().toLowerCase();
 
-/** Semua judul case project ini, termasuk yang diarsipkan, supaya case lama tidak dibuat ulang. */
-async function existingCaseTitles() {
-  const titles = new Set();
+/**
+ * Semua case project ini menurut judul, termasuk yang diarsipkan, supaya case lama tidak dibuat ulang:
+ * `{ number, automated, archived }`.
+ */
+async function existingCases() {
+  const cases = new Map();
   for (const archived of ["false", "true"]) {
     let cursor = "";
     do {
       const page = await call(
         "GET",
-        `/projects/${SLUG}/cases?archived=${archived}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
+        `${PROJECT}/cases?archived=${archived}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`,
         undefined,
         200,
         "Membaca daftar case",
       );
-      for (const item of page.items) titles.add(key(item.title));
+      for (const item of page.items) {
+        cases.set(key(item.title), { number: item.number, automated: item.automated, archived: item.archived });
+      }
       cursor = page.nextCursor ?? "";
     } while (cursor);
   }
-  return titles;
+  return cases;
+}
+
+/** Menautkan case yang sudah ada ke automated test (PATCH dengan `version` terbaru dari detail case). */
+async function linkExistingCase(number, automatedTestId) {
+  const detail = await call("GET", `${PROJECT}/cases/${number}`, undefined, 200, `Membaca TC-${number}`);
+  await call("PATCH", `${PROJECT}/cases/${number}`, { version: detail.version, automatedTestId }, 200, `Menautkan TC-${number}`);
 }
 
 /** Id automated test pertama yang cocok dengan kata cari, atau null bila belum ada padanannya. */
 async function findAutomatedTest(query) {
-  const found = await call("GET", `/projects/${SLUG}/tests?q=${encodeURIComponent(query)}`, undefined, 200, "Mencari automated test");
+  const found = await call("GET", `${PROJECT}/tests?q=${encodeURIComponent(query)}`, undefined, 200, "Mencari automated test");
   return found[0]?.id ?? null;
 }
 
 async function main() {
+  // Dicetak sebelum login supaya tujuan yang salah (mis. production) terlihat sebelum kredensial dikirim.
+  console.log(`Tujuan: ${origin}, project "${SLUG}".`);
   await login();
-  console.log(`Masuk ke ${origin}, project "${SLUG}".`);
+  console.log("Berhasil masuk.");
 
-  const suites = new Map((await call("GET", `/projects/${SLUG}/suites`, undefined, 200, "Membaca daftar suite")).map((suite) => [key(suite.name), suite.id]));
+  const suites = new Map((await call("GET", `${PROJECT}/suites`, undefined, 200, "Membaca daftar suite")).map((suite) => [key(suite.name), suite.id]));
   let suitesCreated = 0;
   for (const { name, description } of SUITES) {
     if (suites.has(key(name))) continue;
-    const created = await call("POST", `/projects/${SLUG}/suites`, { name, description }, 201, `Membuat suite "${name}"`);
+    const created = await call("POST", `${PROJECT}/suites`, { name, description }, 201, `Membuat suite "${name}"`);
     suites.set(key(name), created.id);
     suitesCreated += 1;
     console.log(`  suite baru: ${name}`);
   }
 
-  const titles = await existingCaseTitles();
+  const existing = await existingCases();
   let casesCreated = 0;
   let linked = 0;
+  let relinked = 0;
   let unlinked = 0;
   for (const { suite, title, priority, labels, preconditions, steps, automation } of CASES) {
-    if (titles.has(key(title))) continue;
+    const found = existing.get(key(title));
+    if (found) {
+      // Case lama aktif yang belum tertaut: tautkan bila kini ada padanannya (case arsip dan yang sudah tertaut dibiarkan).
+      if (automation === undefined || found.automated || found.archived) continue;
+      const automatedTestId = await findAutomatedTest(automation);
+      if (automatedTestId === null) {
+        unlinked += 1;
+        console.log(`  TC-${found.number} ${title} (sudah ada; belum ada automated test yang cocok)`);
+        continue;
+      }
+      await linkExistingCase(found.number, automatedTestId);
+      relinked += 1;
+      console.log(`  TC-${found.number} ${title} (sudah ada; kini tertaut ke automated test)`);
+      continue;
+    }
     const automatedTestId = automation === undefined ? null : await findAutomatedTest(automation);
     const created = await call(
       "POST",
-      `/projects/${SLUG}/cases`,
+      `${PROJECT}/cases`,
       { suiteId: suites.get(key(suite)), title, preconditions, steps, priority, labels, automatedTestId },
       201,
       `Membuat case "${title}"`,
@@ -314,14 +358,17 @@ async function main() {
   }
 
   console.log(
-    `Selesai: ${suitesCreated} suite dan ${casesCreated} case baru` +
-      ` (${linked} tertaut ke automated test${unlinked > 0 ? `, ${unlinked} belum ada padanannya` : ""}); sisanya sudah ada dan dilewati.`,
+    `Selesai: ${suitesCreated} suite dan ${casesCreated} case baru (${linked} tertaut ke automated test), ` +
+      `${relinked} case lama baru ditautkan${unlinked > 0 ? `, ${unlinked} case belum ada padanannya` : ""}; ` +
+      "sisanya sudah ada dan dilewati.",
   );
 }
 
 main().catch((error) => {
   // Hanya pesan yang kita susun sendiri (tanpa kredensial) atau galat jaringan; tidak ada cookie atau password di sini.
-  console.error(error instanceof SeedError ? error.message : `Permintaan gagal: ${error?.message ?? error}`);
+  // Penyebab dari undici (mis. "unexpected redirect", "connect ECONNREFUSED") memperjelas "fetch failed".
+  const cause = error?.cause?.message ? ` (${error.cause.message})` : "";
+  console.error(error instanceof SeedError ? error.message : `Permintaan gagal: ${error?.message ?? error}${cause}`);
   // exitCode, bukan process.exit: di Windows keluar paksa saat koneksi fetch masih menutup memicu assertion libuv.
   process.exitCode = 1;
 });

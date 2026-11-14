@@ -116,11 +116,11 @@ Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `nod
 
 **Terpadu dengan Tahap 2 dan 3:** halaman **Versi** menampilkan kolom **Manual** di samping pass rate otomatis (run manual berversi `v0.4.0` dan run CI `0.4.0` jadi satu baris; versi yang hanya punya run manual tetap tampil), dan dashboard punya kartu "Test manual" dengan run terbaru dan cakupan otomasi.
 
-**Mutation testing:** StrykerJS memutasi kode domain `apps/api` dan `packages/shared` dan menuntut test unit gagal bila aturannya diubah. Skor awal 80,31% (api) dan 90,63% (shared) diperkuat menjadi 100% di keduanya, dengan 29 mutan setara yang dikecualikan satu per satu beserta alasannya ([TEST_STRATEGY.md](docs/TEST_STRATEGY.md#mutation-testing-tahap-4)). Gate `break: 80`; berjalan setiap Senin dan lewat `workflow_dispatch`, laporannya di <https://safeqq.github.io/testpulse/mutation/>.
+**Mutation testing:** StrykerJS memutasi kode domain `apps/api` dan `packages/shared` dan menuntut test unit gagal bila aturannya diubah. Skor awal 80,31% (api) dan 90,63% (shared) diperkuat menjadi 100% di keduanya, dengan 29 mutan yang dikecualikan lewat komentar beralasan: 23 benar-benar setara dengan kode asli dan 6 saudara yang terbunuh pada ekspresi yang sama, yang disebut di komentar itu ([TEST_STRATEGY.md](docs/TEST_STRATEGY.md#mutation-testing-tahap-4)). Gate `break: 80`; berjalan setiap Senin dan lewat `workflow_dispatch`, laporannya di <https://safeqq.github.io/testpulse/mutation/>.
 
 ### Dogfooding: test manual TestPulse sendiri
 
-[`scripts/seed-dogfood-manual.mjs`](scripts/seed-dogfood-manual.mjs) membuat 5 suite dan 12 test case manual milik TestPulse (autentikasi, upload hasil, bug tracker, perbandingan versi, test manual), sebagian ditautkan ke automated test yang setara. Skrip login lewat API dengan email dan password yang **Anda isi sendiri** di shell (tidak pernah ditulis di berkas, tidak dicetak), dan idempoten: judul suite dan case yang sudah ada dilewati.
+[`scripts/seed-dogfood-manual.mjs`](scripts/seed-dogfood-manual.mjs) membuat 5 suite dan 12 test case manual milik TestPulse (autentikasi, upload hasil, bug tracker, perbandingan versi, test manual), sebagian ditautkan ke automated test yang setara. Skrip login lewat API dengan email dan password yang **Anda isi sendiri** di shell (tidak pernah ditulis di berkas, tidak dicetak), dan idempoten: judul suite dan case yang sudah ada tidak dibuat ulang.
 
 ```bash
 read -rs TP_PASSWORD && export TP_PASSWORD          # ketik password: tidak tampil dan tidak masuk riwayat shell
@@ -128,7 +128,7 @@ export TP_EMAIL=anda@contoh.com                     # akun tester atau admin di 
 node scripts/seed-dogfood-manual.mjs                # TP_BASE_URL (default production), TP_SLUG (default testpulse)
 ```
 
-Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`, lalu `node scripts/seed-dogfood-manual.mjs`. Setelah deploy `0.4.0`, buat run "Regresi 0.4.0" di UI dan eksekusi semua case-nya sendiri; skrip tidak pernah mengisi hasil. Langkah di production ada di [docs/deploy.md](docs/deploy.md).
+Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`, lalu `node scripts/seed-dogfood-manual.mjs`. Jalankan skrip **setelah** halaman Versi `/p/testpulse` menampilkan baris CI `0.4.0`: tautan ke automated test dicari lewat `GET /tests?q=`, jadi sebelum run CI itu ada case dibuat tanpa tautan (menjalankan skrip lagi setelahnya menautkan case aktif yang belum tertaut, tanpa membuat case ganda). Skrip mencetak origin tujuan sebelum login, menolak `TP_BASE_URL` non-https kecuali host lokal, dan tidak mengikuti redirect. Setelah deploy `0.4.0`, buat run "Regresi 0.4.0" di UI dan eksekusi semua case-nya sendiri; skrip tidak pernah mengisi hasil. Langkah di production ada di [docs/deploy.md](docs/deploy.md).
 
 ## Highlights untuk recruiter
 
@@ -151,7 +151,7 @@ Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`,
 - **Deteksi regresi antar versi** dengan aturan tegas dan diuji tepat di batas (urutan semver, pre-release, pembanding default, ambang "lebih lambat" 1,5x dan 1000 ms) serta kalimat kesimpulan yang jelas; keputusannya dicatat di [ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md).
 - **Markdown pengguna tanpa melonggarkan CSP**: HTML mentah, `javascript:`, dan gambar eksternal tampil inert, dibuktikan E2E di bawah gate CSP.
 - **Visual regression** Playwright di container resmi (render sama di lokal dan CI), dengan toleransi ketat yang dibuktikan bisa gagal; **gate k6** kini juga mencakup daftar bug, versi, dan perbandingan pada 55 run berversi dan 120 bug.
-- **Mutation testing** (StrykerJS) pada kode domain dengan gate 80 dan hasil 100%: skor awal 80,31% dan 90,63% menunjukkan test yang lemah (pesan galat, batas "lebih lambat", parser JUnit) yang lalu diperkuat; mutan yang setara dikecualikan satu per satu dengan alasan, dan laporannya publik. Pilihan runner dan jebakan skor palsu (timeout, mutan statis) dicatat di [ADR 0006](docs/adr/0006-run-manual-snapshot-dan-mutation-testing.md).
+- **Mutation testing** (StrykerJS) pada kode domain dengan gate 80 dan hasil 100%: skor awal 80,31% dan 90,63% menunjukkan test yang lemah (pesan galat, batas "lebih lambat", parser JUnit) yang lalu diperkuat; 29 mutan dikecualikan lewat komentar beralasan (23 setara dengan kode asli, 6 saudaranya yang terbunuh pada ekspresi yang sama), dan laporannya publik. Pilihan runner dan jebakan skor palsu (timeout, mutan statis) dicatat di [ADR 0006](docs/adr/0006-run-manual-snapshot-dan-mutation-testing.md).
 - **Run manual sebagai catatan yang tahan waktu.** Snapshot membuat edit atau hapus case tidak mengubah run lama; hasil tidak bisa tersimpan setelah run diselesaikan (dibuktikan paralel di Postgres asli), dan saran status tidak pernah menjadi status tanpa pilihan tester.
 - **Dogfooding manual**: test case manual TestPulse sendiri ada di project publiknya, dibuat dengan skrip idempoten yang diverifikasi dua kali terhadap stack lokal.
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
@@ -251,7 +251,7 @@ pnpm --filter @testpulse/api exec vitest run --project unit --coverage   # unit 
 pnpm test:int                                    # integration (butuh Docker untuk Testcontainers)
 pnpm test:contract                               # contract: consumer (web, reporter) lalu provider (API); butuh Docker
 pnpm test:visual                                 # visual regression di container Playwright (butuh Docker dan stack Compose hidup); :update bila perubahan disengaja
-pnpm test:mutation                               # mutation testing (StrykerJS) shared lalu api; api sekitar 20 menit; gagal bila skor < 80
+pnpm test:mutation                               # mutation testing (StrykerJS) shared lalu api; api sekitar 21 menit; gagal bila skor < 80
 ```
 
 Test API dan E2E berjalan terhadap stack yang sudah hidup. Cara paling mirip CI: jalankan Compose (Opsi A), lalu arahkan `BASE_URL` ke sana.
@@ -330,5 +330,5 @@ Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy
 - Render free tier tidur saat idle; request pertama bisa lambat sekitar 30 sampai 60 detik.
 - Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, atau mute test flaky; hanya 200 run terbaru per project yang disimpan. Tahap 3 tidak memuat notifikasi email, mention, lampiran bug (hanya link), integrasi GitHub Issues, atau perubahan status bug otomatis. Tahap 4 tidak memuat suite bertingkat, langkah bersama, case berparameter, riwayat versi case, impor/ekspor (CSV, TestRail), lampiran hasil, kloning atau penjadwalan run, atau perubahan status case otomatis dari hasil CI.
 - Unggahan diproses sinkron (ADR 0004): laporan sangat besar (mendekati 5 MB) memegang request lebih lama, terutama setelah cold start Render.
-- Mutation testing hanya mencakup kode domain `apps/api` dan `packages/shared`, berjalan mingguan (bukan per push), dan laporan di Pages berasal dari run sukses terakhir; di `apps/api` ia memakai runner `command` sehingga satu run penuh sekitar 22 menit.
+- Mutation testing hanya mencakup kode domain `apps/api` dan `packages/shared`, berjalan mingguan (bukan per push), dan laporan di Pages berasal dari run sukses terakhir; di `apps/api` ia memakai runner `command` sehingga satu run penuh sekitar 21 menit.
 - Hal yang sengaja tidak diuji (performa free tier, mutation testing untuk web dan reporter, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).

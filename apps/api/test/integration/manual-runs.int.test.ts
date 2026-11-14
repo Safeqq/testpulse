@@ -12,7 +12,8 @@ import {
 } from "@testpulse/shared";
 import { and, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { beforeAll, describe, expect, it } from "vitest";
+import pg from "pg";
+import { beforeAll, describe, expect, inject, it } from "vitest";
 import { manualCases, manualRunCases, manualRuns, projects } from "../../src/db/schema.js";
 import { addMember, createProject, createTestApp, registerUser, type RegisteredUser } from "./helpers.js";
 
@@ -261,6 +262,10 @@ describe("API run manual dan eksekusi run case", () => {
       const s = await createSuite(fx);
       await seedCases(fx, s.id, 501);
       expectError(await createRunRaw(fx, { suiteIds: [s.id] }), 400, "VALIDATION_ERROR", "selection");
+      // 501 nomor case satuan juga dilaporkan pada selection (spec §4.2), bukan pada caseNumbers.
+      const tooMany = await createRunRaw(fx, { caseNumbers: Array.from({ length: 501 }, (_, i) => i + 1) });
+      expectError(tooMany, 400, "VALIDATION_ERROR", "selection");
+      expect(tooMany.json().error.fields).toEqual({ selection: "Pilih 1–500 case aktif" });
 
       await app.db
         .update(manualCases)
@@ -503,6 +508,34 @@ describe("API run manual dan eksekusi run case", () => {
       expect(same.version).toBe(3);
     });
 
+    it("PATCH run case mengunci baris project lebih dulu: menunggu penghapusan project yang sudah memegang kuncinya", async () => {
+      const fx = await setup();
+      const { run, ids } = await runWithCases(fx, 1);
+      // Koneksi lain memegang kunci baris project seperti DELETE project (urutan kunci di run-cases.repository.ts):
+      // PATCH harus menunggu di `FOR KEY SHARE` project, bukan lanjut mengunci run dan run case lalu bertabrakan dengan
+      // cascade penghapusan (deadlock).
+      const locker = new pg.Client({ connectionString: inject("databaseUrl") });
+      await locker.connect();
+      let settled = false;
+      let pending: Promise<LightMyRequestResponse> | undefined;
+      try {
+        await locker.query("begin");
+        await locker.query("select id from projects where id = $1 for update", [fx.project.id]);
+        pending = patchRunCase(fx, run.number, ids[0]!, { version: 1, status: "passed" });
+        void pending.then(() => {
+          settled = true;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        expect(settled).toBe(false);
+      } finally {
+        await locker.query("rollback");
+        await locker.end();
+      }
+      const res = await pending!;
+      expect(res.statusCode, res.body).toBe(200);
+      expect(runCaseDto.parse(res.json())).toMatchObject({ status: "passed", version: 2 });
+    });
+
     it("penyelesaian run dan PATCH run case berulang paralel → tidak ada run case dengan updated_at > completed_at", async () => {
       const fx = await setup();
       for (let round = 0; round < 6; round += 1) {
@@ -562,6 +595,46 @@ describe("API run manual dan eksekusi run case", () => {
 
   // ---------------------------------------------------------------------------------------------------------
   describe("daftar & hapus", () => {
+    it("daftar run dan daftar run case melewati batas waktu baca → 503 INTERNAL_ERROR; tanpa hambatan → 200", async () => {
+      const slowApp = await createTestApp({}, { readStatementTimeoutMs: 200 });
+      const fx = await setup();
+      const { run } = await runWithCases(fx, 2);
+      const get = (path: string) =>
+        slowApp.inject({
+          method: "GET",
+          url: `/api/v1/projects/${fx.project.slug}${path}`,
+          headers: { cookie: fx.tester.cookie },
+        });
+
+      // Koneksi lain mengunci tabel sehingga query daftar menunggu sampai statement_timeout membatalkannya. Run case:
+      // tabel `manual_runs` dikunci, jadi pencarian run (dalam transaksi baca yang sama dengan daftarnya) ikut dibatasi.
+      for (const [table, path] of [
+        ["manual_runs", "/manual-runs"],
+        ["manual_runs", `/manual-runs/${run.number}/cases`],
+        ["manual_run_cases", `/manual-runs/${run.number}/cases`],
+      ] as const) {
+        const locker = new pg.Client({ connectionString: inject("databaseUrl") });
+        await locker.connect();
+        try {
+          await locker.query("begin");
+          await locker.query(`lock table ${table} in access exclusive mode`);
+          const res = await get(path);
+          expect(res.statusCode, `${table} ${path}`).toBe(503);
+          expect(res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: expect.any(String) } });
+        } finally {
+          await locker.query("rollback");
+          await locker.end();
+        }
+      }
+      const runs = await get("/manual-runs");
+      expect(runs.statusCode, runs.body).toBe(200);
+      expect(manualRunsPageDto.parse(runs.json()).items).toHaveLength(1);
+      const cases = await get(`/manual-runs/${run.number}/cases`);
+      expect(cases.statusCode, cases.body).toBe(200);
+      expect(runCasesPageDto.parse(cases.json()).items).toHaveLength(2);
+      await slowApp.close();
+    });
+
     it("daftar run: terbaru dulu, filter status & appVersion, 25 run → 20 + cursor → 5; cursor rusak → 400", async () => {
       const fx = await setup();
       const s = await createSuite(fx);

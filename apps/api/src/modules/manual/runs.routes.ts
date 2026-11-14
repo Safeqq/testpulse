@@ -48,8 +48,9 @@ const parseRunNumber = (raw: string) => parsePathNumber(raw, manualRunNotFound);
 
 /**
  * Rute run manual dan eksekusi run case (spec Tahap 4 §4, §7). Hanya sesi cookie yang dibaca (token CI diperlakukan
- * anonim); akses project diputuskan sebelum body/query divalidasi. Detail run dan run case berjalan dalam transaksi
- * baca-saja ber-`statement_timeout` (snapshot konsisten untuk ringkasan, `nextUntestedId`, dan badge bug).
+ * anonim); akses project diputuskan sebelum body/query divalidasi. Semua bacaan (daftar dan detail run, daftar dan
+ * detail run case) berjalan dalam transaksi baca-saja ber-`statement_timeout` (snapshot konsisten untuk ringkasan,
+ * `nextUntestedId`, dan badge bug).
  */
 export async function manualRunRoutes(app: FastifyInstance, opts: ReadRoutesOptions = {}): Promise<void> {
   const readAccess = { preHandler: [loadUser] };
@@ -62,12 +63,14 @@ export async function manualRunRoutes(app: FastifyInstance, opts: ReadRoutesOpti
     const after = cursor === undefined ? undefined : decodeRunCursor(cursor);
     if (after === null) throw fieldError("cursor", "Cursor tidak valid");
 
-    const rows = await listManualRuns(app.db, {
-      projectId: project.id,
-      query,
-      ...(after !== undefined ? { after } : {}),
-      limit: MANUAL_RUNS_PAGE_SIZE + 1,
-    });
+    const rows = await withStatementTimeout(app.db, statementTimeoutMs, (db) =>
+      listManualRuns(db, {
+        projectId: project.id,
+        query,
+        ...(after !== undefined ? { after } : {}),
+        limit: MANUAL_RUNS_PAGE_SIZE + 1,
+      }),
+    );
     const page = rows.slice(0, MANUAL_RUNS_PAGE_SIZE);
     const last = page.at(-1);
     return {
@@ -138,16 +141,20 @@ export async function manualRunRoutes(app: FastifyInstance, opts: ReadRoutesOpti
       const after = cursor === undefined ? undefined : decodeRunCaseCursor(cursor);
       if (after === null) throw fieldError("cursor", "Cursor tidak valid");
 
-      const run = await findRunRef(app.db, project.id, number);
-      if (!run) throw manualRunNotFound();
-      const rows = await listRunCases(app.db, {
-        projectId: project.id,
-        runId: run.id,
-        userId: req.user?.id ?? null,
-        query,
-        ...(after !== undefined ? { after } : {}),
-        limit: RUN_CASES_PAGE_SIZE + 1,
+      // Pencarian run dan daftarnya dalam satu transaksi baca ber-`statement_timeout`.
+      const rows = await withStatementTimeout(app.db, statementTimeoutMs, async (db) => {
+        const run = await findRunRef(db, project.id, number);
+        if (!run) return null;
+        return listRunCases(db, {
+          projectId: project.id,
+          runId: run.id,
+          userId: req.user?.id ?? null,
+          query,
+          ...(after !== undefined ? { after } : {}),
+          limit: RUN_CASES_PAGE_SIZE + 1,
+        });
       });
+      if (!rows) throw manualRunNotFound();
       const page = rows.slice(0, RUN_CASES_PAGE_SIZE);
       const last = page.at(-1);
       return {

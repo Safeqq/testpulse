@@ -13,7 +13,7 @@ import {
   type ProjectDto,
   type ResultStatus,
 } from "@testpulse/shared";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import pg from "pg";
@@ -21,7 +21,17 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import type { Db } from "../../src/db/client.js";
 import * as schema from "../../src/db/schema.js";
-import { bugs, manualCases, manualRuns, projects, runs, testCases } from "../../src/db/schema.js";
+import {
+  bugs,
+  caseSuites,
+  manualCaseLabels,
+  manualCases,
+  manualRunCases,
+  manualRuns,
+  projects,
+  runs,
+  testCases,
+} from "../../src/db/schema.js";
 import type { ParsedResult } from "../../src/modules/results/domain/junit.js";
 import { insertRun } from "../../src/modules/results/repository.js";
 import { addMember, createProject, createTestApp, registerUser, type RegisteredUser } from "./helpers.js";
@@ -611,6 +621,52 @@ describe("integrasi test manual", () => {
       expect((await request("DELETE", fx, `/manual-runs/${run.number}`, fx.admin.cookie)).statusCode).toBe(204);
       const after = await getBug(fx, bug.number);
       expect(after).toMatchObject({ number: bug.number, title: bug.title, manualOrigin: null });
+    });
+  });
+
+  // ---------------------------------------------------------------------------------------------------------
+  describe("hapus project dengan data manual", () => {
+    it("suite, case (termasuk arsip & label), run, run case, dan bug dari run case → 204 dan semua baris terhapus", async () => {
+      const fx = await setup();
+      // Case tertaut automated test: FK SET NULL dari test_cases ikut terlibat di cascade yang sama.
+      await seedRun(fx, { at: 0, results: [result("login", "passed")] });
+      const { run, ids, suite, cases } = await runWithCases(fx, 2);
+      await createCase(fx, suite.id, { labels: ["regresi"], automatedTestId: await testCaseId(fx.project.id, "login") });
+      const archived = await createCase(fx, suite.id);
+      const archiveRes = await request("PATCH", fx, `/cases/${archived.number}`, fx.tester.cookie, { version: 1, archived: true });
+      expect(archiveRes.statusCode, archiveRes.body).toBe(200);
+      // Suite kedua yang hanya berisi case arsip: FK RESTRICT `manual_cases.suite_id` tidak boleh menggagalkan cascade.
+      const archivedOnly = await createSuite(fx);
+      const lone = await createCase(fx, archivedOnly.id);
+      expect((await request("PATCH", fx, `/cases/${lone.number}`, fx.tester.cookie, { version: 1, archived: true })).statusCode).toBe(200);
+      await patchRunCase(fx, run.number, ids[0]!, { status: "failed" });
+      const bug = await createBug(fx, { manualRunCaseId: ids[0] });
+      expect(bug.manualOrigin).toMatchObject({ runNumber: run.number, caseNumber: cases[0]!.number });
+
+      const projectId = fx.project.id;
+      const caseIds = (await app.db.select({ id: manualCases.id }).from(manualCases).where(eq(manualCases.projectId, projectId))).map(
+        (r) => r.id,
+      );
+      expect(caseIds).toHaveLength(5);
+      const labelled = await app.db.select().from(manualCaseLabels).where(inArray(manualCaseLabels.caseId, caseIds));
+      expect(labelled).toHaveLength(1);
+
+      const res = await app.inject({
+        method: "DELETE",
+        url: `/api/v1/projects/${fx.project.slug}`,
+        headers: { cookie: fx.admin.cookie },
+        payload: { confirmSlug: fx.project.slug },
+      });
+      expect(res.statusCode, res.body).toBe(204);
+
+      expect(await app.db.select().from(manualCases).where(eq(manualCases.projectId, projectId))).toEqual([]);
+      expect(await app.db.select().from(projects).where(eq(projects.id, projectId))).toEqual([]);
+      expect(await app.db.select().from(caseSuites).where(eq(caseSuites.projectId, projectId))).toEqual([]);
+      expect(await app.db.select().from(manualRuns).where(eq(manualRuns.projectId, projectId))).toEqual([]);
+      expect(await app.db.select().from(manualRunCases).where(inArray(manualRunCases.id, ids))).toEqual([]);
+      expect(await app.db.select().from(manualCaseLabels).where(inArray(manualCaseLabels.caseId, caseIds))).toEqual([]);
+      expect(await app.db.select().from(bugs).where(eq(bugs.projectId, projectId))).toEqual([]);
+      expect(await app.db.select().from(testCases).where(eq(testCases.projectId, projectId))).toEqual([]);
     });
   });
 });

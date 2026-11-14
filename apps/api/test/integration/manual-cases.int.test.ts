@@ -9,7 +9,8 @@ import {
 } from "@testpulse/shared";
 import { and, eq } from "drizzle-orm";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { beforeAll, describe, expect, it } from "vitest";
+import pg from "pg";
+import { beforeAll, describe, expect, inject, it } from "vitest";
 import { z } from "zod";
 import { caseSuites, manualCaseLabels, manualCases, projects, testCases } from "../../src/db/schema.js";
 import { addMember, createProject, createTestApp, registerUser, type RegisteredUser } from "./helpers.js";
@@ -626,6 +627,33 @@ describe("API suite dan test case manual", () => {
       const detail = manualCaseDto.parse((await request("GET", fx, `/cases/${c.number}`, fx.tester.cookie)).json());
       expect(detail.automatedTest).toBeNull();
       expect((await listPage(fx)).coverage).toEqual({ active: 1, automated: 0 });
+    });
+
+    it("daftar case (termasuk cakupan) melewati batas waktu baca → 503 INTERNAL_ERROR; tanpa hambatan → 200", async () => {
+      const slowApp = await createTestApp({}, { readStatementTimeoutMs: 200 });
+      const fx = await setup();
+      const s = await createSuite(fx);
+      await createCase(fx, s.id);
+      const get = () =>
+        slowApp.inject({ method: "GET", url: `/api/v1/projects/${fx.project.slug}/cases`, headers: { cookie: fx.tester.cookie } });
+
+      // Koneksi lain mengunci tabel `manual_cases` sehingga query daftar menunggu sampai statement_timeout membatalkannya.
+      const locker = new pg.Client({ connectionString: inject("databaseUrl") });
+      await locker.connect();
+      try {
+        await locker.query("begin");
+        await locker.query("lock table manual_cases in access exclusive mode");
+        const res = await get();
+        expect(res.statusCode).toBe(503);
+        expect(res.json()).toEqual({ error: { code: "INTERNAL_ERROR", message: expect.any(String) } });
+      } finally {
+        await locker.query("rollback");
+        await locker.end();
+      }
+      const ok = await get();
+      expect(ok.statusCode, ok.body).toBe(200);
+      expect(casesPageDto.parse(ok.json()).items).toHaveLength(1);
+      await slowApp.close();
     });
   });
 

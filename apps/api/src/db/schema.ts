@@ -222,7 +222,10 @@ export const bugs = pgTable(
     index("bugs_test_case_open_idx")
       .on(t.testCaseId)
       .where(sql`${t.status} <> 'closed'`),
-    // Badge bug per run case hanya menghitung bug yang belum ditutup; FK SET NULL memakai indeks yang sama.
+    // FK `ON DELETE SET NULL` dari `manual_run_cases`: hapus run case mencari bug lewat kolom ini, termasuk bug tertutup,
+    // jadi indeks parsial di bawah tidak bisa dipakai (pola sama dengan `bugs_test_case_idx`).
+    index("bugs_manual_run_case_idx").on(t.manualRunCaseId),
+    // Badge bug per run case hanya menghitung bug yang belum ditutup.
     index("bugs_manual_run_case_open_idx")
       .on(t.manualRunCaseId)
       .where(sql`${t.status} <> 'closed'`),

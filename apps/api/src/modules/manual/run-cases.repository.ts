@@ -15,14 +15,19 @@ import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import type { Db, Queryable } from "../../db/client.js";
-import { bugs, manualRunCases, manualRuns, memberships, users } from "../../db/schema.js";
+import { bugs, manualRunCases, manualRuns, memberships, projects, users } from "../../db/schema.js";
 import { isUuid } from "../../http/uuid.js";
 import { MAX_BUG_REFS } from "../results/repository.js";
 import { stepResultsMatch } from "./domain/results.js";
 
 /*
  * Urutan kunci di jalur tulis run case (menghindari deadlock):
- *   baris run (`FOR SHARE`) → membership assignee (`FOR KEY SHARE`, bila assignee diisi) → baris run case (`FOR UPDATE`).
+ *   baris project (`FOR KEY SHARE`) → baris run (`FOR SHARE`) → membership assignee (`FOR KEY SHARE`, bila assignee
+ *   diisi) → baris run case (`FOR UPDATE`).
+ * - Kunci project lebih dulu, sama dengan jalur tulis bug dan case: penghapusan project mengunci baris project lalu
+ *   menghapus anak-anaknya (cascade), jadi penulisan yang datang belakangan menunggu di sini alih-alih memegang run dan
+ *   run case yang hendak dihapus cascade. `FOR KEY SHARE` tidak bentrok dengan `FOR NO KEY UPDATE` (pembuatan run atau
+ *   bug yang menaikkan penghitung nomor), jadi penulisan run case tidak saling menunggu dengan jalur itu.
  * - Kunci `FOR SHARE` pada run membuat status run diperiksa di transaksi yang sama dengan penulisan (spec §4.4):
  *   penyelesaian run (`FOR UPDATE` pada baris run) menunggu penulisan yang sedang berjalan, dan penulisan sesudahnya
  *   melihat `completed`. Dua penulisan run case berbeda saling kompatibel (`FOR SHARE` + `FOR SHARE`); jalur ini tidak
@@ -262,6 +267,14 @@ export async function updateRunCase(
 ): Promise<RunCaseDto | UpdateRunCaseFailure> {
   const { projectId, runNumber, runCaseId, actorId, body } = input;
   return db.transaction(async (tx): Promise<RunCaseDto | UpdateRunCaseFailure> => {
+    // Project terhapus setelah rute memeriksa akses → 404 run, bukan 500 (urutan kunci di atas berkas).
+    const [project] = await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .for("key share");
+    if (!project) return "run_not_found";
+
     const [run] = await tx
       .select({ id: manualRuns.id, status: manualRuns.status })
       .from(manualRuns)

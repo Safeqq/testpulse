@@ -228,6 +228,21 @@ describe("createManualRunBody", () => {
     expect(ok(createManualRunBody, { ...run, suiteIds: ["x"] })).toBe(false);
     expect(ok(createManualRunBody, { ...run, caseNumbers: [0] })).toBe(false);
     expect(ok(createManualRunBody, { ...run, caseNumbers: [1.5] })).toBe(false);
+    // Validasi per item tetap pada field aslinya (spec §4.2: suite/case tak dikenal → fields.suiteIds/caseNumbers).
+    expect(pathsOf(createManualRunBody, { ...run, suiteIds: ["x"] })).toEqual(["suiteIds.0"]);
+    expect(pathsOf(createManualRunBody, { ...run, caseNumbers: [1, 0] })).toEqual(["caseNumbers.1"]);
+  });
+  it("seleksi di luar 1–500 dilaporkan pada selection (spec §4.2), termasuk array yang terlalu panjang", () => {
+    const numbers = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
+    expect(ok(createManualRunBody, { ...run, caseNumbers: numbers(500) })).toBe(true);
+    const tooMany = createManualRunBody.safeParse({ ...run, caseNumbers: numbers(501) });
+    expect(tooMany.error?.issues.map((i) => [i.path.join("."), i.message])).toEqual([["selection", "Pilih 1–500 case aktif"]]);
+
+    const uuids = (n: number) => Array.from({ length: n }, (_, i) => `0b8f3c2e-6f0a-4c1d-9a63-${String(i).padStart(12, "0")}`);
+    expect(ok(createManualRunBody, { ...run, suiteIds: uuids(200) })).toBe(true);
+    expect(pathsOf(createManualRunBody, { ...run, suiteIds: uuids(201) })).toEqual(["selection"]);
+    // Item tidak sah tetap dilaporkan di field-nya walau array juga terlalu panjang.
+    expect(pathsOf(createManualRunBody, { ...run, caseNumbers: [0, ...numbers(501)] }).sort()).toEqual(["caseNumbers.0", "selection"]);
   });
 });
 

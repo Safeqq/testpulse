@@ -43,8 +43,9 @@ const TEST_NOT_FOUND = "Test otomatis tidak ditemukan di project ini";
 
 /**
  * Rute test case manual, label, dan pencarian automated test (spec Tahap 4 §7). Hanya sesi cookie yang dibaca
- * (token CI diperlakukan anonim); akses project diputuskan sebelum body/query divalidasi. Detail case berjalan dalam
- * transaksi baca-saja ber-`statement_timeout` karena Task 6 menambahkan query riwayat hasil ke dalamnya.
+ * (token CI diperlakukan anonim); akses project diputuskan sebelum body/query divalidasi. Daftar dan detail case
+ * berjalan dalam transaksi baca-saja ber-`statement_timeout` (daftar memuat filter dan cakupan, detail memuat riwayat
+ * hasil).
  */
 export async function caseRoutes(app: FastifyInstance, opts: ReadRoutesOptions = {}): Promise<void> {
   const readAccess = { preHandler: [loadUser] };
@@ -57,18 +58,22 @@ export async function caseRoutes(app: FastifyInstance, opts: ReadRoutesOptions =
     const after = cursor === undefined ? undefined : decodeCaseCursor(cursor);
     if (after === null) throw fieldError("cursor", "Cursor tidak valid");
 
-    const rows = await listCases(app.db, {
-      projectId: project.id,
-      query,
-      ...(after ? { after } : {}),
-      limit: CASES_PAGE_SIZE + 1,
-    });
+    // Daftar dan cakupan dalam satu transaksi baca ber-`statement_timeout` (snapshot yang sama untuk keduanya).
+    const { rows, coverage } = await withStatementTimeout(app.db, statementTimeoutMs, async (db) => ({
+      rows: await listCases(db, {
+        projectId: project.id,
+        query,
+        ...(after ? { after } : {}),
+        limit: CASES_PAGE_SIZE + 1,
+      }),
+      coverage: await caseCoverage(db, project.id),
+    }));
     const page = rows.slice(0, CASES_PAGE_SIZE);
     const last = page.at(-1);
     return {
       items: page.map((row) => row.item),
       nextCursor: rows.length > CASES_PAGE_SIZE && last ? encodeCaseCursor(last.position) : null,
-      coverage: await caseCoverage(app.db, project.id),
+      coverage,
     };
   });
 

@@ -20,11 +20,14 @@ import { applyStatusChange } from "./domain/transitions.js";
 import { bugByNumber, labelsByBug, loadBugDto, sortLabels } from "./read.repository.js";
 
 /*
- * Urutan kunci baris di jalur tulis bug: project → membership → bug. Penghapusan project mengunci baris project
- * lebih dulu lalu menghapus anak-anaknya (cascade), jadi jalur buat/ubah yang mengunci project di awal menunggu di
- * sana alih-alih saling mengunci dengan cascade. Pengeluaran anggota (`changeMemberRole`) mengunci membership lalu
- * bug, sesuai urutan yang sama. Jalur lain di luar modul ini (mis. hapus project vs keluarkan anggota) tidak dijamin
- * bebas deadlock; Postgres membatalkan salah satu transaksi bila itu terjadi.
+ * Urutan kunci baris di jalur tulis bug: project → membership → asal bug (`test_cases`/`runs`, dan `manual_run_cases`
+ * `FOR KEY SHARE` untuk bug dari run manual) → bug. Penghapusan project mengunci baris project lebih dulu lalu menghapus
+ * anak-anaknya (cascade), jadi jalur buat/ubah yang mengunci project di awal menunggu di sana alih-alih saling mengunci
+ * dengan cascade. Penulisan hasil run case (run-cases.repository.ts) memakai urutan yang sama, project lalu run case
+ * `FOR UPDATE`, jadi pembuatan bug dari run case dan penulisan hasilnya hanya saling menunggu, tidak saling mengunci.
+ * Pengeluaran anggota (`changeMemberRole`) mengunci membership lalu bug, sesuai urutan yang sama. Jalur lain di luar
+ * modul ini (mis. hapus project vs keluarkan anggota) tidak dijamin bebas deadlock; Postgres membatalkan salah satu
+ * transaksi bila itu terjadi.
  */
 
 type BugRow = typeof bugs.$inferSelect;

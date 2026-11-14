@@ -43,6 +43,13 @@
       "when": 1794126903740,
       "tag": "0005_swift_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794641579144,
+      "tag": "0006_thick_christian_walker",
+      "breakpoints": true
     }
   ]
 }

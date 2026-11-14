@@ -1,0 +1,1 @@
+CREATE INDEX "bugs_manual_run_case_idx" ON "bugs" USING btree ("manual_run_case_id");

@@ -160,20 +160,28 @@ const runName = z
   .max(120, "Nama maksimal 120 karakter")
   .refine(noControlChars, CONTROL_CHARS_MESSAGE);
 
-// Seleksi kosong dilaporkan pada `selection` (sama dengan hasil seleksi yang di luar 1–500 di server).
+const SELECTION_MESSAGE = `Pilih 1–${MAX_RUN_CASES} case aktif`;
+const longerThan = (value: unknown, max: number) => Array.isArray(value) && value.length > max;
+
+// Seleksi di luar 1–500 dilaporkan pada `selection` (spec §4.2), sama dengan hasil seleksi server: seleksi kosong, dan
+// array yang sudah pasti melewati batas (lebih dari 500 nomor case, atau lebih dari 200 suite = batas suite per
+// project). Validasi per item tetap pada `suiteIds`/`caseNumbers`; pemeriksaan panjang tetap berjalan walau ada item
+// tidak sah (`when`), supaya kedua kesalahan terlihat sekaligus.
 export const createManualRunBody = z
   .object({
     name: runName,
     appVersion: runVersion.optional(),
-    suiteIds: z.array(uuidField("Suite tidak valid")).max(MAX_SUITES, `Maksimal ${MAX_SUITES} suite`).default([]),
-    caseNumbers: z
-      .array(z.int("Nomor case tidak valid").min(1, "Nomor case tidak valid"))
-      .max(MAX_RUN_CASES, `Maksimal ${MAX_RUN_CASES} case`)
-      .default([]),
+    suiteIds: z.array(uuidField("Suite tidak valid")).default([]),
+    caseNumbers: z.array(z.int("Nomor case tidak valid").min(1, "Nomor case tidak valid")).default([]),
   })
   .refine((body) => body.suiteIds.length > 0 || body.caseNumbers.length > 0, {
-    message: `Pilih 1–${MAX_RUN_CASES} case aktif`,
+    message: SELECTION_MESSAGE,
     path: ["selection"],
+  })
+  .refine((body) => !longerThan(body.caseNumbers, MAX_RUN_CASES) && !longerThan(body.suiteIds, MAX_SUITES), {
+    message: SELECTION_MESSAGE,
+    path: ["selection"],
+    when: (payload) => typeof payload.value === "object" && payload.value !== null,
   });
 export type CreateManualRunBody = z.infer<typeof createManualRunBody>;
 

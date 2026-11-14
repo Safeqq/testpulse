@@ -18,8 +18,9 @@ export function parseSemver(version: string): Semver | null {
 
   const plus = rest.indexOf("+");
   const withoutBuild = plus === -1 ? rest : rest.slice(0, plus);
-  // Stryker disable next-line ConditionalExpression,UnaryOperator: without "+" the check would run on the whole version, whose characters (digits, letters, "-", ".") always pass isDotSeparated unless the core check below rejects it anyway; skipping it for "+" at index 1 changes nothing either, since a one-character core is never MAJOR.MINOR.PATCH.
-  if (plus !== -1 && !isDotSeparated(rest.slice(plus + 1))) return null;
+  // Tanpa "+" (plus = -1) yang dicek seluruh versi: setiap versi yang lolos cek inti dan pre-release di bawah juga lolos
+  // cek ini (hanya angka, huruf, "-", dan "." tanpa segmen kosong), jadi hasilnya sama dengan melewati cek.
+  if (!isDotSeparated(rest.slice(plus + 1))) return null;
 
   const dash = withoutBuild.indexOf("-");
   const core = dash === -1 ? withoutBuild : withoutBuild.slice(0, dash);
@@ -28,12 +29,9 @@ export function parseSemver(version: string): Semver | null {
   const numbers = core.split(".");
   if (numbers.length !== 3 || !numbers.every((n) => NUMERIC.test(n))) return null;
 
-  // Stryker disable next-line ConditionalExpression,UnaryOperator: without "-" the prerelease list is empty and every() on it is true, so the guard only skips work.
-  if (dash !== -1) {
-    // Identifier numerik tidak boleh berawalan nol (semver 2.0 butir 9).
-    const valid = prerelease.every((id) => IDENTIFIER.test(id) && (!ALL_DIGITS.test(id) || NUMERIC.test(id)));
-    if (!valid) return null;
-  }
+  // Identifier numerik tidak boleh berawalan nol (semver 2.0 butir 9). Tanpa pre-release daftarnya kosong (selalu sah).
+  const valid = prerelease.every((id) => IDENTIFIER.test(id) && (!ALL_DIGITS.test(id) || NUMERIC.test(id)));
+  if (!valid) return null;
 
   return { major: numbers[0]!, minor: numbers[1]!, patch: numbers[2]!, prerelease };
 }
@@ -43,8 +41,8 @@ function isDotSeparated(s: string): boolean {
 }
 
 function compareNumeric(a: string, b: string): number {
-  // Stryker disable next-line EqualityOperator: the lengths differ on this line, so "<" and "<=" are the same test.
-  if (a.length !== b.length) return a.length < b.length ? -1 : 1;
+  // Hanya tandanya yang berarti (seperti comparator sort): angka yang lebih pendek lebih kecil.
+  if (a.length !== b.length) return a.length - b.length;
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
@@ -70,9 +68,8 @@ export function compareSemver(a: Semver, b: Semver): number {
     const c = compareIdentifier(a.prerelease[i]!, b.prerelease[i]!);
     if (c !== 0) return c;
   }
-  if (a.prerelease.length === b.prerelease.length) return 0;
-  // Stryker disable next-line EqualityOperator: the lengths differ here, so "<" behaves exactly like "<=" (the ">=" mutant is caught by the prefix tests but cannot be disabled separately).
-  return a.prerelease.length < b.prerelease.length ? -1 : 1;
+  // Semua identifier bersama sama: daftar yang lebih pendek lebih kecil, panjang sama berarti setara (tanda saja).
+  return a.prerelease.length - b.prerelease.length;
 }
 
 /** True bila setiap versi cocok semver. Aturan urutan memakai semver hanya bila ini true. */

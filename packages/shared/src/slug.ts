@@ -3,7 +3,7 @@ import { z } from "zod";
 export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const RESERVED_SLUGS = ["api", "new", "settings", "invite", "login", "register"] as const;
 
-// Stryker disable next-line Regex: slugify first collapses every run of separators into one "-", so the string has at most one dash at each end and "-+" behaves exactly like "-".
+// Stryker disable next-line Regex: slugify first collapses every run of separators into one "-", so the string has at most one dash at each end and "-+" behaves exactly like "-". Also hidden: the two anchor-removal variants (/-+|-+$/g, /^-+|-+/g), which the slugify tests kill but cannot be disabled separately.
 const EDGE_DASHES = /^-+|-+$/g;
 const SLUG_MIN = 3;
 const SLUG_MAX = 40;

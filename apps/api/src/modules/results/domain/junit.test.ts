@@ -518,6 +518,11 @@ describe("parseJUnit - detail parsing", () => {
     expect(parseJUnit(suite('<testcase name="&lt;&gt;&amp;&quot;&apos;"/>')).results[0]?.name).toBe(`<>&"'`);
   });
 
+  it("beberapa bagian CDATA digabung apa adanya", () => {
+    const r = parseJUnit(suite('<testcase name="a"><error><![CDATA[a]]><![CDATA[b]]></error></testcase>')).results[0];
+    expect(r?.message).toBe("ab");
+  });
+
   it("failure yang hanya berisi teks memakai teks itu sebagai pesan", () => {
     expect(parseJUnit(suite('<testcase name="a"><failure>boom</failure></testcase>')).results[0]?.message).toBe("boom");
   });

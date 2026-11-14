@@ -24,14 +24,15 @@ jobs:
       - uses: ./.github/actions/setup
 
       # Incremental mode: only mutants in changed source files are run again. The api package uses the command runner,
-      # which reports a single pseudo-test, so Stryker cannot see test changes there: the test files' hash is part of
-      # the key and any test change starts from an empty incremental file (a full run) instead of reusing stale results.
+      # which reports a single pseudo-test, so Stryker cannot see test changes there: the hash of the test files and Vitest
+      # configs is part of the key, and any change to them starts from an empty incremental file (a full run) instead of
+      # reusing stale results.
       - name: Restore Stryker incremental files
         uses: actions/cache@v4
         with:
           path: "**/reports/stryker-incremental.json"
-          key: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts') }}-${{ github.sha }}
-          restore-keys: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts') }}-
+          key: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts', 'apps/api/vitest.config.*', 'packages/shared/vitest.config.*') }}-${{ github.sha }}
+          restore-keys: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts', 'apps/api/vitest.config.*', 'packages/shared/vitest.config.*') }}-
 
       - name: Mutation tests (api, shared)
         run: pnpm test:mutation

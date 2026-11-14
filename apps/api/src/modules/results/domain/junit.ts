@@ -90,18 +90,16 @@ function isXmlChar(codePoint: number): boolean {
 }
 
 function decodeEntities(text: string): string {
-  // Stryker disable next-line ConditionalExpression,StringLiteral: fast path only; the replace below leaves a text without "&" unchanged.
-  if (!text.includes("&")) return text;
   return text.replace(/&(?:#x([0-9a-fA-F]+)|#(\d+)|(lt|gt|amp|quot|apos));/g, (match, hex?: string, dec?: string, named?: string) => {
     if (named) return NAMED_ENTITIES[named] ?? match;
-    // Stryker disable next-line StringLiteral: the regex alternation guarantees dec is set whenever hex and named are not; "?? ''" only satisfies the type.
-    const codePoint = hex ? parseInt(hex, 16) : parseInt(dec ?? "", 10);
+    // Alternasi regex menjamin dec terisi bila hex dan named tidak.
+    const codePoint = hex ? parseInt(hex, 16) : parseInt(dec!, 10);
     return isXmlChar(codePoint) ? String.fromCodePoint(codePoint) : match;
   });
 }
 
 function isNode(value: unknown): value is XmlNode {
-  // Stryker disable next-line ConditionalExpression,LogicalOperator: with this parser config a value is a string or a plain object (never null or a nested array), and a string read as a node has no "@_" keys, so the narrower checks only guard the type.
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: with this parser config a value is a string or a plain object (never null or a nested array), and a string read as a node has no "@_" keys, so the "true" variants and the "||" variants change nothing. Also hidden: the whole-expression "false" variant, which is killed by every parse test but cannot be disabled separately.
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
@@ -129,22 +127,18 @@ function elementText(value: unknown): string | null {
   }
   if (!isNode(value)) return null;
   const plain = typeof value["#text"] === "string" ? decodeEntities(value["#text"]) : "";
-  // Stryker disable next-line ConditionalExpression,MethodExpression: the parser only puts strings under cdataPropName; the filter only narrows the type.
-  const cdata = asList(value[CDATA_KEY]).filter((part): part is string => typeof part === "string").join("");
+  // Parser hanya menaruh string di bawah cdataPropName (satu per bagian CDATA).
+  const cdata = asList(value[CDATA_KEY]).join("");
   const text = (plain + cdata).trim();
   return text === "" ? null : text;
 }
 
 function truncateChars(text: string, maxChars: number): string {
-  // Stryker disable next-line ConditionalExpression,EqualityOperator: fast path only; slicing a text that already fits returns the same text.
-  if (text.length <= maxChars) return text;
   return Array.from(text).slice(0, maxChars).join("");
 }
 
 /** Memotong ke paling banyak `maxBytes` byte UTF-8 tanpa pernah memecah satu code point. */
 export function truncateUtf8(text: string, maxBytes: number): string {
-  // Stryker disable next-line ConditionalExpression,EqualityOperator: fast path only; the loop below keeps every code point of a text that already fits (same byte widths as Buffer.byteLength, lone surrogates included).
-  if (Buffer.byteLength(text) <= maxBytes) return text;
   let bytes = 0;
   let end = 0;
   for (const char of text) {

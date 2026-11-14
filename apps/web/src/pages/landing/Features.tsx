@@ -49,8 +49,8 @@ const FEATURES: Feature[] = [
     slug: "manual-tests",
     icon: ClipboardCheck,
     title: "Test case manual",
-    description: "Susun dan jalankan test case manual berdampingan dengan hasil automated test.",
-    stage: 4,
+    description:
+      "Susun suite dan test case manual, tautkan ke automated test, lalu jalankan per langkah dan lihat hasilnya per versi di samping hasil CI.",
   },
   {
     slug: "crowdtesting",
@@ -65,7 +65,7 @@ export function Features() {
   return (
     <section aria-labelledby="landing-features-title" data-testid="landing-features" className="grid gap-8">
       <SectionHeading id="landing-features-title" eyebrow="Fitur" title="Semua yang dibutuhkan tim QA, bertahap">
-        Fondasi, dashboard hasil test, dan bug tracker sudah live hari ini. Fitur berikutnya dikerjakan tahap demi tahap.
+        Fondasi, dashboard hasil test, bug tracker, dan test case manual sudah live hari ini. Fitur berikutnya dikerjakan tahap demi tahap.
       </SectionHeading>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(({ slug, icon: Icon, title, description, stage }) => (

@@ -9,16 +9,14 @@ const LANDING_TITLE = "TestPulse — Pantau kesehatan testing tim Anda";
 
 const QUALITY_LINKS: Record<QualityLink, string> = {
   allure: "https://safeqq.github.io/testpulse/",
+  mutation: "https://safeqq.github.io/testpulse/mutation/",
   ci: "https://github.com/Safeqq/testpulse/actions/workflows/ci.yml",
   source: "https://github.com/Safeqq/testpulse",
   strategy: "https://github.com/Safeqq/testpulse/blob/main/docs/TEST_STRATEGY.md",
 };
 
-const AVAILABLE: FeatureSlug[] = ["projects", "team", "invitations", "dashboard", "bug-tracker"];
-const SOON: Array<{ slug: FeatureSlug; stage: string }> = [
-  { slug: "manual-tests", stage: "Tahap 4" },
-  { slug: "crowdtesting", stage: "Tahap 5" },
-];
+const AVAILABLE: FeatureSlug[] = ["projects", "team", "invitations", "dashboard", "bug-tracker", "manual-tests"];
+const SOON: Array<{ slug: FeatureSlug; stage: string }> = [{ slug: "crowdtesting", stage: "Tahap 5" }];
 
 test.describe("Landing page", () => {
   test("pengunjung anonim melihat semua bagian di /, tanpa dialihkan", async ({ page }) => {
@@ -28,6 +26,7 @@ test.describe("Landing page", () => {
     await expect(page).toHaveURL(/\/$/);
     await expect(page).toHaveTitle(LANDING_TITLE);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Pantau kesehatan testing tim Anda di satu tempat.");
+    await expect(landing.hero).toContainText("test manual");
     await expect(landing.hero.getByText("Pratinjau", { exact: true })).toBeVisible();
     for (const section of [landing.features, landing.howItWorks, landing.quality, landing.roadmap, landing.footer]) {
       await expect(section).toBeVisible();
@@ -63,11 +62,11 @@ test.describe("Landing page", () => {
     }
   });
 
-  test("badge Segera hanya pada fitur Tahap 4 dan 5; dashboard dan bug tracker sudah tersedia", async ({ page }) => {
+  test("badge Segera hanya pada fitur Tahap 5; dashboard, bug tracker, dan test case manual sudah tersedia", async ({ page }) => {
     const landing = new LandingPage(page);
     await landing.goto();
 
-    await expect(landing.soonBadges).toHaveCount(2);
+    await expect(landing.soonBadges).toHaveCount(1);
     for (const { slug, stage } of SOON) {
       const card = landing.feature(slug);
       await expect(card.getByTestId("feature-soon-badge")).toHaveText("Segera");
@@ -79,6 +78,7 @@ test.describe("Landing page", () => {
       await expect(landing.feature(slug)).toContainText("Tersedia");
     }
     await expect(landing.feature("dashboard")).toContainText("perbandingan versi");
+    await expect(landing.feature("manual-tests")).toContainText("Test case manual");
   });
 
   test("roadmap memuat tahap 1 sampai 6 dan footer tanpa atribusi pembuat", async ({ page }) => {
@@ -90,7 +90,8 @@ test.describe("Landing page", () => {
     }
     await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 2" })).toContainText("Live");
     await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 3" })).toContainText("Live");
-    await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 4" })).toContainText("Berikutnya");
+    await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 4" })).toContainText("Live");
+    await expect(landing.roadmap.getByRole("listitem").filter({ hasText: "Tahap 5" })).toContainText("Berikutnya");
     await expect(landing.footer).toContainText("TestPulse");
     await expect(landing.footer).not.toContainText("Dibuat oleh");
     await expect(landing.footer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
@@ -104,6 +105,10 @@ test.describe("Landing page", () => {
     await expect(landing.footer.getByRole("link", { name: "Laporan test" })).toHaveAttribute(
       "href",
       QUALITY_LINKS.allure,
+    );
+    await expect(landing.footer.getByRole("link", { name: "Laporan mutation" })).toHaveAttribute(
+      "href",
+      QUALITY_LINKS.mutation,
     );
   });
 

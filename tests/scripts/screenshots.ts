@@ -1,19 +1,23 @@
 /**
  * Menghasilkan screenshot dokumentasi (landing, halaman project publik yang masih kosong, dashboard hasil test,
- * perbandingan versi, dan daftar bug, masing-masing di tema terang dan gelap) dari stack lokal.
+ * perbandingan versi, daftar bug, halaman Versi dengan kolom Manual, detail run manual, dan halaman eksekusi case,
+ * masing-masing di tema terang dan gelap) dari stack lokal.
  *
  * Bukan test: berkas ini berada di luar `testDir` Playwright (`e2e`, `api`, `smoke`) sehingga tidak ikut ditemukan.
  * Data disiapkan lewat API: satu user sekali pakai dan satu project publik berslug `testpulse`. Setelah screenshot
  * project yang masih kosong diambil, skrip membuat token CI dan mengunggah beberapa run JUnit (dibangun dengan
  * `buildJUnit`; tiga di antaranya berversi 0.1.0, 0.2.0, dan 0.3.0 dengan regresi, perbaikan, test lebih lambat, dan
  * test baru di versi terakhir) agar dashboard dan perbandingan terisi, lalu membuat beberapa bug (dua tertaut ke
- * regresi). Jalankan hanya terhadap stack lokal yang baru dan kosong
+ * regresi). Tahap 4: dua suite berisi delapan test case manual (beberapa ditautkan ke automated test), satu run manual
+ * berversi 0.3.0 yang sebagian sudah dieksekusi (satu case gagal dengan bug, satu case terisi sebagian sehingga saran
+ * status tampil). Jalankan hanya terhadap stack lokal yang baru dan kosong
  * (`docker compose up -d --build --wait`), bukan production.
  *
  *   BASE_URL=http://localhost:8080 pnpm --filter @testpulse/tests screenshots
  *
- * Keluaran: docs/images/{landing,project,dashboard,compare,bugs}-{light,dark}.png (lebar 1280; landing dan project
- * 1280x800, dashboard 1280x1280, compare 1280x1400, bugs 1280x960; bukan full page).
+ * Keluaran: docs/images/{landing,project,dashboard,compare,bugs,versions,manual-run,manual-exec}-{light,dark}.png
+ * (lebar 1280; landing dan project 1280x800, dashboard 1280x1280, compare 1280x1400, bugs 1280x960, versions 1280x800,
+ * manual-run 1280x1100, manual-exec 1280x1500; bukan full page).
  */
 import { chromium, type Browser, type Locator, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
@@ -211,6 +215,208 @@ async function seedBugs(cookie: string, lastRunId: string): Promise<void> {
   }
 }
 
+interface SeedCase {
+  suite: string;
+  title: string;
+  priority: "low" | "medium" | "high" | "urgent";
+  labels: string[];
+  steps: Array<{ action: string; expected: string }>;
+  /** Kata cari automated test (GET /tests?q=) yang setara; tanpa nilai berarti hanya diuji manual. */
+  automation?: string;
+}
+
+const MANUAL_SUITES = ["Autentikasi", "Checkout"];
+
+const MANUAL_CASES: SeedCase[] = [
+  {
+    suite: "Autentikasi",
+    title: "Login dengan password salah",
+    priority: "high",
+    labels: ["auth"],
+    steps: [
+      { action: "Buka halaman `/login`.", expected: "Form masuk tampil." },
+      { action: "Isi email valid dan password salah, lalu tekan **Masuk**.", expected: "Muncul pesan galat umum." },
+    ],
+    automation: "masuk dengan email dan password",
+  },
+  {
+    suite: "Autentikasi",
+    title: "Logout menghapus sesi",
+    priority: "medium",
+    labels: ["auth"],
+    steps: [
+      { action: "Tekan tombol keluar di header.", expected: "Anda diarahkan ke `/login`." },
+      { action: "Tekan Kembali di browser.", expected: "Halaman terlindungi tidak terbuka." },
+    ],
+    automation: "keluar menghapus sesi",
+  },
+  {
+    suite: "Checkout",
+    title: "Terapkan kupon di keranjang",
+    priority: "urgent",
+    labels: ["checkout", "regresi"],
+    steps: [
+      { action: "Tambahkan satu barang ke keranjang.", expected: "Total sama dengan harga barang." },
+      { action: "Masukkan kupon `HEMAT10` lalu tekan **Terapkan**.", expected: "Total berkurang 10%." },
+      { action: "Lanjut ke pembayaran.", expected: "Total di pembayaran sama dengan total keranjang." },
+    ],
+    automation: "menerapkan kupon",
+  },
+  {
+    suite: "Checkout",
+    title: "Pembayaran berhasil",
+    priority: "high",
+    labels: ["checkout"],
+    steps: [
+      { action: "Isi alamat dan pilih metode bayar.", expected: "Tombol **Bayar** aktif." },
+      { action: "Tekan **Bayar**.", expected: "Halaman konfirmasi dengan nomor pesanan tampil." },
+    ],
+    automation: "pembayaran berhasil",
+  },
+  {
+    suite: "Checkout",
+    title: "Stok habis menonaktifkan tombol Bayar",
+    priority: "high",
+    labels: ["checkout", "regresi"],
+    steps: [
+      { action: "Buka barang yang stoknya 0.", expected: "Label **Stok habis** tampil." },
+      { action: "Coba tambahkan ke keranjang.", expected: "Tombol **Bayar** tetap nonaktif." },
+    ],
+    automation: "stok habis",
+  },
+  {
+    suite: "Checkout",
+    title: "Kupon kedaluwarsa ditolak",
+    priority: "medium",
+    labels: ["checkout"],
+    steps: [
+      { action: "Masukkan kupon yang sudah lewat tanggalnya.", expected: "Pesan **Kupon kedaluwarsa** tampil." },
+    ],
+    automation: "kupon kedaluwarsa",
+  },
+  {
+    suite: "Autentikasi",
+    title: "Undangan kedaluwarsa menampilkan pesan yang jelas",
+    priority: "low",
+    labels: ["tim"],
+    steps: [
+      { action: "Buka link undangan yang sudah kedaluwarsa.", expected: "Halaman menjelaskan bahwa undangan tidak berlaku." },
+    ],
+  },
+  {
+    suite: "Checkout",
+    title: "Struk dapat dicetak",
+    priority: "low",
+    labels: ["checkout"],
+    steps: [
+      { action: "Buka konfirmasi pesanan lalu tekan **Cetak struk**.", expected: "Pratinjau cetak memuat rincian pesanan." },
+    ],
+  },
+];
+
+interface RunCaseRow {
+  id: string;
+  caseNumber: number;
+  title: string;
+}
+
+/** Id automated test pertama yang cocok dengan kata cari, atau null. */
+async function findAutomatedTest(cookie: string, query: string): Promise<string | null> {
+  const res = await api(`/projects/${SLUG}/tests?q=${encodeURIComponent(query)}`, { method: "GET", cookie });
+  await expectOk(res, `cari automated test "${query}"`);
+  const found = (await res.json()) as Array<{ id: string }>;
+  return found[0]?.id ?? null;
+}
+
+/**
+ * Tahap 4: suite, test case manual (sebagian ditautkan ke automated test), dan run "Regresi 0.3.0" dari semua case.
+ * Hasil: dua case lulus, satu case gagal di langkah 2 dengan bug yang tertaut, satu diblokir, satu terisi sebagian
+ * (status masih belum dites, jadi saran "Gagal" tampil di halaman eksekusi), sisanya belum dites. Mengembalikan nomor
+ * run dan id run case yang terisi sebagian.
+ */
+async function seedManual(cookie: string): Promise<{ runNumber: number; partialRunCaseId: string }> {
+  const suiteIds = new Map<string, string>();
+  for (const name of MANUAL_SUITES) {
+    const res = await api(`/projects/${SLUG}/suites`, { method: "POST", cookie, body: { name } });
+    await expectOk(res, `buat suite "${name}"`);
+    suiteIds.set(name, ((await res.json()) as { id: string }).id);
+  }
+
+  const numbers = new Map<string, number>();
+  for (const { suite, title, priority, labels, steps, automation } of MANUAL_CASES) {
+    const automatedTestId = automation === undefined ? null : await findAutomatedTest(cookie, automation);
+    const res = await api(`/projects/${SLUG}/cases`, {
+      method: "POST",
+      cookie,
+      body: { suiteId: suiteIds.get(suite), title, priority, labels, steps, automatedTestId },
+    });
+    await expectOk(res, `buat case "${title}"`);
+    numbers.set(title, ((await res.json()) as { number: number }).number);
+  }
+
+  const created = await api(`/projects/${SLUG}/manual-runs`, {
+    method: "POST",
+    cookie,
+    body: { name: "Regresi 0.3.0", appVersion: "0.3.0", suiteIds: [...suiteIds.values()] },
+  });
+  await expectOk(created, "buat run manual");
+  const { number: runNumber } = (await created.json()) as { number: number };
+
+  const listed = await api(`/projects/${SLUG}/manual-runs/${runNumber}/cases`, { method: "GET", cookie });
+  await expectOk(listed, "daftar case run manual");
+  const rows = ((await listed.json()) as { items: RunCaseRow[] }).items;
+  const rowFor = (title: string): RunCaseRow => {
+    const row = rows.find((item) => item.title === title);
+    if (row === undefined) throw new Error(`case tidak ada di run: ${title}`);
+    return row;
+  };
+
+  async function updateRunCase(row: RunCaseRow, body: Record<string, unknown>): Promise<void> {
+    const path = `/projects/${SLUG}/manual-runs/${runNumber}/cases/${row.id}`;
+    const detail = await api(path, { method: "GET", cookie });
+    await expectOk(detail, `baca run case ${row.title}`);
+    const { version } = (await detail.json()) as { version: number };
+    await expectOk(await api(path, { method: "PATCH", cookie, body: { version, ...body } }), `isi hasil ${row.title}`);
+  }
+
+  await updateRunCase(rowFor("Login dengan password salah"), { status: "passed" });
+  await updateRunCase(rowFor("Logout menghapus sesi"), { status: "passed" });
+  await updateRunCase(rowFor("Pembayaran berhasil"), { status: "blocked", note: "Gateway pembayaran sandbox sedang mati." });
+
+  const failing = rowFor("Stok habis menonaktifkan tombol Bayar");
+  await updateRunCase(failing, {
+    status: "failed",
+    stepResults: [
+      { status: "passed", note: "" },
+      { status: "failed", note: "Tombol Bayar tetap aktif walau stok 0." },
+    ],
+  });
+  const bug = await api(`/projects/${SLUG}/bugs`, {
+    method: "POST",
+    cookie,
+    body: {
+      title: `Tombol Bayar tetap aktif saat stok habis (dari TC-${numbers.get(failing.title)})`,
+      description: "Ditemukan saat eksekusi run Regresi 0.3.0.",
+      priority: "high",
+      severity: "major",
+      labels: ["checkout", "regresi"],
+      manualRunCaseId: failing.id,
+    },
+  });
+  await expectOk(bug, "buat bug dari run case");
+
+  // Terisi sebagian: langkah 1 lulus, langkah 2 gagal, langkah 3 kosong; status belum diubah, jadi muncul saran.
+  const partial = rowFor("Terapkan kupon di keranjang");
+  await updateRunCase(partial, {
+    stepResults: [
+      { status: "passed", note: "" },
+      { status: "failed", note: "Total tidak berubah setelah kupon diterapkan." },
+      { status: null, note: "" },
+    ],
+  });
+  return { runNumber, partialRunCaseId: partial.id };
+}
+
 interface Shot {
   name: string;
   path: string;
@@ -230,6 +436,8 @@ async function capture(browser: Browser, shot: Shot): Promise<void> {
     const page = await context.newPage();
     await page.goto(shot.path);
     await shot.ready(page).waitFor();
+    // Markdown dimuat malas: tunggu sampai tidak ada lagi penanda "Memuat" sebelum gambar diambil.
+    await page.waitForFunction(() => !document.body.innerText.includes("Memuat"));
     await page.evaluate(() => document.fonts.ready);
     const file = `${OUT_DIR}${shot.name}-${scheme}.png`;
     await page.screenshot({ path: file, type: "png" });
@@ -267,6 +475,26 @@ async function main(): Promise<void> {
       ready: (page) => page.getByTestId("compare-sentence"),
     });
     await capture(browser, { name: "bugs", path: `/p/${SLUG}/bugs`, height: 960, ready: (page) => page.getByTestId("bugs-list") });
+
+    const { runNumber, partialRunCaseId } = await seedManual(cookie);
+    await capture(browser, {
+      name: "versions",
+      path: `/p/${SLUG}/versions`,
+      height: 800,
+      ready: (page) => page.getByTestId("version-manual-0.3.0"),
+    });
+    await capture(browser, {
+      name: "manual-run",
+      path: `/p/${SLUG}/manual-runs/${runNumber}`,
+      height: 1100,
+      ready: (page) => page.getByTestId("run-header"),
+    });
+    await capture(browser, {
+      name: "manual-exec",
+      path: `/p/${SLUG}/manual-runs/${runNumber}/cases/${partialRunCaseId}`,
+      height: 1500,
+      ready: (page) => page.getByTestId("exec-suggestion"),
+    });
   } finally {
     await browser.close();
   }

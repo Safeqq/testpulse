@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-export type QualityLink = "allure" | "ci" | "source" | "strategy";
+export type QualityLink = "allure" | "mutation" | "ci" | "source" | "strategy";
 export type FeatureSlug =
   | "projects"
   | "team"

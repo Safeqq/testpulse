@@ -1,7 +1,9 @@
 // k6 scenario "read": 10 VUs x 30 s reading a public project holding >= 50 versioned runs and >= 100 bugs:
-// stats, runs, flaky (Tahap 2) and bugs, compare (default pair and summary-only), versions (Tahap 3).
+// stats, runs, flaky (Tahap 2); bugs, compare (default pair and summary-only), versions (Tahap 3); manual cases, manual run
+// detail, manual run cases and versions with a Manual column (Tahap 4).
 //   k6 run /scripts/read.js -e BASE_URL=http://web:8080
-// Needs tests/perf/.state/state.json (see setup.mjs). The read project is public, so no credentials are sent.
+// Needs tests/perf/.state/state.json (see setup.mjs: also holds manualRunNumber). The read project is public, so no
+// credentials are sent.
 import http from "k6/http";
 import { check } from "k6";
 
@@ -22,7 +24,8 @@ export const options = {
 };
 
 // `ok` inspects the parsed body so an empty or malformed answer fails the run, not only a non-200 status: the seeded
-// project must really have >= 50 versions, a full first page of bugs and a default comparison with a baseline.
+// project must really have >= 50 versions, a full first page of bugs and a default comparison with a baseline, and (Tahap 4)
+// >= 200 manual cases, a 200-case manual run that is partly executed, and a version row with its Manual column filled.
 const ENDPOINTS = [
   { name: "stats", path: "stats" },
   { name: "runs", path: "runs" },
@@ -31,7 +34,18 @@ const ENDPOINTS = [
   { name: "compare", path: "compare", ok: (body) => body.base !== null && body.target !== null && body.groups !== undefined },
   // The dashboard card and the run page panel use the summary-only mode (no groups, no message/bug queries).
   { name: "compare summary", path: "compare?groups=none", ok: (body) => body.base !== null && body.target !== null },
-  { name: "versions", path: "versions", ok: (body) => body.length >= 50 },
+  { name: "versions", path: "versions", ok: (body) => body.length >= 50 && body.some((row) => row.manual !== null) },
+  { name: "cases", path: "cases", ok: (body) => body.items.length === 50 && body.nextCursor !== null && body.coverage.active >= 200 },
+  {
+    name: "manual run",
+    path: `manual-runs/${state.manualRunNumber}`,
+    ok: (body) => body.total === 200 && body.counts.untested > 0 && body.counts.untested < body.total,
+  },
+  {
+    name: "manual run cases",
+    path: `manual-runs/${state.manualRunNumber}/cases`,
+    ok: (body) => body.items.length === 100 && body.nextCursor !== null,
+  },
 ];
 
 export default function () {

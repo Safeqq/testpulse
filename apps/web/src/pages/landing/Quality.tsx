@@ -1,4 +1,4 @@
-import { ExternalLink, Code2, FileText, GitBranch, ShieldCheck } from "lucide-react";
+import { Code2, Dna, ExternalLink, FileText, GitBranch, ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "./SectionHeading";
@@ -18,13 +18,13 @@ const TIERS = [
 
 // Snapshot dari docs/TEST_STRATEGY.md (bagian "Jumlah test"); jangan diubah tanpa memperbarui dokumen itu.
 const SNAPSHOT = {
-  commit: "e58be5f",
-  date: "6 November 2026",
+  commit: "178610a",
+  date: "14 November 2026",
   rows: [
-    { label: "Integration", value: "315" },
-    { label: "API + otorisasi", value: "465" },
-    { label: "Contract (consumer)", value: "63" },
-    { label: "E2E per browser", value: "212" },
+    { label: "Integration", value: "400" },
+    { label: "API + otorisasi", value: "654" },
+    { label: "Contract (consumer)", value: "99" },
+    { label: "E2E per browser", value: "300" },
   ],
 } as const;
 
@@ -86,6 +86,10 @@ export function Quality() {
               ))}
             </dl>
             <p className="mt-3 text-xs text-muted-foreground">
+              Mutation score kode domain: 100% di <code className="font-mono">apps/api</code> dan{" "}
+              <code className="font-mono">packages/shared</code>; mutan setara yang dikecualikan dicatat satu per satu.
+            </p>
+            <p className="mt-3 text-xs text-muted-foreground">
               Snapshot per commit {SNAPSHOT.commit}, {SNAPSHOT.date}; akan bergeser seiring pengembangan. Angka
               terkini ada di laporan Allure, rincian di <code className="font-mono">docs/TEST_STRATEGY.md</code>.
             </p>
@@ -98,6 +102,13 @@ export function Quality() {
               icon={<FileText aria-hidden="true" />}
             >
               Laporan test live
+            </ExternalLinkButton>
+            <ExternalLinkButton
+              href="https://safeqq.github.io/testpulse/mutation/"
+              testId="quality-link-mutation"
+              icon={<Dna aria-hidden="true" />}
+            >
+              Laporan mutation
             </ExternalLinkButton>
             <ExternalLinkButton
               href={`${REPO}/actions/workflows/ci.yml`}

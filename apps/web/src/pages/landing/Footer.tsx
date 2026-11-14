@@ -4,6 +4,7 @@ const LINKS = [
   { label: "GitHub", href: "https://github.com/Safeqq/testpulse" },
   { label: "Dokumentasi", href: "https://github.com/Safeqq/testpulse#readme" },
   { label: "Laporan test", href: "https://safeqq.github.io/testpulse/" },
+  { label: "Laporan mutation", href: "https://safeqq.github.io/testpulse/mutation/" },
 ] as const;
 
 export function Footer() {

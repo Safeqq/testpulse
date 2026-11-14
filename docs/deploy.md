@@ -238,10 +238,38 @@ Mulai Tahap 2, `deploy.yml` mengunggah hasil test CI TestPulse **ke TestPulse se
 Catatan:
 
 - Kegagalan unggah (token dicabut, jaringan, laporan ditolak) **tidak menggagalkan deploy**: langkahnya `continue-on-error` dan menulis `::warning::` beserta exit code reporter (1 = unggah gagal, 2 = berkas atau argumen salah).
-- Mulai Tahap 3, run yang diunggah membawa versi aplikasi: `--app-version` diambil dari `version` di `package.json` root (`0.3.0`). Naikkan nilainya setiap rilis tahap (atau rilis lain yang ingin dibandingkan); run dengan versi sama dianggap versi yang sama, dan `/p/testpulse` membandingkan versi terbaru dengan versi tepat di bawahnya ([ADR 0005](./adr/0005-perbandingan-versi-dan-markdown-aman.md)).
+- Mulai Tahap 3, run yang diunggah membawa versi aplikasi: `--app-version` diambil dari `version` di `package.json` root (`0.4.0`). Naikkan nilainya setiap rilis tahap (atau rilis lain yang ingin dibandingkan); run dengan versi sama dianggap versi yang sama, dan `/p/testpulse` membandingkan versi terbaru dengan versi tepat di bawahnya ([ADR 0005](./adr/0005-perbandingan-versi-dan-markdown-aman.md)).
 - Token hanya berlaku untuk mengunggah ke project `testpulse`. Batasnya 60 unggahan per jam per token, jauh di atas satu unggahan per deploy.
 - Memutar token: buat token baru di **Token CI**, perbarui secret `TESTPULSE_TOKEN`, lalu cabut token lama. Run yang sudah diunggah tetap ada.
 - Reporter bisa dicoba dari komputer sendiri tanpa GitHub: `pnpm --filter @testpulse/reporter build`, lalu `node packages/reporter/dist/cli.js --url <URL> --project <slug> --branch main <berkas.xml>` dengan `TESTPULSE_TOKEN` di environment. Terhadap production itu menambah run sungguhan di project publik, jadi lakukan dengan sengaja.
+
+---
+
+## Langkah 13. Dogfooding test manual: seed test case dan run "Regresi 0.4.0" (Tahap 4, dilakukan pemilik repo)
+
+Mulai Tahap 4, TestPulse juga mengelola test case manual, dan project `testpulse` di production berisi test case manual TestPulse sendiri. Skrip [`scripts/seed-dogfood-manual.mjs`](../scripts/seed-dogfood-manual.mjs) membuatnya lewat API: 5 suite (Autentikasi, Upload hasil, Bug tracker, Perbandingan versi, Test manual) dan 12 case dengan langkah nyata, sebagian ditautkan ke automated test yang setara (cari lewat `GET /tests?q=`, jadi tautannya baru ada bila test itu sudah pernah dilaporkan ke project `testpulse`, yaitu setelah deploy `0.4.0` dengan dogfooding Langkah 12). Skrip **tidak pernah mengisi hasil**; run "Regresi 0.4.0" Anda eksekusi sendiri.
+
+Skrip memakai akun **tester atau admin** di project `testpulse` (akun pribadi pemilik project dari Langkah 9, bukan akun smoke) dengan email dan password yang Anda isi di environment shell lokal. Jangan menaruhnya di berkas repo, issue, atau chat; skrip tidak mencetak password maupun cookie sesi.
+
+1. Pastikan deploy `0.4.0` sudah selesai (API sudah memuat migrasi 0005; `/p/testpulse` menampilkan tab **Test manual**).
+2. Isi environment, lalu jalankan skrip:
+
+   ```bash
+   export TP_BASE_URL=https://testpulse.pages.dev   # opsional; default https://testpulse-d2p.pages.dev. Isi dengan URL web Anda (harus sama dengan APP_ORIGIN di Render)
+   export TP_EMAIL=anda@contoh.com
+   read -rs TP_PASSWORD && export TP_PASSWORD         # ketik password: tidak tampil dan tidak masuk riwayat shell
+   node scripts/seed-dogfood-manual.mjs               # TP_SLUG opsional, default testpulse
+   ```
+
+   Di PowerShell: `$env:TP_EMAIL = "anda@contoh.com"; $env:TP_PASSWORD = Read-Host "Password"; node scripts/seed-dogfood-manual.mjs`. Request pertama setelah Render idle bisa sekitar satu menit.
+3. **Cek:** keluaran mencantumkan tiap suite dan case baru ("5 suite dan 12 case baru"). Jalankan ulang: harus mencetak "0 suite dan 0 case baru" (idempoten; judul yang sudah ada dilewati, juga yang diarsipkan). Buka `/p/testpulse/cases` di jendela incognito: suite dan case tampil, meter cakupan menunjukkan case yang sudah tertaut.
+4. Di UI, **Buat run** bernama "Regresi 0.4.0" dengan versi `0.4.0` dari semua suite, lalu eksekusi tiap case sungguhan (hasil per langkah, **Simpan & lanjut**) sampai selesai. Halaman **Versi** lalu menampilkan baris `0.4.0` dengan hasil CI dan kolom Manual berdampingan.
+
+Catatan:
+
+- Kode keluar `2` berarti `TP_EMAIL` atau `TP_PASSWORD` kosong; `1` berarti login atau permintaan gagal (pesan menyebut status dan kode galat API, mis. `403 FORBIDDEN` bila `TP_BASE_URL` tidak sama dengan `APP_ORIGIN`, atau `403` bila akun hanya viewer).
+- Endpoint login dibatasi 10 percobaan per menit per IP; satu kali jalan memakai satu login.
+- Skrip membuat data sungguhan di production. Jangan dijalankan terhadap project yang bukan milik Anda, dan jangan dijalankan dari CI.
 
 ---
 
@@ -267,5 +295,7 @@ Catatan:
 | Deploy hijau, tetapi ada `::warning::` dari langkah dogfooding | `TESTPULSE_TOKEN` kosong atau dicabut (401), artifact CI sudah kedaluwarsa (7 hari), atau deploy dipicu manual tanpa run CI (Langkah 12). Deploy tidak terpengaruh. |
 
 ## Daftar rahasia (ringkasan)
+
+Kredensial skrip seed Langkah 13 (`TP_EMAIL`, `TP_PASSWORD`) hanya ada di environment shell pemilik saat skrip dijalankan, tidak di GitHub Secrets.
 
 Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (kedelapan nama di Langkah 7, ditambah `TESTPULSE_TOKEN` yang opsional di Langkah 12). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.

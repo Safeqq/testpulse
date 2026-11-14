@@ -2,18 +2,20 @@
 
 [![CI](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml)
 
-**TestPulse** adalah aplikasi web untuk tim QA/dev: satu tempat untuk memantau kesehatan testing, mulai dari hasil automated test dan deteksi test flaky, project dan tim, bug tracker dan deteksi regresi antar versi, hingga (di tahap berikutnya) test case manual dan crowdtesting. Kategori produk yang serupa: TestRail, Qase, ReportPortal, Allure TestOps.
+**TestPulse** adalah aplikasi web untuk tim QA/dev: satu tempat untuk memantau kesehatan testing, mulai dari hasil automated test dan deteksi test flaky, project dan tim, bug tracker dan deteksi regresi antar versi, test case manual dan run manual, hingga (di tahap berikutnya) crowdtesting. Kategori produk yang serupa: TestRail, Qase, ReportPortal, Allure TestOps.
 
 - **Tahap 1** adalah fondasinya: akun, project (privat atau publik), tim dengan role `admin`/`tester`/`viewer`, dan undangan lewat link, lengkap dengan seluruh pipeline QA di bawahnya.
 - **Tahap 2** menghadirkan fitur inti: CI mengunggah hasil test (JUnit XML) dengan token CI, lalu **dashboard** menampilkan tren, riwayat run, dan **test flaky** beserta skornya. Ada reporter CLI, gate performa k6, dan **dogfooding**: hasil test TestPulse sendiri dilaporkan ke project publik `testpulse` ([lihat di production](https://testpulse-d2p.pages.dev/p/testpulse)).
 - **Tahap 3** menambahkan **bug tracker** (bug manual atau dari test yang gagal, status, prioritas, assignee, label, komentar, dan riwayat) dan **deteksi regresi antar versi**: run boleh membawa `version`, dan TestPulse otomatis membandingkan versi terbaru dengan versi sebelumnya dalam satu kalimat kesimpulan. Lapisan QA baru: **visual regression** dengan Playwright. TestPulse mengirim hasil CI-nya sendiri dengan versi `0.3.0`.
+- **Tahap 4** menambahkan **test case manual** (suite, case dengan langkah terstruktur, tautan ke automated test) dan **run manual** (tester mengeksekusi case per langkah, lalu melaporkan bug dari case yang gagal), yang tampil berdampingan dengan hasil CI di halaman Versi dan dashboard. Lapisan QA baru: **mutation testing** dengan StrykerJS pada kode domain (skor 100%, [laporan live](https://safeqq.github.io/testpulse/mutation/)). TestPulse menguji dirinya sendiri secara manual juga: test case manualnya ada di project publik `testpulse` dan dikirim dengan versi `0.4.0`.
 
 | | |
 |---|---|
 | Laporan test (Allure, live) | <https://safeqq.github.io/testpulse/> |
+| Laporan mutation testing (live) | <https://safeqq.github.io/testpulse/mutation/> (diperbarui setiap Senin lewat [mutation.yml](https://github.com/Safeqq/testpulse/actions/workflows/mutation.yml)) |
 | CI (GitHub Actions) | [ci.yml](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml) |
 | Demo live | <https://testpulse-d2p.pages.dev> · project publik: <https://testpulse-d2p.pages.dev/p/testpulse> (API di Render free tier: request pertama setelah idle bisa ±1 menit) |
-| Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [Test plan tahap 2](docs/test-plans/tahap-2.md) · [Test plan tahap 3](docs/test-plans/tahap-3.md) · [ADR](docs/adr/) |
+| Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [Test plan tahap 2](docs/test-plans/tahap-2.md) · [Test plan tahap 3](docs/test-plans/tahap-3.md) · [Test plan tahap 4](docs/test-plans/tahap-4.md) · [ADR](docs/adr/) |
 
 ## Kenapa proyek ini ada
 
@@ -22,7 +24,7 @@ TestPulse punya dua tujuan sekaligus:
 1. **Produk yang berguna** untuk tim QA/dev.
 2. **Portfolio QA/SDET**: TestPulse sendiri diuji dengan test pyramid lengkap yang berjalan otomatis di CI, dengan quality gate dan laporan publik.
 
-Sejak tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding), dan sejak tahap 3 dengan versi aplikasinya (`version` di `package.json` root, kini `0.3.0`): setelah setiap deploy, [deploy.yml](.github/workflows/deploy.yml) mengunggah JUnit dari run CI yang memicunya ke project publik `testpulse`, sehingga dashboard kualitas yang nyata bisa dilihat lewat <https://testpulse-d2p.pages.dev/p/testpulse> tanpa perlu mendaftar. Dashboard di production terisi setelah pemilik repo memasang secret `TESTPULSE_TOKEN` (langkahnya ada di [docs/deploy.md](docs/deploy.md), Langkah 12).
+Sejak tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding), dan sejak tahap 3 dengan versi aplikasinya (`version` di `package.json` root, kini `0.4.0`): setelah setiap deploy, [deploy.yml](.github/workflows/deploy.yml) mengunggah JUnit dari run CI yang memicunya ke project publik `testpulse`, sehingga dashboard kualitas yang nyata bisa dilihat lewat <https://testpulse-d2p.pages.dev/p/testpulse> tanpa perlu mendaftar. Dashboard di production terisi setelah pemilik repo memasang secret `TESTPULSE_TOKEN` (langkahnya ada di [docs/deploy.md](docs/deploy.md), Langkah 12).
 
 ## Tampilan
 
@@ -37,8 +39,11 @@ Pengunjung yang belum masuk melihat **landing page** di `/` (sebelumnya langsung
 | **Dashboard hasil test** (`/p/testpulse`, setelah run diunggah) | ![Dashboard hasil test, tema terang](docs/images/dashboard-light.png) | ![Dashboard hasil test, tema gelap](docs/images/dashboard-dark.png) |
 | **Perbandingan versi** (`/p/testpulse/compare`) | ![Perbandingan versi 0.3.0 dengan 0.2.0, tema terang](docs/images/compare-light.png) | ![Perbandingan versi 0.3.0 dengan 0.2.0, tema gelap](docs/images/compare-dark.png) |
 | **Daftar bug** (`/p/testpulse/bugs`) | ![Daftar bug, tema terang](docs/images/bugs-light.png) | ![Daftar bug, tema gelap](docs/images/bugs-dark.png) |
+| **Versi dengan kolom Manual** (`/p/testpulse/versions`) | ![Halaman Versi dengan kolom Manual, tema terang](docs/images/versions-light.png) | ![Halaman Versi dengan kolom Manual, tema gelap](docs/images/versions-dark.png) |
+| **Run manual** (`/p/testpulse/manual-runs/1`) | ![Detail run manual dengan progres, tema terang](docs/images/manual-run-light.png) | ![Detail run manual dengan progres, tema gelap](docs/images/manual-run-dark.png) |
+| **Eksekusi case manual** (`/p/testpulse/manual-runs/1/cases/<id>`) | ![Halaman eksekusi case dengan saran status, tema terang](docs/images/manual-exec-light.png) | ![Halaman eksekusi case dengan saran status, tema gelap](docs/images/manual-exec-dark.png) |
 
-Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/scripts/screenshots.ts`](tests/scripts/screenshots.ts): `pnpm --filter @testpulse/tests screenshots` dengan `BASE_URL=http://localhost:8080`. Skrip itu membuat user, project publik, token CI, 12 run JUnit contoh (tiga berversi 0.1.0, 0.2.0, 0.3.0; dibangun dengan helper `buildJUnit`), dan beberapa bug di database lokal yang kosong; datanya buatan, bukan hasil test sungguhan.
+Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/scripts/screenshots.ts`](tests/scripts/screenshots.ts): `pnpm --filter @testpulse/tests screenshots` dengan `BASE_URL=http://localhost:8080`. Skrip itu membuat user, project publik, token CI, 12 run JUnit contoh (tiga berversi 0.1.0, 0.2.0, 0.3.0; dibangun dengan helper `buildJUnit`), beberapa bug, dua suite berisi delapan test case manual, dan satu run manual "Regresi 0.3.0" yang sebagian sudah dieksekusi di database lokal yang kosong; datanya buatan, bukan hasil test sungguhan.
 
 ## Fitur Tahap 2: hasil test dan deteksi flaky
 
@@ -96,6 +101,35 @@ Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `nod
 - Halaman perbandingan mengelompokkan test menjadi **regresi baru**, **diperbaiki**, **masih gagal**, **lebih lambat** (lebih dari 1,5 kali dan lebih dari 1 detik), **test baru**, dan **test hilang**, dengan pilihan base dan target, dan tombol Laporkan bug di tiap baris. Halaman Versi memuat pass rate dan perubahannya per versi.
 - Navigasi project berupa tab: Ringkasan, Run, Versi, Bug, Flaky, dan Pengaturan (anggota).
 
+## Fitur Tahap 4: test case manual dan run manual
+
+**Test case** (tab **Test manual**, `/p/:slug/cases`; tester dan admin menulis, semua anggota dan pengunjung project publik membaca):
+
+- Suite satu tingkat (nama unik tanpa peka huruf besar/kecil, urutan bisa diubah, hanya suite kosong yang bisa dihapus) berisi case bernomor `TC-<n>`: judul, prasyarat dan langkah (**aksi** dan **hasil yang diharapkan**, 1 sampai 50, urutan bisa diubah, Markdown aman), prioritas, dan label. Case bisa diarsipkan dan dipulihkan; edit bersamaan dijaga (`409 CASE_CONFLICT`).
+- Case bisa **ditautkan ke automated test** Tahap 2 (cari lewat nama atau suite). Meter **cakupan otomasi** menunjukkan berapa case aktif yang sudah punya padanan otomatis ("12 dari 40 case aktif sudah diotomasi, 30%").
+
+**Run manual** (`/p/:slug/manual-runs`):
+
+- Buat run (`TR-<n>`, dengan versi aplikasi opsional) dari suite dan/atau case satuan. TestPulse **menyalin** isi case ke run (snapshot), sehingga mengedit atau menghapus case tidak mengubah catatan run yang sudah dijalankan ([ADR 0006](docs/adr/0006-run-manual-snapshot-dan-mutation-testing.md)).
+- Halaman eksekusi: hasil **per langkah** (lulus, gagal, diblokir, dilewati) dengan catatan, lalu status case. TestPulse menyarankan status dari hasil langkah, tetapi tidak pernah menyimpannya otomatis; **Simpan & lanjut** membawa ke case belum dites berikutnya. Dua tester di case berbeda tidak saling bentrok.
+- Run bisa **diselesaikan** (hanya-baca) dan **dibuka ulang**. Case yang gagal bisa langsung **dilaporkan sebagai bug** dengan isian awal dari snapshot (langkah gagal, catatan, versi, run); detail bug menaut balik ke halaman eksekusinya.
+
+**Terpadu dengan Tahap 2 dan 3:** halaman **Versi** menampilkan kolom **Manual** di samping pass rate otomatis (run manual berversi `v0.4.0` dan run CI `0.4.0` jadi satu baris; versi yang hanya punya run manual tetap tampil), dan dashboard punya kartu "Test manual" dengan run terbaru dan cakupan otomasi.
+
+**Mutation testing:** StrykerJS memutasi kode domain `apps/api` dan `packages/shared` dan menuntut test unit gagal bila aturannya diubah. Skor awal 80,31% (api) dan 90,63% (shared) diperkuat menjadi 100% di keduanya, dengan 29 mutan setara yang dikecualikan satu per satu beserta alasannya ([TEST_STRATEGY.md](docs/TEST_STRATEGY.md#mutation-testing-tahap-4)). Gate `break: 80`; berjalan setiap Senin dan lewat `workflow_dispatch`, laporannya di <https://safeqq.github.io/testpulse/mutation/>.
+
+### Dogfooding: test manual TestPulse sendiri
+
+[`scripts/seed-dogfood-manual.mjs`](scripts/seed-dogfood-manual.mjs) membuat 5 suite dan 12 test case manual milik TestPulse (autentikasi, upload hasil, bug tracker, perbandingan versi, test manual), sebagian ditautkan ke automated test yang setara. Skrip login lewat API dengan email dan password yang **Anda isi sendiri** di shell (tidak pernah ditulis di berkas, tidak dicetak), dan idempoten: judul suite dan case yang sudah ada dilewati.
+
+```bash
+read -rs TP_PASSWORD && export TP_PASSWORD          # ketik password: tidak tampil dan tidak masuk riwayat shell
+export TP_EMAIL=anda@contoh.com                     # akun tester atau admin di project testpulse
+node scripts/seed-dogfood-manual.mjs                # TP_BASE_URL (default production), TP_SLUG (default testpulse)
+```
+
+Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`, lalu `node scripts/seed-dogfood-manual.mjs`. Setelah deploy `0.4.0`, buat run "Regresi 0.4.0" di UI dan eksekusi semua case-nya sendiri; skrip tidak pernah mengisi hasil. Langkah di production ada di [docs/deploy.md](docs/deploy.md).
+
 ## Highlights untuk recruiter
 
 - **Matriks otorisasi dibangkitkan dari data.** [`authorization-matrix.ts`](tests/api/authorization-matrix.ts) mendefinisikan 6 aktor x endpoint yang terikat project (baris tabel spec bagian 7), dan [`authorization.spec.ts`](tests/api/authorization.spec.ts) menghasilkan satu test per kombinasi. Menambah role atau endpoint berarti menambah baris data.
@@ -117,6 +151,9 @@ Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `nod
 - **Deteksi regresi antar versi** dengan aturan tegas dan diuji tepat di batas (urutan semver, pre-release, pembanding default, ambang "lebih lambat" 1,5x dan 1000 ms) serta kalimat kesimpulan yang jelas; keputusannya dicatat di [ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md).
 - **Markdown pengguna tanpa melonggarkan CSP**: HTML mentah, `javascript:`, dan gambar eksternal tampil inert, dibuktikan E2E di bawah gate CSP.
 - **Visual regression** Playwright di container resmi (render sama di lokal dan CI), dengan toleransi ketat yang dibuktikan bisa gagal; **gate k6** kini juga mencakup daftar bug, versi, dan perbandingan pada 55 run berversi dan 120 bug.
+- **Mutation testing** (StrykerJS) pada kode domain dengan gate 80 dan hasil 100%: skor awal 80,31% dan 90,63% menunjukkan test yang lemah (pesan galat, batas "lebih lambat", parser JUnit) yang lalu diperkuat; mutan yang setara dikecualikan satu per satu dengan alasan, dan laporannya publik. Pilihan runner dan jebakan skor palsu (timeout, mutan statis) dicatat di [ADR 0006](docs/adr/0006-run-manual-snapshot-dan-mutation-testing.md).
+- **Run manual sebagai catatan yang tahan waktu.** Snapshot membuat edit atau hapus case tidak mengubah run lama; hasil tidak bisa tersimpan setelah run diselesaikan (dibuktikan paralel di Postgres asli), dan saran status tidak pernah menjadi status tanpa pilihan tester.
+- **Dogfooding manual**: test case manual TestPulse sendiri ada di project publiknya, dibuat dengan skrip idempoten yang diverifikasi dua kali terhadap stack lokal.
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
 
 ## Roadmap
@@ -126,15 +163,15 @@ Di PowerShell: `$env:TESTPULSE_TOKEN = Read-Host "Token CI"`, lalu jalankan `nod
 | **1** | Fondasi: akun, project, tim dan role, undangan, seluruh pipeline QA | ✅ Selesai dan live (status CI: lihat badge di atas) |
 | **2** | Dashboard hasil test, deteksi flaky, reporter CLI, token CI, dogfooding, test performa (k6) | ✅ Selesai dan live (dashboard production terisi setelah `TESTPULSE_TOKEN` dipasang) |
 | **3** | Bug tracker (bug dari test yang gagal), deteksi regresi antar versi, visual regression, k6 untuk bug dan perbandingan | ✅ Selesai; setelah deploy, `/p/testpulse` menampilkan run berversi `0.3.0` |
-| 4 | Test case management dan test run manual, mutation testing | Direncanakan |
+| **4** | Test case management dan test run manual (snapshot, eksekusi per langkah, bug dari case gagal), kolom Manual di halaman Versi, mutation testing (StrykerJS) | ✅ Selesai; setelah deploy, `/p/testpulse` berisi test case manual TestPulse dan run berversi `0.4.0` |
 | 5 | Crowdtesting: test cycle publik, crowd tester mengirim bug, triase, reputasi dan leaderboard (aplikasi berupa link, tanpa pembayaran) | Direncanakan |
 | 6 (opsional) | Aplikasi desktop Electron (notifikasi build gagal, tray) yang diuji dengan Playwright | Opsional |
 
-Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec: [tahap 1](docs/superpowers/specs/2026-10-23-testpulse-tahap1-design.md), [tahap 2](docs/superpowers/specs/2026-10-28-testpulse-tahap2-design.md), [tahap 3](docs/superpowers/specs/2026-11-04-testpulse-tahap3-design.md).
+Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec: [tahap 1](docs/superpowers/specs/2026-10-23-testpulse-tahap1-design.md), [tahap 2](docs/superpowers/specs/2026-10-28-testpulse-tahap2-design.md), [tahap 3](docs/superpowers/specs/2026-11-04-testpulse-tahap3-design.md), [tahap 4](docs/superpowers/specs/2026-11-08-testpulse-tahap4-design.md).
 
 ## Arsitektur
 
-Modular monolith: satu API Fastify + PostgreSQL, SPA React, dan paket bersama untuk schema. Alasannya ada di [ADR 0001](docs/adr/0001-modular-monolith.md); model sesi di [ADR 0002](docs/adr/0002-cookie-session.md); pilihan Tailwind + shadcn dan kendala CSP di [ADR 0003](docs/adr/0003-tailwind-shadcn.md); ingest sinkron dan definisi flaky di [ADR 0004](docs/adr/0004-ingest-sinkron-dan-definisi-flaky.md); urutan versi, definisi regresi, dan Markdown aman di [ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md).
+Modular monolith: satu API Fastify + PostgreSQL, SPA React, dan paket bersama untuk schema. Alasannya ada di [ADR 0001](docs/adr/0001-modular-monolith.md); model sesi di [ADR 0002](docs/adr/0002-cookie-session.md); pilihan Tailwind + shadcn dan kendala CSP di [ADR 0003](docs/adr/0003-tailwind-shadcn.md); ingest sinkron dan definisi flaky di [ADR 0004](docs/adr/0004-ingest-sinkron-dan-definisi-flaky.md); urutan versi, definisi regresi, dan Markdown aman di [ADR 0005](docs/adr/0005-perbandingan-versi-dan-markdown-aman.md); run manual (snapshot, JSONB, saran status, versi manual-saja) dan mutation testing di [ADR 0006](docs/adr/0006-run-manual-snapshot-dan-mutation-testing.md).
 
 ```mermaid
 flowchart LR
@@ -166,12 +203,13 @@ Seluruh lapisan berjalan otomatis di [CI](.github/workflows/ci.yml); detail dan 
 | Contract (web dan reporter sebagai consumer) | Pact JS | `apps/web/test/contract`, `packages/reporter/test/contract`, `apps/api/test/contract` |
 | E2E (3 browser) + aksesibilitas dua tema + gate CSP | Playwright (POM) + axe | `tests/e2e`, `tests/pages`, `tests/support` |
 | Proxy dan paritas header | Vitest | `apps/web/test/functions` |
-| Visual regression (5 halaman, dua tema, desktop dan HP) | Playwright `toHaveScreenshot()` di container resmi | `tests/visual`, `scripts/visual.sh` |
-| Performa (gate p95 upload dan baca, termasuk bug, versi, perbandingan) | k6 | `tests/perf` |
+| Visual regression (8 halaman, dua tema, desktop dan HP) | Playwright `toHaveScreenshot()` di container resmi | `tests/visual`, `scripts/visual.sh` |
+| Performa (gate p95 upload dan baca, termasuk bug, versi, perbandingan, case, dan run manual) | k6 | `tests/perf` |
+| Mutation testing (domain, skor >= 80, mingguan) | StrykerJS | `apps/api/stryker.config.mjs`, `packages/shared/stryker.config.mjs`, `.github/workflows/mutation.yml` |
 | Security (0 temuan High) | OWASP ZAP, `pnpm audit`, Dependabot | `tests/security`, `.github/` |
 | Smoke production (`@smoke`, read-only; termasuk dashboard `/p/testpulse`) | Playwright | `tests/smoke` |
 
-Jumlah test per lapisan (snapshot per commit `e58be5f`, 2026-11-06; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-e58be5f-2026-11-06).
+Jumlah test per lapisan (snapshot per commit `178610a`, 2026-11-14; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-178610a-2026-11-14).
 
 ## Menjalankan secara lokal
 
@@ -213,6 +251,7 @@ pnpm --filter @testpulse/api exec vitest run --project unit --coverage   # unit 
 pnpm test:int                                    # integration (butuh Docker untuk Testcontainers)
 pnpm test:contract                               # contract: consumer (web, reporter) lalu provider (API); butuh Docker
 pnpm test:visual                                 # visual regression di container Playwright (butuh Docker dan stack Compose hidup); :update bila perubahan disengaja
+pnpm test:mutation                               # mutation testing (StrykerJS) shared lalu api; api sekitar 20 menit; gagal bila skor < 80
 ```
 
 Test API dan E2E berjalan terhadap stack yang sudah hidup. Cara paling mirip CI: jalankan Compose (Opsi A), lalu arahkan `BASE_URL` ke sana.
@@ -233,11 +272,11 @@ Tanpa `BASE_URL`, Playwright menyalakan `pnpm dev` sendiri (butuh Postgres seper
 **Performa (k6)**, terhadap stack Compose yang hidup (sama dengan job `perf` di [ci.yml](.github/workflows/ci.yml); image `grafana/k6` dijalankan di jaringan Compose):
 
 ```bash
-BASE_URL=http://localhost:8080 node tests/perf/setup.mjs      # user, project, token, 55 run berversi, dan 120 bug (state di tests/perf/.state, tidak masuk git)
+BASE_URL=http://localhost:8080 node tests/perf/setup.mjs      # user, project, token, 55 run berversi, 120 bug, 12 suite dengan 240 case manual, dan satu run manual 200 case (state di tests/perf/.state, tidak masuk git)
 mkdir -p perf-results
 docker run --rm --network testpulse_default -v "$PWD/tests/perf:/scripts:ro" -v "$PWD/perf-results:/results" \
   grafana/k6:1.3.0 run /scripts/ingest.js -e BASE_URL=http://web:8080 --summary-export /results/ingest-summary.json
-# ganti ingest.js dengan read.js untuk skenario baca (stats, runs, flaky, bugs, compare, compare?groups=none, versions)
+# ganti ingest.js dengan read.js untuk skenario baca (stats, runs, flaky, bugs, compare, compare?groups=none, versions, cases, manual-runs/:number, manual-runs/:number/cases)
 ```
 
 **OWASP ZAP baseline** (terhadap stack Compose yang hidup; sama dengan job `zap` di [ci.yml](.github/workflows/ci.yml)):
@@ -261,7 +300,7 @@ BASE_URL=https://<url-production> SMOKE_EMAIL=... SMOKE_PASSWORD=... SMOKE_PUBLI
 
 ```
 apps/
-  api/            Fastify + Drizzle; src/modules/{auth,projects,invitations,tokens,results,bugs}, test/{integration,contract}
+  api/            Fastify + Drizzle; src/modules/{auth,projects,invitations,tokens,results,bugs,manual}, test/{integration,contract}
   web/            React + Vite SPA; functions/ (Cloudflare Pages Function), test/{contract,functions}
 packages/
   shared/         Schema Zod, tipe, enum role, kode error
@@ -271,14 +310,14 @@ tests/
   e2e/ pages/     Playwright E2E dan Page Object Model
   visual/         Regresi visual (screenshot, baseline di __screenshots__); jalankan lewat pnpm test:visual (Docker)
   smoke/          Smoke test production (@smoke)
-  perf/           Skenario k6 (ingest, read) dan penyiapan datanya
+  perf/           Skenario k6 (ingest, read) dan penyiapan datanya (termasuk data manual)
   security/       Gate hasil ZAP
   support/        Fixtures, klien API, factory data, helper axe, gate CSP
   scripts/        Skrip bantu (screenshot dokumentasi), bukan test
 docs/
   TEST_STRATEGY.md   test-plans/   adr/   images/ (screenshot)   deploy.md   superpowers/ (spec dan rencana)
 .github/          Workflow CI dan deploy, Dependabot
-scripts/          visual.sh: menjalankan regresi visual di container Playwright resmi
+scripts/          visual.sh: regresi visual di container Playwright resmi; seed-dogfood-manual.mjs: test case manual TestPulse sendiri
 docker-compose.yml  render.yaml
 ```
 
@@ -289,6 +328,7 @@ Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy
 ## Keterbatasan yang diketahui
 
 - Render free tier tidur saat idle; request pertama bisa lambat sekitar 30 sampai 60 detik.
-- Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, atau mute test flaky; hanya 200 run terbaru per project yang disimpan. Tahap 3 tidak memuat notifikasi email, mention, lampiran bug (hanya link), integrasi GitHub Issues, atau perubahan status bug otomatis.
+- Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, atau mute test flaky; hanya 200 run terbaru per project yang disimpan. Tahap 3 tidak memuat notifikasi email, mention, lampiran bug (hanya link), integrasi GitHub Issues, atau perubahan status bug otomatis. Tahap 4 tidak memuat suite bertingkat, langkah bersama, case berparameter, riwayat versi case, impor/ekspor (CSV, TestRail), lampiran hasil, kloning atau penjadwalan run, atau perubahan status case otomatis dari hasil CI.
 - Unggahan diproses sinkron (ADR 0004): laporan sangat besar (mendekati 5 MB) memegang request lebih lama, terutama setelah cold start Render.
-- Hal yang sengaja tidak diuji (performa free tier, mutation testing, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).
+- Mutation testing hanya mencakup kode domain `apps/api` dan `packages/shared`, berjalan mingguan (bukan per push), dan laporan di Pages berasal dari run sukses terakhir; di `apps/api` ia memakai runner `command` sehingga satu run penuh sekitar 22 menit.
+- Hal yang sengaja tidak diuji (performa free tier, mutation testing untuk web dan reporter, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).

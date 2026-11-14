@@ -11,7 +11,7 @@ const VIEWPORTS = {
 
 /**
  * Toleransi per screenshot. Diukur: 5 run berturut-turut pada stack baru (docker compose down -v) menghasilkan selisih
- * 0 piksel di semua 76 screenshot, jadi batas di bawah hanya cadangan untuk beda sub-piksel antar mesin (mis. runner CI),
+ * 0 piksel di semua screenshot (76 pada Tahap 3), jadi batas di bawah hanya cadangan untuk beda sub-piksel antar mesin (mis. runner CI),
  * bukan untuk menyerap noise. Batas 1% di config hanya jaring pengaman: sendirian ia meloloskan perubahan kecil
  * (satu tombol, satu warna). `threshold` 0.1 menoleransi anti-aliasing, bukan perubahan warna.
  */

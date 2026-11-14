@@ -23,7 +23,7 @@ runs:
         done
         echo "Collected $(find allure-collect -type f | wc -l) files"
 
-    - uses: actions/upload-artifact@v4
+    - uses: actions/upload-artifact@v7
       with:
         name: allure-results-${{ inputs.name }}
         path: allure-collect

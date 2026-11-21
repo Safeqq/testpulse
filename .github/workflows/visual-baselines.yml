@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Start stack (docker compose)
         run: docker compose up -d --build --wait
@@ -28,7 +28,7 @@ jobs:
           bash scripts/visual.sh --update
 
       - name: Upload baselines
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-baselines
           path: tests/visual/__screenshots__

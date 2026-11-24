@@ -27,6 +27,7 @@ import { errorMessage, useDocumentTitle } from "@/lib/forms";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { useBugActivity } from "@/lib/useBugActivity";
 import { useLoad } from "@/lib/useLoad";
+import { BugCrowdOrigin } from "@/components/BugCrowdOrigin";
 import { BACK_LINK_CLASS, ProjectFrame } from "./ProjectFrame";
 
 const MAX_BUG_NUMBER = 2_147_483_647;
@@ -207,6 +208,7 @@ function BugView({ project, initial }: { project: ProjectDto; initial: BugDto })
             </>
           ) : null}
         </p>
+        {bug.crowdOrigin ? <BugCrowdOrigin slug={slug} origin={bug.crowdOrigin} isMember={project.myRole !== null} /> : null}
         <BugTitleEditor key={`title-${epoch}`} title={bug.title} canEdit={canWrite} headingRef={headingRef} onSave={save} />
         <div className="flex min-w-0 flex-wrap items-center gap-3">
           <span ref={statusRef} tabIndex={-1} className="outline-hidden" data-testid="bug-status">

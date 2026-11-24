@@ -3,9 +3,8 @@ import { FileSearch, Pencil, Undo2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CrowdComments } from "@/components/CrowdComments";
+import { CrowdReportContent } from "@/components/CrowdReportContent";
 import { EmptyState } from "@/components/EmptyState";
-import { ExternalLink } from "@/components/ExternalLink";
-import { LazyMarkdown } from "@/components/LazyMarkdown";
 import { LoadError } from "@/components/LoadError";
 import { Loading } from "@/components/Loading";
 import { SeverityBadge } from "@/components/SeverityBadge";
@@ -14,7 +13,7 @@ import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { BUG_SEVERITY_LABEL } from "@/lib/bugs";
 import { cyclePublicPath, REJECT_REASON_LABEL, REPORT_STATUS_LABEL, reportCode, reportPublicPath } from "@/lib/crowd";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { formatRelativeTime } from "@/lib/format";
 import { errorMessage, useDocumentTitle } from "@/lib/forms";
 import { useLoad } from "@/lib/useLoad";
 
@@ -137,58 +136,7 @@ function ReportView({ report, reload }: { report: CrowdReportDto; reload: () => 
         {error}
       </p>
 
-      <section aria-labelledby="report-steps-title" className="grid min-w-0 gap-2">
-        <h2 id="report-steps-title" className="text-lg font-semibold">
-          Langkah reproduksi
-        </h2>
-        <LazyMarkdown source={report.steps} />
-      </section>
-      <div className="grid min-w-0 gap-6 md:grid-cols-2">
-        <section aria-labelledby="report-expected-title" className="grid min-w-0 content-start gap-2">
-          <h2 id="report-expected-title" className="text-lg font-semibold">
-            Hasil yang diharapkan
-          </h2>
-          <LazyMarkdown source={report.expected} />
-        </section>
-        <section aria-labelledby="report-actual-title" className="grid min-w-0 content-start gap-2">
-          <h2 id="report-actual-title" className="text-lg font-semibold">
-            Hasil yang terjadi
-          </h2>
-          <LazyMarkdown source={report.actual} />
-        </section>
-      </div>
-      <p className="m-0 text-sm [overflow-wrap:anywhere]">
-        <span className="font-medium">Lingkungan:</span> {report.environment}
-      </p>
-      {report.links.length > 0 ? (
-        <section aria-labelledby="report-links-title" className="grid min-w-0 gap-2">
-          <h2 id="report-links-title" className="text-lg font-semibold">
-            Link bukti
-          </h2>
-          <ul className="m-0 grid list-none gap-2 p-0">
-            {report.links.map((link, i) => (
-              <li key={i} className="min-w-0">
-                <ExternalLink href={link.url} label={link.title ?? link.url} />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section aria-labelledby="report-timeline-title" className="grid min-w-0 gap-2">
-        <h2 id="report-timeline-title" className="text-lg font-semibold">
-          Riwayat
-        </h2>
-        <ol className="m-0 grid list-none gap-1 p-0 text-sm" data-testid="report-timeline">
-          {report.events.map((event) => (
-            <li key={event.id} className="[overflow-wrap:anywhere]">
-              <span className="font-medium">{event.actor.name}</span>{" "}
-              {event.fromStatus === null ? "mengirim laporan" : `mengubah status menjadi ${REPORT_STATUS_LABEL[event.toStatus]}`}
-              <span className="text-muted-foreground"> · {formatDateTime(event.createdAt)}</span>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <CrowdReportContent report={report} />
 
       <CrowdComments load={loadComments} add={addComment} remove={removeComment} currentUserId={user?.id ?? null} canWrite />
     </article>

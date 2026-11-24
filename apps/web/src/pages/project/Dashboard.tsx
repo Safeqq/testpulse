@@ -16,6 +16,7 @@ import { useCompareSummary } from "@/lib/useCompareSummary";
 import { useLoad } from "@/lib/useLoad";
 import { CompareSummaryCard } from "./CompareSummary";
 import { preloadPages } from "./lazyPages";
+import { CrowdCard } from "./CrowdCard";
 import { ManualCard } from "./ManualCard";
 
 const RECENT_RUNS = 5;
@@ -27,10 +28,12 @@ const LINK_CLASS =
 interface DashboardProps {
   slug: string;
   branch: string;
+  /** Kartu Crowdtesting hanya untuk anggota (data laporan tidak publik). */
+  isMember: boolean;
 }
 
 /** Ringkasan hasil test satu branch: kartu angka, tren, run terbaru, dan test paling flaky. */
-export function Dashboard({ slug, branch }: DashboardProps) {
+export function Dashboard({ slug, branch, isMember }: DashboardProps) {
   // Tujuan "Lihat semua" dan tautan item: unduh chunk-nya selagi pengguna membaca dashboard.
   useEffect(() => preloadPages("runs", "run", "flaky", "test", "compare"), []);
   // key: pindah branch memulai muat baru dengan status loading, bukan menampilkan angka branch sebelumnya.
@@ -39,6 +42,7 @@ export function Dashboard({ slug, branch }: DashboardProps) {
     <>
       <BranchSummary key={branch} slug={slug} branch={branch} />
       <ManualCard slug={slug} />
+      <CrowdCard slug={slug} isMember={isMember} />
     </>
   );
 }

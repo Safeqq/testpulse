@@ -11,6 +11,7 @@ import { api } from "@/lib/api";
 import { curlExample } from "@/lib/ingest";
 import { useLoad } from "@/lib/useLoad";
 import { BranchFilter } from "./BranchFilter";
+import { CrowdCard } from "./CrowdCard";
 import { ManualCard } from "./ManualCard";
 
 // Dashboard (grafik + kartu) dipecah ke chunk sendiri agar bundle utama tidak bertambah; baru diunduh bila project punya run.
@@ -47,11 +48,12 @@ export function ProjectResults({ project }: { project: ProjectDto }) {
           <SetupInstructions project={project} />
         )}
         <ManualCard slug={slug} />
+        <CrowdCard slug={slug} isMember={project.myRole !== null} />
       </div>
     );
   }
 
-  return <BranchDashboard slug={slug} branches={load.data} />;
+  return <BranchDashboard slug={slug} branches={load.data} isMember={project.myRole !== null} />;
 }
 
 /** Default `main` bila ada; jika tidak, branch run terbaru (API mengurutkan branch dari yang terbaru). */
@@ -65,7 +67,7 @@ export function defaultBranch(branches: BranchDto[]): string {
  * Suspense, WebKit mengarahkan event itu ke document sehingga artefaknya tak lagi bisa dibedakan dari pelanggaran asli.
  * Branch terpilih disimpan di `?branch=` (seperti Run, Versi, Flaky) agar tab project membawanya ke halaman lain.
  */
-function BranchDashboard({ slug, branches }: { slug: string; branches: BranchDto[] }) {
+function BranchDashboard({ slug, branches, isMember }: { slug: string; branches: BranchDto[]; isMember: boolean }) {
   const [params, setParams] = useSearchParams();
   const branch = params.get("branch") || defaultBranch(branches);
   const setBranch = (next: string) => setParams({ branch: next }, { replace: true });
@@ -80,7 +82,7 @@ function BranchDashboard({ slug, branches }: { slug: string; branches: BranchDto
       />
       <ChunkErrorBoundary>
         <Suspense fallback={<Loading label="Memuat dashboard…" />}>
-          <Dashboard slug={slug} branch={branch} />
+          <Dashboard slug={slug} branch={branch} isMember={isMember} />
         </Suspense>
       </ChunkErrorBoundary>
     </div>

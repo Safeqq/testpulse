@@ -20,6 +20,7 @@ const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage 
 const loadCyclesPage = () => import("./CyclesPage").then((m) => ({ default: m.CyclesPage }));
 const loadCycleFormPage = () => import("./CycleFormPage").then((m) => ({ default: m.CycleFormPage }));
 const loadCyclePage = () => import("./CyclePage").then((m) => ({ default: m.CyclePage }));
+const loadCrowdTriagePage = () => import("./CrowdTriagePage").then((m) => ({ default: m.CrowdTriagePage }));
 
 export const RunsPage = lazy(loadRunsPage);
 export const RunPage = lazy(loadRunPage);
@@ -40,6 +41,7 @@ export const VersionsPage = lazy(loadVersionsPage);
 export const CyclesPage = lazy(loadCyclesPage);
 export const CycleFormPage = lazy(loadCycleFormPage);
 export const CyclePage = lazy(loadCyclePage);
+export const CrowdTriagePage = lazy(loadCrowdTriagePage);
 
 const LOADERS = {
   runs: loadRunsPage,
@@ -61,6 +63,7 @@ const LOADERS = {
   cycles: loadCyclesPage,
   cycleForm: loadCycleFormPage,
   cycle: loadCyclePage,
+  crowdTriage: loadCrowdTriagePage,
 };
 
 /**

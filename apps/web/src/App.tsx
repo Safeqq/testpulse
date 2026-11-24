@@ -19,6 +19,7 @@ import {
   CasePage,
   CasesPage,
   ComparePage,
+  CrowdTriagePage,
   CycleFormPage,
   CyclePage,
   CyclesPage,
@@ -101,6 +102,7 @@ export function App() {
           <Route path="/p/:slug/cycles/new" element={<CycleFormPage />} />
           <Route path="/p/:slug/cycles/:number" element={<CyclePage />} />
           <Route path="/p/:slug/cycles/:number/edit" element={<CycleFormPage />} />
+          <Route path="/p/:slug/crowd-reports/:number" element={<CrowdTriagePage />} />
           <Route path="/p/:slug/bugs" element={<BugsPage />} />
           <Route path="/p/:slug/bugs/new" element={<BugNewPage />} />
           <Route path="/p/:slug/bugs/:number" element={<BugPage />} />

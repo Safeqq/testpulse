@@ -70,6 +70,26 @@ const matrix: Record<ProjectAction, AccessDecision[]> = {
     "allow",
   ],
   "manual:delete": manage,
+  // Data laporan & peserta crowd hanya untuk anggota, juga di project publik (spec Tahap 5 §8.1).
+  "crowd:read": [
+    "unauthenticated",
+    "unauthenticated",
+    "not_found",
+    "forbidden",
+    "allow",
+    "allow",
+    "allow",
+  ],
+  "crowd:triage": [
+    "unauthenticated",
+    "unauthenticated",
+    "not_found",
+    "forbidden",
+    "forbidden",
+    "allow",
+    "allow",
+  ],
+  "crowd:manage": manage,
 };
 
 describe("decideAccess", () => {

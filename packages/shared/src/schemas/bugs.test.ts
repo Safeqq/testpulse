@@ -261,6 +261,7 @@ describe("DTO bug", () => {
     closedAt: null,
     testHint: null,
     manualOrigin: null,
+    crowdOrigin: null,
   };
 
   it("bugDto menerima detail tanpa test asal", () => expect(ok(bugDto, detail)).toBe(true));

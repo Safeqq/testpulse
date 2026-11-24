@@ -11,7 +11,10 @@ export type ProjectAction =
   | "bugs:write"
   | "bugs:delete"
   | "manual:write"
-  | "manual:delete";
+  | "manual:delete"
+  | "crowd:read"
+  | "crowd:triage"
+  | "crowd:manage";
 
 export type AccessDecision = "allow" | "unauthenticated" | "not_found" | "forbidden";
 
@@ -22,9 +25,14 @@ type AccessContext = {
 };
 
 // Aksi yang boleh dilakukan viewer ke atas.
-const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set(["project:read", "members:read"]);
+const READ_ACTIONS: ReadonlySet<ProjectAction> = new Set(["project:read", "members:read", "crowd:read"]);
 // Aksi yang boleh dilakukan tester ke atas; sisanya khusus admin.
-const TESTER_ACTIONS: ReadonlySet<ProjectAction> = new Set(["runs:delete", "bugs:write", "manual:write"]);
+const TESTER_ACTIONS: ReadonlySet<ProjectAction> = new Set([
+  "runs:delete",
+  "bugs:write",
+  "manual:write",
+  "crowd:triage",
+]);
 
 export function decideAccess(action: ProjectAction, ctx: AccessContext): AccessDecision {
   const { authenticated, visibility, role } = ctx;

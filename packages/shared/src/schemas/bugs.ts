@@ -20,8 +20,8 @@ export function stripControlChars(value: string): string {
   return out;
 }
 
-const CONTROL_CHARS_MESSAGE = "Teks tidak boleh mengandung karakter kontrol";
-const noControlChars = (value: string) => !hasControlChars(value);
+export const CONTROL_CHARS_MESSAGE = "Teks tidak boleh mengandung karakter kontrol";
+export const noControlChars = (value: string) => !hasControlChars(value);
 
 export const BUG_STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
 export type BugStatus = (typeof BUG_STATUSES)[number];
@@ -50,7 +50,7 @@ const bugLabels = z
   .max(10, "Maksimal 10 label")
   .refine((labels) => new Set(labels).size === labels.length, "Label tidak boleh duplikat");
 
-const bugUrl = z
+export const bugUrl = z
   .string()
   .max(2000, "URL maksimal 2000 karakter")
   .refine((v) => {
@@ -220,6 +220,15 @@ export const bugDto = bugSummaryDto.extend({
       caseNumber: z.number(),
       caseTitle: z.string(),
       runCaseId: z.string(),
+    })
+    .nullable(),
+  // Asal bug dari laporan crowdtesting yang diterima (spec Tahap 5 §8.3); `null` bila tidak berasal dari sana.
+  crowdOrigin: z
+    .object({
+      cycleNumber: z.number(),
+      cycleTitle: z.string(),
+      reportNumber: z.number(),
+      reporterName: z.string(),
     })
     .nullable(),
 });

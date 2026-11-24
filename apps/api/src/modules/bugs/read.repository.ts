@@ -204,6 +204,8 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
             runCaseId: row.originRunCaseId,
           }
         : null,
+    // Diisi dari laporan crowd yang diterima setelah tabel crowd ada (spec Tahap 5 §8.3).
+    crowdOrigin: null,
   };
 }
 

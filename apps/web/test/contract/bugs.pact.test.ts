@@ -66,6 +66,7 @@ const bugDetail = {
   closedAt: null,
   // Bug ini tidak berasal dari run case manual (Tahap 4 §5.4).
   manualOrigin: null,
+  crowdOrigin: null,
   testHint: {
     branch: text("main"),
     results: eachLike({

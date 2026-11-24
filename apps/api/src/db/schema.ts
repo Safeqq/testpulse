@@ -1,4 +1,13 @@
-import type { CasePriority, CaseStep, StepResult } from "@testpulse/shared";
+import type {
+  CasePriority,
+  CaseStep,
+  CrowdReportStatus,
+  CrowdSeverity,
+  CycleStatus,
+  ParticipantStatus,
+  RejectReason,
+  StepResult,
+} from "@testpulse/shared";
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
@@ -52,6 +61,9 @@ export const projects = pgTable(
     // Penghitung nomor TC-<n> dan TR-<n> (spec Tahap 4 §6): dinaikkan di dalam transaksi pembuatan, tidak pernah dipakai ulang.
     caseSeq: integer("case_seq").notNull().default(0),
     manualRunSeq: integer("manual_run_seq").notNull().default(0),
+    // Penghitung nomor CY-<n> dan CR-<n> per project (spec Tahap 5 §7).
+    cycleSeq: integer("cycle_seq").notNull().default(0),
+    crowdReportSeq: integer("crowd_report_seq").notNull().default(0),
   },
   (t) => [check("projects_visibility_check", sql`${t.visibility} in ('private', 'public')`)],
 );
@@ -203,6 +215,8 @@ export const bugs = pgTable(
     // Asal manual (spec Tahap 4 §6): run case tempat bug ditemukan. `manualRunCases` dideklarasikan setelah `bugs`
     // (dan merujuk balik ke tabel lain), jadi tipe referensinya dieksplisitkan dengan `AnyPgColumn`.
     manualRunCaseId: uuid("manual_run_case_id").references((): AnyPgColumn => manualRunCases.id, { onDelete: "set null" }),
+    // Asal crowd (spec Tahap 5 §5.3): laporan yang diterima menjadi bug ini; tautan baliknya `crowd_reports.bug_id`.
+    crowdReportId: uuid("crowd_report_id").references((): AnyPgColumn => crowdReports.id, { onDelete: "set null" }),
     // Penghitung konkurensi optimistis (409 BUG_CONFLICT), bukan versi aplikasi.
     version: integer("version").notNull().default(1),
     createdAt: createdAt(),
@@ -229,6 +243,8 @@ export const bugs = pgTable(
     index("bugs_manual_run_case_open_idx")
       .on(t.manualRunCaseId)
       .where(sql`${t.status} <> 'closed'`),
+    // FK `ON DELETE SET NULL` dari `crowd_reports` (pelajaran Tahap 4: indeks penuh, bukan parsial).
+    index("bugs_crowd_report_idx").on(t.crowdReportId),
     check("bugs_status_check", sql`${t.status} in ('open', 'in_progress', 'resolved', 'closed')`),
     check(
       "bugs_resolution_check",
@@ -445,4 +461,219 @@ export const manualRunCases = pgTable(
     index("manual_run_cases_case_idx").on(t.caseId),
     check("manual_run_cases_status_check", sql`${t.status} in ('untested', 'passed', 'failed', 'blocked', 'skipped')`),
   ],
+);
+
+// --- Crowdtesting (spec Tahap 5 §7) ---------------------------------------------------------------------------
+// Urutan kunci di repository: project → cycle → peserta → laporan.
+
+export const crowdCycles = pgTable(
+  "crowd_cycles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    // Nomor CY-<n> dari `projects.cycle_seq`.
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull().default(""),
+    instructions: text("instructions").notNull().default(""),
+    inScope: text("in_scope").notNull().default(""),
+    outOfScope: text("out_of_scope").notNull().default(""),
+    appVersion: text("app_version"),
+    status: text("status").$type<CycleStatus>().notNull().default("draft"),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    // Penghitung konkurensi optimistis (409 CYCLE_CONFLICT).
+    version: integer("version").notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique("crowd_cycles_project_number_unique").on(t.projectId, t.number),
+    // Direktori publik: cycle non-draft, urut dibuka terbaru.
+    index("crowd_cycles_status_opened_idx").on(t.status, sql`${t.openedAt} desc`),
+    index("crowd_cycles_project_created_idx").on(t.projectId, sql`${t.createdAt} desc`),
+    check("crowd_cycles_status_check", sql`${t.status} in ('draft', 'open', 'closed')`),
+  ],
+);
+
+export const crowdCycleLinks = pgTable(
+  "crowd_cycle_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    cycleId: uuid("cycle_id")
+      .notNull()
+      .references(() => crowdCycles.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    url: text("url").notNull(),
+    label: text("label").notNull(),
+  },
+  (t) => [index("crowd_cycle_links_cycle_position_idx").on(t.cycleId, t.position)],
+);
+
+export const crowdCycleEnvironments = pgTable(
+  "crowd_cycle_environments",
+  {
+    cycleId: uuid("cycle_id")
+      .notNull()
+      .references(() => crowdCycles.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    label: text("label").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cycleId, t.position] }),
+    uniqueIndex("crowd_cycle_environments_cycle_label_unique").on(t.cycleId, sql`lower(${t.label})`),
+  ],
+);
+
+export const crowdParticipants = pgTable(
+  "crowd_participants",
+  {
+    cycleId: uuid("cycle_id")
+      .notNull()
+      .references(() => crowdCycles.id, { onDelete: "cascade" }),
+    // Tanpa cascade: menghapus pengguna bukan fitur; laporan dan poinnya tetap milik pengguna itu.
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    status: text("status").$type<ParticipantStatus>().notNull().default("active"),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+    rulesAcceptedAt: timestamp("rules_accepted_at", { withTimezone: true }).notNull().defaultNow(),
+    leftAt: timestamp("left_at", { withTimezone: true }),
+    removedAt: timestamp("removed_at", { withTimezone: true }),
+    removedBy: uuid("removed_by").references(() => users.id, { onDelete: "set null" }),
+    removalReason: text("removal_reason"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.cycleId, t.userId] }),
+    index("crowd_participants_user_idx").on(t.userId),
+    index("crowd_participants_removed_by_idx").on(t.removedBy),
+    check("crowd_participants_status_check", sql`${t.status} in ('active', 'left', 'removed')`),
+  ],
+);
+
+export const crowdReports = pgTable(
+  "crowd_reports",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    cycleId: uuid("cycle_id")
+      .notNull()
+      .references(() => crowdCycles.id, { onDelete: "cascade" }),
+    // Nomor CR-<n> dari `projects.crowd_report_seq`.
+    number: integer("number").notNull(),
+    reporterId: uuid("reporter_id")
+      .notNull()
+      .references(() => users.id),
+    title: text("title").notNull(),
+    steps: text("steps").notNull(),
+    expected: text("expected").notNull(),
+    actual: text("actual").notNull(),
+    environment: text("environment").notNull(),
+    suggestedSeverity: text("suggested_severity").$type<CrowdSeverity>().notNull(),
+    status: text("status").$type<CrowdReportStatus>().notNull().default("submitted"),
+    // Hasil triase (spec §5.3). Poin dikunci saat diterima.
+    finalSeverity: text("final_severity").$type<CrowdSeverity>(),
+    points: integer("points").notNull().default(0),
+    rejectReason: text("reject_reason").$type<RejectReason>(),
+    triageNote: text("triage_note"),
+    duplicateOfId: uuid("duplicate_of_id").references((): AnyPgColumn => crowdReports.id, { onDelete: "set null" }),
+    bugId: uuid("bug_id").references((): AnyPgColumn => bugs.id, { onDelete: "set null" }),
+    hideFromKnownIssues: boolean("hide_from_known_issues").notNull().default(false),
+    triagedBy: uuid("triaged_by").references(() => users.id, { onDelete: "set null" }),
+    triagedAt: timestamp("triaged_at", { withTimezone: true }),
+    // Penghitung konkurensi optimistis (409 REPORT_CONFLICT).
+    version: integer("version").notNull().default(1),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique("crowd_reports_project_number_unique").on(t.projectId, t.number),
+    // Antrian triase per cycle & status.
+    index("crowd_reports_cycle_status_submitted_idx").on(t.cycleId, t.status, t.submittedAt),
+    // Batas harian & profil per pelapor.
+    index("crowd_reports_reporter_submitted_idx").on(t.reporterId, sql`${t.submittedAt} desc`),
+    // Batas per cycle per pelapor.
+    index("crowd_reports_cycle_reporter_status_idx").on(t.cycleId, t.reporterId, t.status),
+    // Leaderboard: hanya laporan diterima.
+    index("crowd_reports_accepted_reporter_idx")
+      .on(t.reporterId)
+      .where(sql`${t.status} = 'accepted'`),
+    // FK `ON DELETE SET NULL` (pelajaran Tahap 4: indeks penuh).
+    index("crowd_reports_duplicate_of_idx").on(t.duplicateOfId),
+    index("crowd_reports_bug_idx").on(t.bugId),
+    index("crowd_reports_triaged_by_idx").on(t.triagedBy),
+    check(
+      "crowd_reports_status_check",
+      sql`${t.status} in ('submitted', 'accepted', 'rejected', 'duplicate', 'withdrawn')`,
+    ),
+    check(
+      "crowd_reports_suggested_severity_check",
+      sql`${t.suggestedSeverity} in ('minor', 'major', 'critical', 'blocker')`,
+    ),
+    check(
+      "crowd_reports_final_severity_check",
+      sql`${t.finalSeverity} is null or ${t.finalSeverity} in ('minor', 'major', 'critical', 'blocker')`,
+    ),
+    check(
+      "crowd_reports_reject_reason_check",
+      sql`${t.rejectReason} is null or ${t.rejectReason} in ('not_reproducible', 'out_of_scope', 'not_a_bug', 'insufficient_info', 'other')`,
+    ),
+  ],
+);
+
+export const crowdReportLinks = pgTable(
+  "crowd_report_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => crowdReports.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    url: text("url").notNull(),
+    title: text("title"),
+  },
+  (t) => [index("crowd_report_links_report_position_idx").on(t.reportId, t.position)],
+);
+
+export const crowdReportEvents = pgTable(
+  "crowd_report_events",
+  {
+    id: bigserial("id", { mode: "bigint" }).primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => crowdReports.id, { onDelete: "cascade" }),
+    actorId: uuid("actor_id")
+      .notNull()
+      .references(() => users.id),
+    fromStatus: text("from_status").$type<CrowdReportStatus>(),
+    toStatus: text("to_status").$type<CrowdReportStatus>().notNull(),
+    detail: text("detail"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("crowd_report_events_report_created_idx").on(t.reportId, t.createdAt)],
+);
+
+export const crowdReportComments = pgTable(
+  "crowd_report_comments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => crowdReports.id, { onDelete: "cascade" }),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => users.id),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [index("crowd_report_comments_report_created_idx").on(t.reportId, t.createdAt)],
 );

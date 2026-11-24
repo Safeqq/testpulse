@@ -50,6 +50,13 @@
       "when": 1794641579144,
       "tag": "0006_thick_christian_walker",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795492636230,
+      "tag": "0007_exotic_calypso",
+      "breakpoints": true
     }
   ]
 }

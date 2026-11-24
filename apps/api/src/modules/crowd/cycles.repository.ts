@@ -229,7 +229,10 @@ export async function updateCycle(
     if (!row) return "not_found";
     if (row.version !== body.version) return "conflict";
 
-    if (body.endsAt != null && !inFuture(body.endsAt, now)) return { field: "endsAt" };
+    // Spec §3.1: endsAt harus di masa depan saat diisi atau diubah; nilai yang sama dengan yang tersimpan bukan perubahan,
+    // jadi isi cycle yang sudah lewat endsAt tetap bisa diedit (spec §3.2).
+    const endsAtUnchanged = body.endsAt != null && row.endsAt !== null && Date.parse(body.endsAt) === row.endsAt.getTime();
+    if (body.endsAt != null && !endsAtUnchanged && !inFuture(body.endsAt, now)) return { field: "endsAt" };
     const endsAt = body.endsAt === undefined ? row.endsAt : body.endsAt === null ? null : new Date(body.endsAt);
 
     const changes: CycleChanges = {};

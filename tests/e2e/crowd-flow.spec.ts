@@ -134,6 +134,48 @@ test.describe("Crowdtesting: alur lengkap", () => {
     await expect(page.getByTestId("triage-result")).toContainText("Login gagal");
   });
 
+  // Final review Important 2: nomor laporan asli di luar halaman pertama kandidat tetap bisa dicari.
+  test("duplikat: cari nomor laporan asli lama di cycle dengan lebih dari 50 laporan diterima", async ({ api, signedInPage }) => {
+    test.setTimeout(120_000);
+    const seed = await seedCrowd(api);
+    const cycle = seed.cycles[0]!;
+    const testers = [await joinedTester(api, cycle), await joinedTester(api, cycle)];
+    for (let i = 0; i < 52; i++) {
+      const r = await api.submitCrowdReport(testers[i % 2]!, cycle.id, crowdReportBody({ title: `Laporan diterima ${i + 1}` }));
+      await api.triage(seed.owner, seed.project.slug, r.number, { version: r.version, decision: "accept" });
+    }
+    await api.submitCrowdReport(testers[0]!, cycle.id, crowdReportBody({ title: "Laporan kembar dari yang pertama" }));
+
+    const { page } = await signedInPage(seed.owner);
+    await page.goto(triagePath(seed.project.slug, 53));
+    await page.getByTestId("triage-duplicate").click();
+    await page.getByTestId("triage-duplicate-search").fill("1");
+    await expect(page.getByTestId("triage-duplicate-option-1")).toBeVisible();
+    await page.getByTestId("triage-duplicate-option-1").check();
+    await page.getByTestId("triage-save").click();
+    await expect(page.getByTestId("triage-status")).toHaveText("Duplikat");
+    await expect(page.getByTestId("triage-result")).toContainText("Laporan diterima 1");
+  });
+
+  // Final review Minor 6 (dinaikkan): Enter di kotak cari duplikat tidak boleh menyimpan keputusan.
+  test("Enter di kotak cari duplikat tidak menyimpan keputusan triase", async ({ api, signedInPage }) => {
+    const seed = await seedCrowd(api);
+    const cycle = seed.cycles[0]!;
+    const tester = await joinedTester(api, cycle);
+    await api.submitCrowdReport(tester, cycle.id, crowdReportBody({ title: "Laporan asli" }));
+    await api.submitCrowdReport(tester, cycle.id, crowdReportBody({ title: "Laporan kedua" }));
+
+    const { page } = await signedInPage(seed.owner);
+    await page.goto(triagePath(seed.project.slug, 2));
+    await page.getByTestId("triage-duplicate").click();
+    await page.getByTestId("triage-duplicate-option-1").check();
+    await page.getByTestId("triage-duplicate-search").fill("asli");
+    await page.getByTestId("triage-duplicate-search").press("Enter");
+    await expect(page.getByTestId("triage-duplicate-option-1")).toBeVisible();
+    await expect(page.getByTestId("triage-status")).toHaveText("Dikirim");
+    await expect(page.getByTestId("triage-save")).toBeVisible();
+  });
+
   test("komentar dua arah dan Simpan & berikutnya", async ({ api, signedInPage }) => {
     const seed = await seedCrowd(api);
     const cycle = seed.cycles[0]!;

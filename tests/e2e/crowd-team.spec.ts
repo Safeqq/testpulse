@@ -94,6 +94,22 @@ test.describe("Crowdtesting tim: daftar dan form cycle", () => {
     await expectNoA11yViolationsInBothThemes(page);
   });
 
+  // Final review Important 1: cycle yang sudah lewat endsAt tetap bisa diedit tanpa menyentuh endsAt.
+  test("mengubah judul cycle yang sudah lewat waktu berakhirnya → tersimpan, tetap selesai", async ({ api, signedInPage }) => {
+    const seed = await seedCrowd(api, { titles: [] });
+    const endsAt = new Date(Date.now() + 3_000).toISOString();
+    const cycle = await api.createOpenCycle(seed.owner, seed.project.slug, cycleBody({ title: "Cycle singkat", endsAt }));
+    const { page } = await signedInPage(seed.owner);
+    await page.waitForTimeout(Math.max(0, Date.parse(endsAt) - Date.now() + 500));
+    await page.goto(`${cyclesPath(seed.project.slug)}/${cycle.number}/edit`);
+    await expect(page.getByTestId("cycle-title")).toHaveValue("Cycle singkat");
+    await page.getByTestId("cycle-title").fill("Cycle singkat (diperbaiki)");
+    await page.getByTestId("cycle-save").click();
+    await expect(page).toHaveURL(new RegExp(`${cyclesPath(seed.project.slug)}/${cycle.number}$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Cycle singkat (diperbaiki)" })).toBeVisible();
+    await expect(page.getByTestId("cycle-status")).toContainText("Selesai");
+  });
+
   test("bentrok dua tab saat mengubah cycle → banner, isian tetap", async ({ api, signedInPage }) => {
     const seed = await seedCrowd(api);
     const edit = `${cyclesPath(seed.project.slug)}/1/edit`;

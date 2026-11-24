@@ -126,6 +126,31 @@ describe("API tim crowdtesting: cycle, peserta, leaderboard, ringkasan", () => {
       expect(ok.statusCode, ok.body).toBe(200);
     });
 
+    // Final review Important 1: mengedit isi cycle yang sudah lewat endsAt tidak boleh ditolak karena endsAt yang tidak diubah.
+    it("mengubah isi cycle yang endsAt-nya sudah lewat dengan endsAt yang sama → 200, endsAt dan status efektif tetap", async () => {
+      const fx = await setupCrowdProject(app);
+      const cycle = await createCycle(app, fx, { open: true, body: { endsAt: inDays(1) } });
+      await app.db.execute(`update crowd_cycles set ends_at = now() - interval '1 hour' where id = '${cycle.id}'`);
+      const expired = teamCycleDto.parse((await teamRequest(app, "GET", fx, "/cycles/1", fx.admin.cookie)).json());
+      const res = await teamRequest(app, "PATCH", fx, "/cycles/1", fx.admin.cookie, {
+        version: expired.version,
+        title: "Judul diperbaiki",
+        endsAt: expired.endsAt,
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      expect(teamCycleDto.parse(res.json())).toMatchObject({ title: "Judul diperbaiki", endsAt: expired.endsAt, effectiveStatus: "closed" });
+      // Nilai lampau yang berbeda tetap ditolak.
+      expectError(
+        await teamRequest(app, "PATCH", fx, "/cycles/1", fx.admin.cookie, {
+          version: expired.version + 1,
+          endsAt: new Date(Date.parse(expired.endsAt!) - 60_000).toISOString(),
+        }),
+        400,
+        "VALIDATION_ERROR",
+        "endsAt",
+      );
+    });
+
     it("status efektif: open dengan endsAt lewat dibaca sebagai closed", async () => {
       const fx = await setupCrowdProject(app);
       const cycle = await createCycle(app, fx, { open: true, body: { endsAt: inDays(1) } });

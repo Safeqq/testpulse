@@ -52,6 +52,8 @@ test.describe("Landing page", () => {
   test("link kualitas punya href persis dan dibuka aman di tab baru", async ({ page }) => {
     const landing = new LandingPage(page);
     await landing.goto();
+    // Skor mutation sama dengan snapshot di docs/TEST_STRATEGY.md (final review: klaim 100% untuk api tidak lagi benar).
+    await expect(landing.quality).toContainText("Mutation score kode domain (gate 80%): 100% di packages/shared dan 97,71% di apps/api");
 
     for (const [name, href] of Object.entries(QUALITY_LINKS) as Array<[QualityLink, string]>) {
       const link = landing.qualityLink(name);

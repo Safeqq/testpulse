@@ -86,8 +86,8 @@ export function Quality() {
               ))}
             </dl>
             <p className="mt-3 text-xs text-muted-foreground">
-              Mutation score kode domain: 100% di <code className="font-mono">apps/api</code> dan{" "}
-              <code className="font-mono">packages/shared</code>; mutan setara yang dikecualikan dicatat satu per satu.
+              Mutation score kode domain (gate 80%): 100% di <code className="font-mono">packages/shared</code> dan 97,71% di{" "}
+              <code className="font-mono">apps/api</code>; mutan setara yang dikecualikan dicatat satu per satu.
             </p>
             <p className="mt-3 text-xs text-muted-foreground">
               Snapshot per commit {SNAPSHOT.commit}, {SNAPSHOT.date}; akan bergeser seiring pengembangan. Angka

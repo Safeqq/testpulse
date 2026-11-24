@@ -373,8 +373,11 @@ function DecisionForm({ slug, report, onSaved, onConflict }: ActionProps) {
 }
 
 /** Kandidat duplikat yang sah: cycle yang sama, dikirim lebih dulu, bukan dirinya, berstatus dikirim atau diterima. */
-function isCandidate(item: CrowdReportListItemDto, report: TeamCrowdReportDto): boolean {
+type Candidate = Pick<CrowdReportListItemDto, "id" | "number" | "title" | "status" | "submittedAt">;
+
+function isCandidate(item: Candidate, report: TeamCrowdReportDto): boolean {
   if (item.id === report.id) return false;
+  if (item.status !== "submitted" && item.status !== "accepted") return false;
   const a = Date.parse(item.submittedAt);
   const b = Date.parse(report.submittedAt);
   return a < b || (a === b && item.number < report.number);
@@ -403,23 +406,36 @@ function DuplicatePicker({
   }, [q]);
   const byNumber = /^\d+$/.test(term);
   const load = useLoad(
-    useCallback(async () => {
-      const query = byNumber || term === "" ? {} : { q: term };
+    useCallback(async (): Promise<Candidate[]> => {
+      // Nomor: ambil laporan itu langsung, supaya laporan asli lama di luar halaman pertama daftar tetap ditemukan.
+      if (byNumber) {
+        try {
+          const found = await api.crowdReports.get(slug, Number(term));
+          return found.cycle.number === report.cycle.number && isCandidate(found, report) ? [found] : [];
+        } catch (err) {
+          if (err instanceof ApiError && err.status === 404) return [];
+          throw err;
+        }
+      }
+      const query = term === "" ? {} : { q: term };
       const [submitted, accepted] = await Promise.all([
         api.cycles.reports(slug, report.cycle.number, { status: "submitted", ...query }),
         api.cycles.reports(slug, report.cycle.number, { status: "accepted", ...query }),
       ]);
-      return [...accepted.items, ...submitted.items]
-        .filter((item) => isCandidate(item, report))
-        .filter((item) => !byNumber || String(item.number).startsWith(term))
-        .sort((x, y) => x.number - y.number);
+      return [...accepted.items, ...submitted.items].filter((item) => isCandidate(item, report)).sort((x, y) => x.number - y.number);
     }, [slug, report, term, byNumber]),
   );
 
   return (
     <div className="grid min-w-0 gap-2">
       <Label htmlFor={searchId}>Cari laporan asli (nomor atau judul)</Label>
-      <Input id={searchId} type="search" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)} data-testid="triage-duplicate-search" />
+      <Input id={searchId} type="search" value={q} maxLength={100} onChange={(e) => setQ(e.target.value)}
+        // Enter di kotak cari tidak boleh mengirim form keputusan (implicit submission).
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+        data-testid="triage-duplicate-search"
+      />
       <p className="m-0 text-sm text-muted-foreground">Hanya laporan di cycle ini yang dikirim lebih dulu dan berstatus Dikirim atau Diterima.</p>
       {load.state === "loading" ? <Loading label="Mencari laporan…" /> : null}
       {load.state === "error" ? <LoadError error={load.error} fallback="Gagal mencari laporan. Coba lagi." onRetry={load.reload} /> : null}

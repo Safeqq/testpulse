@@ -155,7 +155,14 @@ function CycleForm({
       outOfScope: draft.outOfScope,
       environments: draft.environments,
       appVersion: draft.appVersion.trim() === "" ? null : draft.appVersion.trim(),
-      endsAt: draft.endsAt === "" ? null : new Date(draft.endsAt).toISOString(),
+      // `datetime-local` membuang detik: bila kolom tidak diubah, kirim nilai tersimpan apa adanya agar cycle yang sudah
+      // lewat waktu berakhirnya tetap bisa diedit (server hanya menolak endsAt lampau yang diubah).
+      endsAt:
+        existing && draft.endsAt === toLocalInput(existing.endsAt)
+          ? existing.endsAt
+          : draft.endsAt === ""
+            ? null
+            : new Date(draft.endsAt).toISOString(),
     };
     const parsed = createCycleBody.safeParse(body);
     if (!parsed.success) {

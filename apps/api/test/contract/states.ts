@@ -9,6 +9,13 @@ import {
   bugLinks,
   bugs,
   caseSuites,
+  crowdCycleEnvironments,
+  crowdCycleLinks,
+  crowdCycles,
+  crowdParticipants,
+  crowdReportComments,
+  crowdReportEvents,
+  crowdReports,
   invitations,
   manualCaseLabels,
   manualCases,
@@ -25,6 +32,7 @@ import {
 } from "../../src/db/schema.js";
 import { hashPassword } from "../../src/modules/auth/domain/passwords.js";
 import { generateToken, hashToken, SESSION_TTL_DAYS } from "../../src/modules/auth/domain/tokens.js";
+import { triageReport } from "../../src/modules/crowd/triage.repository.js";
 import { COMPARE_FIRST_PAGE } from "../../src/modules/results/compare.routes.js";
 import { encodeCompareCursor } from "../../src/modules/results/cursor.js";
 
@@ -53,6 +61,19 @@ const SUITE_ID = "12121212-1212-4212-8212-121212121212";
 const EMPTY_SUITE_ID = "13131313-1313-4313-8313-131313131313";
 const RUN_CASE_ID = "14141414-1414-4414-8414-141414141414";
 const RUN_CASE_2_ID = "15151515-1515-4515-8515-151515151515";
+// Crowdtesting (Tahap 5); id harus UUID v4 sah. Sama dengan consumer (apps/web/test/contract/pact.ts).
+const CYCLE_ID = "19191919-1919-4919-8919-191919191919";
+const TINI = { id: "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a", email: "tini@pact.dev", name: "Tini" };
+const CROWD_REPORT_ID = "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b";
+const CROWD_COMMENT_ID = "1d1d1d1d-1d1d-4d1d-8d1d-1d1d1d1d1d1d";
+const TEAM_COMMENT_ID = "1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f";
+const CROWD_REPORT_FIELDS = {
+  steps: "1. Buka keranjang\n2. Klik Bayar",
+  expected: "Halaman pembayaran terbuka",
+  actual: "Layar putih",
+  environment: "Chrome 130",
+  suggestedSeverity: "major" as const,
+};
 const MAX_ACTIVE_TOKENS = 10;
 /** Jumlah regresi pada state halaman kelompok: lebih dari halaman pertama (200), sisanya 50 di halaman berikutnya. */
 const MANY_REGRESSIONS = 250;
@@ -340,6 +361,59 @@ export function createContractStates(db: Db): ContractStates {
     ]);
   }
 
+  /**
+   * CY-1 (CYCLE_ID) di project; idempoten. `open` = dibuka 2026-01-01 tanpa batas waktu, dengan peserta Tini, laporan
+   * CR-1 `submitted`, event kirimnya, dan satu komentar Tini. `draft` = tanpa peserta dan laporan. Penghitung nomor
+   * project dinaikkan agar cycle/laporan yang dibuat consumer mendapat nomor berikutnya dengan pasti.
+   */
+  async function ensureCrowd(project: { id: string; createdBy: string }, status: "open" | "draft" = "open") {
+    const [existing] = await db.select({ id: crowdCycles.id }).from(crowdCycles).where(eq(crowdCycles.id, CYCLE_ID));
+    if (existing) return;
+    const at = (hour: number) => new Date(`2026-01-01T0${hour}:00:00.000Z`);
+    await db.insert(crowdCycles).values({
+      id: CYCLE_ID,
+      projectId: project.id,
+      number: 1,
+      title: "Uji rilis",
+      summary: "Coba alur checkout dan laporkan bug.",
+      instructions: "Coba **checkout**",
+      inScope: "Checkout",
+      outOfScope: "Serangan DoS",
+      appVersion: "v1.0.1",
+      status,
+      openedAt: status === "open" ? at(0) : null,
+      createdBy: project.createdBy,
+      createdAt: at(0),
+      updatedAt: at(0),
+    });
+    await db.insert(crowdCycleLinks).values({ cycleId: CYCLE_ID, position: 0, url: "https://app.example.com", label: "Aplikasi web" });
+    await db.insert(crowdCycleEnvironments).values({ cycleId: CYCLE_ID, position: 0, label: "Chrome desktop" });
+    await db.update(projects).set({ cycleSeq: 1 }).where(eq(projects.id, project.id));
+    if (status === "draft") return;
+    await ensureUser(TINI);
+    await db.insert(crowdParticipants).values({ cycleId: CYCLE_ID, userId: TINI.id, joinedAt: at(1), rulesAcceptedAt: at(1) });
+    await db.insert(crowdReports).values({
+      id: CROWD_REPORT_ID,
+      projectId: project.id,
+      cycleId: CYCLE_ID,
+      number: 1,
+      reporterId: TINI.id,
+      title: "Tombol bayar error",
+      ...CROWD_REPORT_FIELDS,
+      submittedAt: at(2),
+      updatedAt: at(2),
+    });
+    await db.insert(crowdReportEvents).values({ reportId: CROWD_REPORT_ID, actorId: TINI.id, fromStatus: null, toStatus: "submitted", createdAt: at(2) });
+    await db.insert(crowdReportComments).values({ id: CROWD_COMMENT_ID, reportId: CROWD_REPORT_ID, authorId: TINI.id, body: "Bisa saya kirim video", createdAt: at(3) });
+    await db.update(projects).set({ crowdReportSeq: 1 }).where(eq(projects.id, project.id));
+  }
+
+  async function crowdProject() {
+    const project = await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER);
+    await ensureCrowd(project);
+    return project;
+  }
+
   async function insertTokens(project: { id: string; createdBy: string }, count: number, firstId?: string) {
     await db.insert(projectTokens).values(
       Array.from({ length: count }, (_, i) => ({
@@ -495,6 +569,69 @@ export function createContractStates(db: Db): ContractStates {
         createdAt: new Date("2026-01-01T00:00:00.000Z"),
         updatedAt: new Date("2026-01-01T02:00:00.000Z"),
       });
+    },
+
+    "tini login": async () => {
+      await ensureUser(TINI);
+      await ensureSession(TINI.id);
+    },
+
+    "pact-project punya cycle CY-1 terbuka dengan peserta Tini, laporan CR-1 dikirim, dan satu komentar Tini": async () => {
+      await crowdProject();
+    },
+
+    "pact-project punya cycle CY-1 draf tanpa laporan": async () => {
+      await ensureCrowd(await ensureProject(PROJECT_SLUG, "Pact Project", "private", OWNER), "draft");
+    },
+
+    "pact-project punya laporan CR-1 dari Tini yang diterima menjadi bug #1": async () => {
+      const project = await crowdProject();
+      const result = await triageReport(db, {
+        projectId: project.id,
+        number: 1,
+        actorId: project.createdBy,
+        body: { version: 1, decision: "accept", severity: "major" },
+      });
+      if (typeof result === "string" || "field" in result) throw new Error(`gagal menerima CR-1: ${JSON.stringify(result)}`);
+    },
+
+    "pact-project punya cycle CY-1 yang sudah ditutup dengan peserta Tini": async () => {
+      await crowdProject();
+      await db
+        .update(crowdCycles)
+        .set({ status: "closed", closedAt: new Date("2026-01-02T00:00:00.000Z") })
+        .where(eq(crowdCycles.id, CYCLE_ID));
+    },
+
+    "Tini dikeluarkan dari cycle CY-1 pact-project": async () => {
+      const project = await crowdProject();
+      await db
+        .update(crowdParticipants)
+        .set({ status: "removed", removedAt: new Date("2026-01-02T00:00:00.000Z"), removedBy: project.createdBy })
+        .where(eq(crowdParticipants.userId, TINI.id));
+    },
+
+    "Tini punya 10 laporan menunggu triase di cycle CY-1 pact-project": async () => {
+      const project = await crowdProject();
+      await db.insert(crowdReports).values(
+        Array.from({ length: 9 }, (_, i) => ({
+          projectId: project.id,
+          cycleId: CYCLE_ID,
+          number: i + 2,
+          reporterId: TINI.id,
+          title: `Laporan ke-${i + 2}`,
+          ...CROWD_REPORT_FIELDS,
+        })),
+      );
+      await db.update(projects).set({ crowdReportSeq: 10 }).where(eq(projects.id, project.id));
+    },
+
+    "pembuat pact-project menulis komentar pada CR-1": async () => {
+      const project = await crowdProject();
+      await db
+        .insert(crowdReportComments)
+        .values({ id: TEAM_COMMENT_ID, reportId: CROWD_REPORT_ID, authorId: project.createdBy, body: "Bisa dilampirkan?", createdAt: new Date("2026-01-01T04:00:00.000Z") })
+        .onConflictDoNothing();
     },
 
     "sari anggota tester di pact-project": async () => {

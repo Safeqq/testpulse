@@ -32,7 +32,8 @@ describe("verifikasi kontrak provider (testpulse-api)", () => {
         rateLimitMax: 1000,
         ingestRateLimitMax: 1000,
       },
-      { db: created.db, logLevel: "silent" },
+      // Leaderboard global tanpa cache: tiap interaksi memakai data state-nya sendiri.
+      { db: created.db, logLevel: "silent", crowdLeaderboardTtlMs: 0 },
     );
     await app.listen({ port: 0, host: "127.0.0.1" });
     baseUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;

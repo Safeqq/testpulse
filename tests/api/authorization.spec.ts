@@ -1,10 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { runDetailDto, type CreatedTokenDto, type Visibility } from "@testpulse/shared";
-import type { TestApi } from "../support/api-client.js";
+import type { TestApi, TestUser } from "../support/api-client.js";
 import { expect, test } from "../support/fixtures.js";
 import { expectApiError } from "../support/http.js";
 import { buildJUnit } from "../support/junit.js";
-import { ACTORS, DEFAULT_ERROR_CODE, MATRIX, type Actor, type MatrixContext } from "./authorization-matrix.js";
+import { crowdReportBody, cycleBody } from "../support/crowd.js";
+import {
+  ACTORS,
+  DEFAULT_ERROR_CODE,
+  MATRIX,
+  PUBLIC_ACTORS,
+  PUBLIC_MATRIX,
+  type Actor,
+  type MatrixContext,
+  type PublicActor,
+  type PublicMatrixContext,
+} from "./authorization-matrix.js";
 
 /**
  * Menyiapkan project segar dan aktor; `admin` adalah pembuat project (admin satu-satunya).
@@ -82,6 +93,19 @@ async function setup(api: TestApi, actor: Actor, visibility: Visibility, bearer 
       return { number: created.number, runCaseId: first.id };
     })());
 
+  // Crowdtesting: cycle terbuka dibuat admin; pesertanya pengguna luar (bukan anggota) dengan satu laporan `submitted`.
+  let crowd: Promise<{ cycle: { id: string; number: number; version: number }; participant: TestUser; reportNumber: number }> | undefined;
+  const seededCrowd = () =>
+    (crowd ??= (async () => {
+      const cycle = await api.createOpenCycle(owner, project.slug, cycleBody());
+      const participant = await api.register();
+      await api.joinCycle(participant, cycle.id);
+      const report = await api.submitCrowdReport(participant, cycle.id, crowdReportBody());
+      return { cycle, participant, reportNumber: report.number };
+    })());
+  let accepted: Promise<{ number: number; version: number }> | undefined;
+  let emptyCycle: Promise<number> | undefined;
+
   return {
     http,
     slug: project.slug,
@@ -102,6 +126,18 @@ async function setup(api: TestApi, actor: Actor, visibility: Visibility, bearer 
     caseNumber: seededCase,
     manualRunNumber: async () => (await seededManualRun()).number,
     runCaseId: async () => (await seededManualRun()).runCaseId,
+    cycle: async () => (await seededCrowd()).cycle,
+    crowdReportNumber: async () => (await seededCrowd()).reportNumber,
+    acceptedReport: () =>
+      (accepted ??= (async () => {
+        const { cycle, participant } = await seededCrowd();
+        const report = await api.submitCrowdReport(participant, cycle.id, crowdReportBody({ title: "Laporan diterima matriks" }));
+        const triaged = await api.triage(owner, project.slug, report.number, { version: report.version, decision: "accept" });
+        return { number: triaged.number, version: triaged.version };
+      })()),
+    participantId: async () => (await seededCrowd()).participant.user.id,
+    emptyCycleNumber: () =>
+      (emptyCycle ??= api.createOpenCycle(owner, project.slug, cycleBody({ title: "Cycle kosong matriks" })).then((c) => c.number)),
   };
 }
 
@@ -190,8 +226,90 @@ test.describe("Urutan pengecekan (spec §7)", () => {
         caseNumber: async () => 1,
         manualRunNumber: async () => 1,
         runCaseId: async () => randomUUID(),
+        cycle: async () => ({ number: 1, version: 1 }),
+        crowdReportNumber: async () => 1,
+        acceptedReport: async () => ({ number: 1, version: 1 }),
+        participantId: async () => randomUUID(),
+        emptyCycleNumber: async () => 1,
       };
       await expectApiError(await row.request(ctx), 401, "UNAUTHENTICATED");
     }
   });
+});
+
+/**
+ * Aktor API publik crowdtesting dilihat dari satu cycle terbuka di project publik. Peserta lain sudah mengirim satu
+ * laporan yang diterima (untuk profil dan "laporan orang lain"); aktor peserta mengirim laporannya sendiri sebelum
+ * keluar atau dikeluarkan. Dengan `bearer`, aktornya anonim yang membawa token CI sah milik project itu.
+ */
+async function setupPublic(api: TestApi, actor: PublicActor, bearer = false): Promise<PublicMatrixContext> {
+  const owner = await api.register();
+  const project = await api.createProject(owner);
+  await api.setVisibility(owner, project.slug, "public");
+  const cycle = await api.createOpenCycle(owner, project.slug, cycleBody());
+  const other = await api.register();
+  await api.joinCycle(other, cycle.id);
+  const otherReport = await api.submitCrowdReport(other, cycle.id, crowdReportBody({ title: "Laporan peserta lain" }));
+  await api.triage(owner, project.slug, otherReport.number, { version: otherReport.version, decision: "accept" });
+
+  let user: TestUser | undefined;
+  let ownReportId: string | null = null;
+  const participate = async () => {
+    user = await api.register();
+    await api.joinCycle(user, cycle.id);
+    ownReportId = (await api.submitCrowdReport(user, cycle.id, crowdReportBody({ title: "Laporan aktor matriks" }))).id;
+  };
+  switch (actor) {
+    case "anonymous":
+      break;
+    case "nonParticipant":
+      user = await api.register();
+      break;
+    case "active":
+      await participate();
+      break;
+    case "left":
+      await participate();
+      await api.leaveCycle(user!, cycle.id);
+      break;
+    case "removed":
+      await participate();
+      await api.removeParticipant(owner, project.slug, cycle.number, user!.user.id);
+      break;
+    case "member":
+      user = await api.addMember(owner, project.slug, "tester");
+      break;
+  }
+  const http =
+    user?.request ??
+    (await api.anonymous(bearer ? { authorization: `Bearer ${(await api.createToken(owner, project.slug)).token}` } : undefined));
+  return { http, cycleId: cycle.id, otherTesterId: other.user.id, ownReportId, otherReportId: otherReport.id };
+}
+
+test.describe("Matriks otorisasi API publik crowdtesting (spec Tahap 5 §8.4)", () => {
+  for (const row of PUBLIC_MATRIX) {
+    for (const actor of PUBLIC_ACTORS) {
+      const status = row.expected[actor];
+      if (status === undefined) continue;
+      test(`${row.name} sebagai ${actor} → ${status}`, async ({ api }) => {
+        const res = await row.request(await setupPublic(api, actor));
+        if (status >= 400) {
+          await expectApiError(res, status, row.errorCodes?.[actor] ?? DEFAULT_ERROR_CODE[status]!);
+        } else {
+          expect(res.status(), await res.text()).toBe(status);
+        }
+      });
+    }
+
+    // Token CI sah diabaikan di API publik: pembawanya diperlakukan persis seperti anonim.
+    const anonymousStatus = row.expected.anonymous!;
+    test(`${row.name} dengan token CI sah diperlakukan anonim → ${anonymousStatus}`, async ({ api }) => {
+      const res = await row.request(await setupPublic(api, "anonymous", true));
+      if (anonymousStatus >= 400) {
+        await expectApiError(res, anonymousStatus, DEFAULT_ERROR_CODE[anonymousStatus]!);
+      } else {
+        expect(res.status(), await res.text()).toBe(anonymousStatus);
+      }
+    });
+  }
 });

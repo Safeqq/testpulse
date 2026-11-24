@@ -38,6 +38,16 @@ export interface MatrixContext {
   manualRunNumber(): Promise<number>;
   /** Id run case pertama dari run manual tersebut, dibuat saat pertama diminta. */
   runCaseId(): Promise<string>;
+  /** Cycle crowd terbuka (CY-n) dengan satu peserta luar dan satu laporan `submitted`, dibuat saat pertama diminta. */
+  cycle(): Promise<{ number: number; version: number }>;
+  /** Laporan `submitted` (CR-n, versi 1) dari peserta luar di cycle tersebut. */
+  crowdReportNumber(): Promise<number>;
+  /** Laporan lain di cycle yang sama yang sudah diterima admin; `version` = versi terbarunya. */
+  acceptedReport(): Promise<{ number: number; version: number }>;
+  /** Id user peserta luar cycle tersebut (bukan anggota project). */
+  participantId(): Promise<string>;
+  /** Cycle terbuka lain tanpa laporan (aman untuk DELETE cycle). */
+  emptyCycleNumber(): Promise<number>;
 }
 
 export interface MatrixRow {
@@ -189,6 +199,8 @@ export const MATRIX: MatrixRow[] = [
   // Tahap 4, §7.1: test manual (suite, case, run manual, run case).
   ...manualReadRows(),
   ...manualWriteRows(),
+  // Tahap 5, §8.4: API tim crowdtesting.
+  ...crowdTeamRows(),
   // Tahap 2, §7.1 baris 4: cookie sesi tanpa token tidak berlaku di endpoint upload, apa pun role-nya.
   {
     name: "POST runs dengan cookie sesi (tanpa token)",
@@ -430,3 +442,207 @@ function manualWriteRows(): MatrixRow[] {
     },
   ];
 }
+
+/** Tahap 5 §8.4 (API tim): cycle publik dibaca seperti project; data laporan/peserta hanya anggota; triase tester+. */
+function crowdTeamRows(): MatrixRow[] {
+  const read: Record<Actor, number> = { anonymous: 404, nonMemberPrivate: 404, nonMemberPublic: 200, viewer: 200, tester: 200, admin: 200 };
+  // Anonim selalu 401 (sesi dicek sebelum visibilitas, Ruling Task 1 Tahap 5), sama dengan GET members.
+  const membersOnly: Record<Actor, number> = { anonymous: 401, nonMemberPrivate: 404, nonMemberPublic: 403, viewer: 200, tester: 200, admin: 200 };
+  const testerPlus = (status: number): Record<Actor, number> => ({
+    anonymous: 401,
+    nonMemberPrivate: 404,
+    nonMemberPublic: 403,
+    viewer: 403,
+    tester: status,
+    admin: status,
+  });
+  const cyclePath = async (ctx: MatrixContext) => `${P}/${ctx.slug}/cycles/${(await ctx.cycle()).number}`;
+  const reportPath = async (ctx: MatrixContext) => `${P}/${ctx.slug}/crowd-reports/${await ctx.crowdReportNumber()}`;
+  const row = (
+    name: string,
+    specRow: string,
+    request: MatrixRow["request"],
+    expected: Record<Actor, number>,
+    anonymousOnPublic?: number,
+  ): MatrixRow => ({ name, specRow, request, expected, ...(anonymousOnPublic === undefined ? {} : { anonymousOnPublic }) });
+  const READ = "GET cycles, cycle (non-draft), leaderboard cycle";
+  const MEMBERS = "GET participants, reports, crowd-report, comments, summary";
+  const TRIAGE = "POST triage, PATCH report, POST comment, remove participant";
+  const MANAGE = "POST/PATCH/DELETE cycle";
+  return [
+    row("GET cycles", READ, ({ http, slug }) => http.get(`${P}/${slug}/cycles`), read, 200),
+    row("GET cycle", READ, async (ctx) => ctx.http.get(await cyclePath(ctx)), read, 200),
+    row("GET cycle leaderboard", READ, async (ctx) => ctx.http.get(`${await cyclePath(ctx)}/leaderboard`), read, 200),
+    row("GET cycle participants", MEMBERS, async (ctx) => ctx.http.get(`${await cyclePath(ctx)}/participants`), membersOnly),
+    row("GET cycle reports", MEMBERS, async (ctx) => ctx.http.get(`${await cyclePath(ctx)}/reports`), membersOnly),
+    row("GET crowd-report", MEMBERS, async (ctx) => ctx.http.get(await reportPath(ctx)), membersOnly),
+    row("GET crowd-report comments", MEMBERS, async (ctx) => ctx.http.get(`${await reportPath(ctx)}/comments`), membersOnly),
+    row("GET crowd/summary", MEMBERS, ({ http, slug }) => http.get(`${P}/${slug}/crowd/summary`), membersOnly),
+    row(
+      "POST crowd-report triage",
+      TRIAGE,
+      async (ctx) => ctx.http.post(`${await reportPath(ctx)}/triage`, { data: { version: 1, decision: "accept" } }),
+      testerPlus(200),
+    ),
+    row(
+      "PATCH crowd-report (sembunyikan)",
+      TRIAGE,
+      async (ctx) => {
+        const accepted = await ctx.acceptedReport();
+        return ctx.http.patch(`${P}/${ctx.slug}/crowd-reports/${accepted.number}`, {
+          data: { version: accepted.version, hideFromKnownIssues: true },
+        });
+      },
+      testerPlus(200),
+    ),
+    row(
+      "POST crowd-report comment",
+      TRIAGE,
+      async (ctx) => ctx.http.post(`${await reportPath(ctx)}/comments`, { data: { body: "Komentar matriks" } }),
+      testerPlus(201),
+    ),
+    row(
+      "POST remove participant",
+      TRIAGE,
+      async (ctx) => ctx.http.post(`${await cyclePath(ctx)}/participants/${await ctx.participantId()}/remove`, { data: {} }),
+      testerPlus(204),
+    ),
+    row(
+      "POST cycle",
+      MANAGE,
+      ({ http, slug }) =>
+        http.post(`${P}/${slug}/cycles`, { data: { title: "Cycle matriks", links: [{ url: "https://app.example.com", label: "Aplikasi" }] } }),
+      adminOnly(201),
+    ),
+    row(
+      "PATCH cycle",
+      MANAGE,
+      async (ctx) => ctx.http.patch(await cyclePath(ctx), { data: { version: (await ctx.cycle()).version, title: "Cycle diubah matriks" } }),
+      adminOnly(200),
+    ),
+    row("DELETE cycle", MANAGE, async (ctx) => ctx.http.delete(`${P}/${ctx.slug}/cycles/${await ctx.emptyCycleNumber()}`), adminOnly(204)),
+  ];
+}
+
+// --- API publik crowdtesting (Tahap 5 §8.4, tabel kedua) -------------------------------------------------------
+
+/** Aktor API publik, dilihat dari satu cycle terbuka di project publik. */
+export type PublicActor = "anonymous" | "nonParticipant" | "active" | "left" | "removed" | "member";
+
+export const PUBLIC_ACTORS: readonly PublicActor[] = ["anonymous", "nonParticipant", "active", "left", "removed", "member"];
+
+export interface PublicMatrixContext {
+  http: APIRequestContext;
+  cycleId: string;
+  /** Peserta lain yang punya laporan diterima (untuk profil tester). */
+  otherTesterId: string;
+  /** Laporan milik aktor (dikirim sebelum keluar/dikeluarkan); `null` bila aktor tidak punya laporan. */
+  ownReportId: string | null;
+  /** Laporan peserta lain di cycle yang sama. */
+  otherReportId: string;
+}
+
+export interface PublicMatrixRow {
+  name: string;
+  specRow: string;
+  request: (ctx: PublicMatrixContext) => Promise<APIResponse>;
+  /** Aktor tanpa nilai tidak berlaku untuk baris ini ("—" di spec). */
+  expected: Partial<Record<PublicActor, number>>;
+  /** Kode error bila menyimpang dari bawaan status (401 UNAUTHENTICATED). */
+  errorCodes?: Partial<Record<PublicActor, ErrorCode>>;
+}
+
+const C = "/api/v1/crowd";
+const REPORT_BODY = {
+  title: "Laporan matriks",
+  steps: "1. Buka halaman",
+  expected: "Berhasil",
+  actual: "Gagal",
+  environment: "Chrome 130",
+  suggestedSeverity: "minor",
+};
+
+const everyone = (status: number): Record<PublicActor, number> => ({
+  anonymous: status,
+  nonParticipant: status,
+  active: status,
+  left: status,
+  removed: status,
+  member: status,
+});
+
+const publicReads: Array<[string, (ctx: PublicMatrixContext) => string]> = [
+  ["GET direktori", () => `${C}/cycles`],
+  ["GET cycle publik", (ctx) => `${C}/cycles/${ctx.cycleId}`],
+  ["GET known-issues", (ctx) => `${C}/cycles/${ctx.cycleId}/known-issues`],
+  ["GET leaderboard cycle (publik)", (ctx) => `${C}/cycles/${ctx.cycleId}/leaderboard`],
+  ["GET leaderboard global", () => `${C}/leaderboard`],
+  ["GET profil tester", (ctx) => `${C}/testers/${ctx.otherTesterId}`],
+];
+
+const ownReport = (ctx: PublicMatrixContext) => `${C}/reports/${ctx.ownReportId ?? ctx.otherReportId}`;
+
+export const PUBLIC_MATRIX: PublicMatrixRow[] = [
+  ...publicReads.map(
+    ([name, path]): PublicMatrixRow => ({
+      name,
+      specRow: "GET direktori, cycle, known-issues, leaderboard, profil",
+      request: (ctx) => ctx.http.get(path(ctx)),
+      expected: everyone(200),
+    }),
+  ),
+  {
+    name: "POST join",
+    specRow: "POST join",
+    request: (ctx) => ctx.http.post(`${C}/cycles/${ctx.cycleId}/join`, { data: { acceptRules: true } }),
+    expected: { anonymous: 401, nonParticipant: 200, active: 200, left: 200, removed: 403, member: 403 },
+    errorCodes: { removed: "PARTICIPANT_REMOVED", member: "MEMBER_CANNOT_JOIN" },
+  },
+  {
+    name: "GET laporan saya di cycle",
+    specRow: "GET/POST laporan cycle",
+    request: (ctx) => ctx.http.get(`${C}/cycles/${ctx.cycleId}/reports`),
+    expected: { anonymous: 401, nonParticipant: 403, active: 200, left: 200, removed: 200, member: 403 },
+    errorCodes: { nonParticipant: "NOT_PARTICIPANT", member: "NOT_PARTICIPANT" },
+  },
+  {
+    name: "POST laporan di cycle",
+    specRow: "GET/POST laporan cycle",
+    request: (ctx) => ctx.http.post(`${C}/cycles/${ctx.cycleId}/reports`, { data: REPORT_BODY }),
+    expected: { anonymous: 401, nonParticipant: 403, active: 201, left: 403, removed: 403, member: 403 },
+    errorCodes: { nonParticipant: "NOT_PARTICIPANT", left: "NOT_PARTICIPANT", removed: "PARTICIPANT_REMOVED", member: "MEMBER_CANNOT_JOIN" },
+  },
+  {
+    name: "GET laporan sendiri",
+    specRow: "GET/PATCH/DELETE laporan sendiri",
+    request: (ctx) => ctx.http.get(ownReport(ctx)),
+    expected: { anonymous: 401, active: 200, left: 200, removed: 200 },
+  },
+  {
+    name: "PATCH laporan sendiri",
+    specRow: "GET/PATCH/DELETE laporan sendiri",
+    request: (ctx) => ctx.http.patch(ownReport(ctx), { data: { version: 1, title: "Judul diubah matriks" } }),
+    expected: { anonymous: 401, active: 200, left: 200, removed: 403 },
+    errorCodes: { removed: "PARTICIPANT_REMOVED" },
+  },
+  {
+    name: "DELETE laporan sendiri (tarik)",
+    specRow: "GET/PATCH/DELETE laporan sendiri",
+    request: (ctx) => ctx.http.delete(ownReport(ctx)),
+    expected: { anonymous: 401, active: 200, left: 200, removed: 403 },
+    errorCodes: { removed: "PARTICIPANT_REMOVED" },
+  },
+  {
+    name: "GET laporan orang lain",
+    specRow: "Laporan orang lain",
+    request: (ctx) => ctx.http.get(`${C}/reports/${ctx.otherReportId}`),
+    expected: { anonymous: 401, nonParticipant: 404, active: 404, left: 404, removed: 404, member: 404 },
+    errorCodes: {
+      nonParticipant: "REPORT_NOT_FOUND",
+      active: "REPORT_NOT_FOUND",
+      left: "REPORT_NOT_FOUND",
+      removed: "REPORT_NOT_FOUND",
+      member: "REPORT_NOT_FOUND",
+    },
+  },
+];

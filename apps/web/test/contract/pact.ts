@@ -38,6 +38,12 @@ export const EMPTY_SUITE_ID = "13131313-1313-4313-8313-131313131313";
 export const RUN_CASE_ID = "14141414-1414-4414-8414-141414141414";
 export const RUN_CASE_2_ID = "15151515-1515-4515-8515-151515151515";
 export const MISSING_UUID = "16161616-1616-4616-8616-161616161616";
+// Crowdtesting (Tahap 5): cycle, crowd tester luar (Tini), laporan, dan komentar tetap; UUID v4 sah.
+export const CYCLE_ID = "19191919-1919-4919-8919-191919191919";
+export const TINI_ID = "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a";
+export const CROWD_REPORT_ID = "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b";
+export const CROWD_COMMENT_ID = "1d1d1d1d-1d1d-4d1d-8d1d-1d1d1d1d1d1d";
+export const TEAM_COMMENT_ID = "1f1f1f1f-1f1f-4f1f-8f1f-1f1f1f1f1f1f";
 export const BRANCH = "main";
 export const INVITE_TOKEN = "pact-invite-token";
 export const EXPIRED_INVITE_TOKEN = "pact-expired-token";
@@ -71,6 +77,22 @@ export const STATE = {
   emptySuite: "pact-project punya suite kosong Kosong",
   /** Bug #1 berasal dari run case RUN_CASE_ID (TR-1, TC-1). */
   manualBugSeeded: "pact-project punya bug #1 dari run case TR-1 untuk TC-1",
+  /** Tahap 5: crowd tester luar (bukan anggota) login. */
+  tiniLoggedIn: "tini login",
+  /** Tahap 5: CY-1 terbuka (CYCLE_ID), Tini peserta aktif, CR-1 `submitted` (CROWD_REPORT_ID), satu komentar Tini. */
+  crowdSeeded: "pact-project punya cycle CY-1 terbuka dengan peserta Tini, laporan CR-1 dikirim, dan satu komentar Tini",
+  /** Tahap 5: CY-1 draf tanpa peserta dan laporan. */
+  crowdDraft: "pact-project punya cycle CY-1 draf tanpa laporan",
+  /** Tahap 5: seperti `crowdSeeded`, lalu CR-1 diterima (major, +3 poin) menjadi bug #1. */
+  crowdAccepted: "pact-project punya laporan CR-1 dari Tini yang diterima menjadi bug #1",
+  /** Tahap 5: seperti `crowdSeeded`, tetapi CY-1 sudah ditutup. */
+  crowdClosed: "pact-project punya cycle CY-1 yang sudah ditutup dengan peserta Tini",
+  /** Tahap 5: seperti `crowdSeeded`, tetapi Tini sudah dikeluarkan. */
+  tiniRemoved: "Tini dikeluarkan dari cycle CY-1 pact-project",
+  /** Tahap 5: seperti `crowdSeeded`, ditambah CR-2..CR-10 sehingga Tini punya 10 laporan menunggu triase. */
+  tiniAtLimit: "Tini punya 10 laporan menunggu triase di cycle CY-1 pact-project",
+  /** Tahap 5: komentar tim (TEAM_COMMENT_ID) oleh pembuat project pada CR-1; dipakai bersama `crowdSeeded`. */
+  teamComment: "pembuat pact-project menulis komentar pada CR-1",
 } as const;
 
 const { like, uuid, regex, iso8601DateTimeWithMillis } = MatchersV3;

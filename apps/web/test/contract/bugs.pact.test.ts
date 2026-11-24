@@ -142,6 +142,29 @@ describe("kontrak bug tracker: bug", () => {
       });
   });
 
+  it("GET /projects/:slug/bugs/:number dari laporan crowd mengisi crowdOrigin dan label crowd (200)", async () => {
+    await pact
+      .addInteraction()
+      .given(STATE.budiAdmin)
+      .given(STATE.crowdAccepted)
+      .uponReceiving("detail bug dari laporan crowd")
+      .withRequest("GET", `${BASE}/bugs/1`, (b) => b.headers(COOKIE_HEADERS))
+      .willRespondWith(200, (b) =>
+        b.jsonBody({
+          number: 1,
+          title: "Tombol bayar error",
+          severity: "major",
+          labels: ["crowd"],
+          manualOrigin: null,
+          crowdOrigin: { cycleNumber: 1, cycleTitle: "Uji rilis", reportNumber: 1, reporterName: "Tini" },
+        }),
+      )
+      .executeTest(async (server) => {
+        const bug = await clientFor(server, true).bugs.get(PROJECT_SLUG, 1);
+        expect(bug.crowdOrigin).toEqual({ cycleNumber: 1, cycleTitle: "Uji rilis", reportNumber: 1, reporterName: "Tini" });
+      });
+  });
+
   it("GET /projects/:slug/bugs/:number yang tidak ada -> 404 BUG_NOT_FOUND", async () => {
     await pact
       .addInteraction()

@@ -219,6 +219,11 @@ export class TestApi {
     await expectStatus(await user.request.post(`${API}/crowd/cycles/${cycleId}/join`, { data: { acceptRules: true } }), 200, "joinCycle");
   }
 
+  /** Keluar dari cycle (peserta aktif). */
+  async leaveCycle(user: TestUser, cycleId: string): Promise<void> {
+    await expectStatus(await user.request.delete(`${API}/crowd/cycles/${cycleId}/join`), 204, "leaveCycle");
+  }
+
   async submitCrowdReport(user: TestUser, cycleId: string, body: CreateCrowdReportBody): Promise<CrowdReportDto> {
     return expectStatus<CrowdReportDto>(
       await user.request.post(`${API}/crowd/cycles/${cycleId}/reports`, { data: body }),

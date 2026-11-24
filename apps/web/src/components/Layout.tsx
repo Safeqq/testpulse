@@ -105,6 +105,9 @@ function Header() {
                 <NavLink to="/" end className={navLinkClass}>
                   Project saya
                 </NavLink>
+                <NavLink to="/crowd" className={navLinkClass} data-testid="nav-crowd">
+                  Crowdtesting
+                </NavLink>
               </nav>
               <div className="flex min-w-0 items-center gap-3">
                 <span
@@ -121,6 +124,9 @@ function Header() {
             </>
           ) : status === "anonymous" ? (
             <nav aria-label="Navigasi utama" className="flex items-center gap-2 md:ml-auto">
+              <NavLink to="/crowd" className={navLinkClass} data-testid="nav-crowd">
+                Crowdtesting
+              </NavLink>
               <NavLink to="/login" className={navLinkClass}>
                 Masuk
               </NavLink>

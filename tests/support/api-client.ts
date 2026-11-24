@@ -26,6 +26,13 @@ import type {
   UpdateRunCaseBody,
   UserDto,
   Visibility,
+  CreateCrowdReportBody,
+  CreateCycleBody,
+  CrowdReportDto,
+  TeamCrowdReportDto,
+  TeamCycleDto,
+  TriageBody,
+  UpdateCycleBody,
 } from "@testpulse/shared";
 import { newProjectData, newUserData } from "./data.js";
 
@@ -185,6 +192,55 @@ export class TestApi {
       await user.request.patch(`${API}/projects/${slug}/manual-runs/${runNumber}/cases/${id}`, { data: body }),
       200,
       "updateRunCase",
+    );
+  }
+
+  /** Buat cycle crowdtesting (admin); cycle baru selalu draft. */
+  async createCycle(user: TestUser, slug: string, body: CreateCycleBody): Promise<TeamCycleDto> {
+    return expectStatus<TeamCycleDto>(await user.request.post(`${API}/projects/${slug}/cycles`, { data: body }), 201, "createCycle");
+  }
+
+  /** Ubah cycle; `body.version` harus versi terakhir cycle itu. */
+  async updateCycle(user: TestUser, slug: string, number: number, body: UpdateCycleBody): Promise<TeamCycleDto> {
+    return expectStatus<TeamCycleDto>(
+      await user.request.patch(`${API}/projects/${slug}/cycles/${number}`, { data: body }),
+      200,
+      "updateCycle",
+    );
+  }
+
+  /** Buat cycle lalu buka (status `open`). */
+  async createOpenCycle(user: TestUser, slug: string, body: CreateCycleBody): Promise<TeamCycleDto> {
+    const cycle = await this.createCycle(user, slug, body);
+    return this.updateCycle(user, slug, cycle.number, { version: cycle.version, status: "open" });
+  }
+
+  async joinCycle(user: TestUser, cycleId: string): Promise<void> {
+    await expectStatus(await user.request.post(`${API}/crowd/cycles/${cycleId}/join`, { data: { acceptRules: true } }), 200, "joinCycle");
+  }
+
+  async submitCrowdReport(user: TestUser, cycleId: string, body: CreateCrowdReportBody): Promise<CrowdReportDto> {
+    return expectStatus<CrowdReportDto>(
+      await user.request.post(`${API}/crowd/cycles/${cycleId}/reports`, { data: body }),
+      201,
+      "submitCrowdReport",
+    );
+  }
+
+  /** Triase laporan crowd (tester/admin); `body.version` harus versi terakhir laporan itu. */
+  async triage(user: TestUser, slug: string, number: number, body: TriageBody): Promise<TeamCrowdReportDto> {
+    return expectStatus<TeamCrowdReportDto>(
+      await user.request.post(`${API}/projects/${slug}/crowd-reports/${number}/triage`, { data: body }),
+      200,
+      "triage",
+    );
+  }
+
+  async removeParticipant(user: TestUser, slug: string, cycleNumber: number, userId: string): Promise<void> {
+    await expectStatus(
+      await user.request.post(`${API}/projects/${slug}/cycles/${cycleNumber}/participants/${userId}/remove`, { data: {} }),
+      204,
+      "removeParticipant",
     );
   }
 

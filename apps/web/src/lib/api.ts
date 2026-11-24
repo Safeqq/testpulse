@@ -55,6 +55,34 @@ import type {
   UpdateSuiteBody,
   UserDto,
   VersionDto,
+  CreateCrowdReportBody,
+  CreateCycleBody,
+  CrowdCommentBody,
+  CrowdCommentDto,
+  CrowdCommentsPageDto,
+  CrowdDirectoryQuery,
+  CrowdMeDto,
+  CrowdReportDto,
+  CrowdReportsPageDto,
+  CrowdSummaryDto,
+  CycleDirectoryPageDto,
+  HideBody,
+  KnownIssuesPageDto,
+  LeaderboardDto,
+  MyCrowdReportsDto,
+  ParticipantsPageDto,
+  ParticipantsQuery,
+  PublicCycleDto,
+  RemoveParticipantBody,
+  TeamCrowdReportDto,
+  TeamCycleDto,
+  TeamCyclesPageDto,
+  TeamCyclesQuery,
+  TeamReportsQuery,
+  TesterProfileDto,
+  TriageBody,
+  UpdateCrowdReportBody,
+  UpdateCycleBody,
 } from "@testpulse/shared";
 
 export class ApiError extends Error {
@@ -250,6 +278,65 @@ export function createApiClient(baseUrl: string, fetchFn: typeof fetch = fetch) 
           request<RunCaseDto>("PATCH", `/projects/${seg(slug)}/manual-runs/${runNumber}/cases/${seg(id)}`, body),
       },
       summary: (slug: string) => request<ManualSummaryDto>("GET", `/projects/${seg(slug)}/manual/summary`),
+    },
+    crowd: {
+      directory: (query: Partial<CrowdDirectoryQuery> = {}) =>
+        request<CycleDirectoryPageDto>("GET", withQuery("/crowd/cycles", query)),
+      cycle: (id: string) => request<PublicCycleDto>("GET", `/crowd/cycles/${seg(id)}`),
+      join: (id: string) =>
+        request<PublicCycleDto["me"]>("POST", `/crowd/cycles/${seg(id)}/join`, { acceptRules: true }),
+      leave: (id: string) => request<void>("DELETE", `/crowd/cycles/${seg(id)}/join`),
+      knownIssues: (id: string, cursor?: string) =>
+        request<KnownIssuesPageDto>("GET", withQuery(`/crowd/cycles/${seg(id)}/known-issues`, { cursor })),
+      leaderboard: (id: string) => request<LeaderboardDto>("GET", `/crowd/cycles/${seg(id)}/leaderboard`),
+      globalLeaderboard: () => request<LeaderboardDto>("GET", "/crowd/leaderboard"),
+      tester: (userId: string) => request<TesterProfileDto>("GET", `/crowd/testers/${seg(userId)}`),
+      me: () => request<CrowdMeDto>("GET", "/crowd/me"),
+      myReports: (cycleId: string) => request<MyCrowdReportsDto>("GET", `/crowd/cycles/${seg(cycleId)}/reports`),
+      submitReport: (cycleId: string, body: CreateCrowdReportBody) =>
+        request<CrowdReportDto>("POST", `/crowd/cycles/${seg(cycleId)}/reports`, body),
+      report: (id: string) => request<CrowdReportDto>("GET", `/crowd/reports/${seg(id)}`),
+      updateReport: (id: string, body: UpdateCrowdReportBody) =>
+        request<CrowdReportDto>("PATCH", `/crowd/reports/${seg(id)}`, body),
+      withdrawReport: (id: string) => request<CrowdReportDto>("DELETE", `/crowd/reports/${seg(id)}`),
+      comments: (id: string, cursor?: string) =>
+        request<CrowdCommentsPageDto>("GET", withQuery(`/crowd/reports/${seg(id)}/comments`, { cursor })),
+      addComment: (id: string, body: CrowdCommentBody) =>
+        request<CrowdCommentDto>("POST", `/crowd/reports/${seg(id)}/comments`, body),
+      deleteComment: (id: string, commentId: string) =>
+        request<void>("DELETE", `/crowd/reports/${seg(id)}/comments/${seg(commentId)}`),
+    },
+    cycles: {
+      list: (slug: string, query: Partial<TeamCyclesQuery> = {}) =>
+        request<TeamCyclesPageDto>("GET", withQuery(`/projects/${seg(slug)}/cycles`, query)),
+      get: (slug: string, number: number) => request<TeamCycleDto>("GET", `/projects/${seg(slug)}/cycles/${number}`),
+      create: (slug: string, body: CreateCycleBody) => request<TeamCycleDto>("POST", `/projects/${seg(slug)}/cycles`, body),
+      update: (slug: string, number: number, body: UpdateCycleBody) =>
+        request<TeamCycleDto>("PATCH", `/projects/${seg(slug)}/cycles/${number}`, body),
+      remove: (slug: string, number: number) => request<void>("DELETE", `/projects/${seg(slug)}/cycles/${number}`),
+      participants: (slug: string, number: number, query: Partial<ParticipantsQuery> = {}) =>
+        request<ParticipantsPageDto>("GET", withQuery(`/projects/${seg(slug)}/cycles/${number}/participants`, query)),
+      removeParticipant: (slug: string, number: number, userId: string, body: RemoveParticipantBody = {}) =>
+        request<void>("POST", `/projects/${seg(slug)}/cycles/${number}/participants/${seg(userId)}/remove`, body),
+      reports: (slug: string, number: number, query: Partial<TeamReportsQuery> = {}) =>
+        request<CrowdReportsPageDto>("GET", withQuery(`/projects/${seg(slug)}/cycles/${number}/reports`, query)),
+      leaderboard: (slug: string, number: number) =>
+        request<LeaderboardDto>("GET", `/projects/${seg(slug)}/cycles/${number}/leaderboard`),
+      summary: (slug: string) => request<CrowdSummaryDto>("GET", `/projects/${seg(slug)}/crowd/summary`),
+    },
+    crowdReports: {
+      get: (slug: string, number: number) =>
+        request<TeamCrowdReportDto>("GET", `/projects/${seg(slug)}/crowd-reports/${number}`),
+      triage: (slug: string, number: number, body: TriageBody) =>
+        request<TeamCrowdReportDto>("POST", `/projects/${seg(slug)}/crowd-reports/${number}/triage`, body),
+      setHidden: (slug: string, number: number, body: HideBody) =>
+        request<TeamCrowdReportDto>("PATCH", `/projects/${seg(slug)}/crowd-reports/${number}`, body),
+      comments: (slug: string, number: number, cursor?: string) =>
+        request<CrowdCommentsPageDto>("GET", withQuery(`/projects/${seg(slug)}/crowd-reports/${number}/comments`, { cursor })),
+      addComment: (slug: string, number: number, body: CrowdCommentBody) =>
+        request<CrowdCommentDto>("POST", `/projects/${seg(slug)}/crowd-reports/${number}/comments`, body),
+      deleteComment: (slug: string, number: number, id: string) =>
+        request<void>("DELETE", `/projects/${seg(slug)}/crowd-reports/${number}/comments/${seg(id)}`),
     },
     comments: {
       create: (slug: string, number: number, body: CommentBody) =>

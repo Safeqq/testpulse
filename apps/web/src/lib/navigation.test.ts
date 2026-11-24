@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareHref, safeExternalUrl, withBranch } from "./navigation";
+import { compareHref, safeExternalUrl, safeNext, withBranch } from "./navigation";
 
 describe("withBranch", () => {
   it("menambahkan branch yang di-encode sebagai query", () => {
@@ -32,5 +32,30 @@ describe("safeExternalUrl", () => {
     expect(safeExternalUrl("https://ci.example.com/b/1")).toBe("https://ci.example.com/b/1");
     expect(safeExternalUrl("javascript:alert(1)")).toBeNull();
     expect(safeExternalUrl(null)).toBeNull();
+  });
+});
+
+// Review Focus 1 (spec Tahap 5): `?next=` login/daftar hanya mengikuti path relatif di situs ini.
+describe("safeNext", () => {
+  it.each(["/crowd/c/1", "/p/x?tab=1#h", "/crowd/me"])("%j diikuti", (raw) => {
+    expect(safeNext(raw)).toBe(raw);
+  });
+
+  it.each([
+    "//evil.com",
+    "/\\evil.com",
+    "https://evil.com",
+    "javascript:alert(1)",
+    "%2F%2Fevil.com",
+    "",
+    "/crowd\u0000x",
+    "/crowd\nx",
+  ])("%j → /", (raw) => {
+    expect(safeNext(raw)).toBe("/");
+  });
+
+  it("null dan undefined → /", () => {
+    expect(safeNext(null)).toBe("/");
+    expect(safeNext(undefined)).toBe("/");
   });
 });

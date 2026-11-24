@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { BrowserContextOptions, Locator, Page } from "@playwright/test";
 import { expect, test as base } from "../support/fixtures.js";
 import { seedVisualData, type VisualSeed } from "./seed.js";
 import { FROZEN_TIME, freezeApiTimestamps } from "./timestamps.js";
@@ -39,13 +39,16 @@ interface ElementShot {
 
 interface PageCase {
   name: string;
-  /** `tester`: context masuk sebagai tester project, sehingga kontrol tulis tampil. */
-  viewer: "anonymous" | "tester";
+  /**
+   * `tester`: context masuk sebagai tester project, sehingga kontrol tulis tampil. `crowdAdmin`/`crowdReporter`: admin
+   * project crowd dan crowd tester peserta cycle seed.
+   */
+  viewer: "anonymous" | "tester" | "crowdAdmin" | "crowdReporter";
   path: (seed: VisualSeed) => string;
   /** Slug project tempat halaman ini hidup (project utama bila tidak diisi). */
   slug?: (seed: VisualSeed) => string;
   /** Elemen yang menandai halaman sudah menampilkan data sungguhan (bukan kerangka atau status memuat). */
-  ready: (page: Page) => Locator;
+  ready: (page: Page, seed: VisualSeed) => Locator;
   /** Halaman berisi slug acak dari seed yang perlu di-mask; landing statis tidak. */
   hasSlug: boolean;
   /** Bagian halaman yang juga diambil sendiri dengan toleransi lebih ketat. */
@@ -140,7 +143,46 @@ const PAGES: PageCase[] = [
     hasSlug: true,
     elements: [{ name: "suggestion", locator: (page) => page.getByTestId("exec-suggestion") }],
   },
+  {
+    name: "crowd-directory",
+    viewer: "anonymous",
+    path: () => "/crowd",
+    ready: (page, s) => page.getByTestId(`crowd-cycle-card-${s.crowd.cycleIds[1]}`),
+    hasSlug: false,
+    elements: [{ name: "teaser", locator: (page) => page.getByTestId("crowd-leaderboard-teaser") }],
+  },
+  {
+    name: "crowd-cycle",
+    viewer: "anonymous",
+    path: (s) => `/crowd/c/${s.crowd.cycleId}`,
+    ready: (page) => page.getByTestId("markdown").getByText("Alur yang dicoba"),
+    hasSlug: false,
+    elements: [{ name: "action", locator: (page) => page.getByTestId("cycle-action") }],
+  },
+  {
+    name: "crowd-report-form",
+    viewer: "crowdReporter",
+    path: (s) => `/crowd/c/${s.crowd.cycleId}/report`,
+    ready: (page) => page.getByTestId("report-known-issues").getByText("Struk terpotong di printer 58 mm"),
+    hasSlug: false,
+    elements: [{ name: "known-issues", locator: (page) => page.getByTestId("report-known-issues") }],
+  },
+  {
+    name: "crowd-triage",
+    viewer: "crowdAdmin",
+    path: (s) => `/p/${s.crowd.slug}/crowd-reports/${s.crowd.reportNumber}`,
+    slug: (s) => s.crowd.slug,
+    ready: (page) => page.getByTestId("crowd-comments").getByText("Belum ada komentar."),
+    hasSlug: true,
+    elements: [{ name: "panel", locator: (page) => page.getByTestId("triage-panel") }],
+  },
 ];
+
+const STORAGE: Record<Exclude<PageCase["viewer"], "anonymous">, (seed: VisualSeed) => NonNullable<BrowserContextOptions["storageState"]>> = {
+  tester: (s) => s.testerState,
+  crowdAdmin: (s) => s.crowd.adminState,
+  crowdReporter: (s) => s.crowd.reporterState,
+};
 
 /** Satu-satunya yang tetap di-mask: slug project acak per seed, tampil sebagai "/p/<slug>" di bawah judul project. */
 function slugMask(page: Page, slug: string): Locator[] {
@@ -158,15 +200,15 @@ for (const pageCase of PAGES) {
           timezoneId: "UTC",
           deviceScaleFactor: 1,
           reducedMotion: "reduce",
-          ...(pageCase.viewer === "tester" ? { storageState: seed.testerState } : {}),
+          ...(pageCase.viewer === "anonymous" ? {} : { storageState: STORAGE[pageCase.viewer](seed) }),
         });
         // Jam dan waktu dari API dibekukan sebelum halaman dibuat agar tak ada yang berubah antar-run.
         await context.clock.install({ time: FROZEN_TIME });
-        await freezeApiTimestamps(context, seed.runDates);
+        await freezeApiTimestamps(context, seed.runDates, seed.crowd);
         const page = await context.newPage();
 
         await page.goto(pageCase.path(seed));
-        await expect(pageCase.ready(page)).toBeVisible();
+        await expect(pageCase.ready(page, seed)).toBeVisible();
         await expect(page.locator("html")).toHaveClass(theme === "dark" ? /(^|\s)dark(\s|$)/ : /^(?!.*\bdark\b)/);
         await page.waitForLoadState("networkidle");
         await page.evaluate(() => document.fonts.ready);

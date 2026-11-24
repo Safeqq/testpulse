@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker";
-import type { CaseStep, RunDetailDto, StepResult } from "@testpulse/shared";
+import type { CaseStep, LeaderboardDto, RunDetailDto, StepResult } from "@testpulse/shared";
 import type { BrowserContextOptions } from "@playwright/test";
 import { TestApi, type TestUser } from "../support/api-client.js";
 import { buildJUnit, type JUnitCase } from "../support/junit.js";
@@ -16,6 +16,8 @@ export const SEED_TESTER_NAME = "Tester Visual";
 export const SEED_PROJECT_NAME = "Aplikasi Demo";
 /** Project terpisah untuk data test manual: dashboard dan halaman lain di project utama tidak berubah karenanya. */
 export const SEED_MANUAL_PROJECT_NAME = "Toko Demo";
+/** Project privat terpisah untuk crowdtesting (nama tampil tanpa link di halaman publik). */
+export const SEED_CROWD_PROJECT_NAME = "Kafe Demo";
 
 /** Waktu tetap run (ditulis ulang di respons API, lihat timestamps.ts): dua hari berbeda agar grafik tren punya dua titik. */
 const RUN_TIMES = { "1.0.0": "2026-01-13T10:00:00.000Z", "1.0.1": "2026-01-14T10:00:00.000Z" } as const;
@@ -53,6 +55,25 @@ export interface ManualSeed {
   partialRunCaseId: string;
 }
 
+export interface CrowdSeed {
+  slug: string;
+  /** Cycle terbuka utama (instruksi, link, lingkungan, laporan) dan cycle terbuka kedua (direktori berisi dua kartu). */
+  cycleId: string;
+  /** Semua cycle seed: respons direktori disaring ke id ini agar data run lain tidak ikut tampil. */
+  cycleIds: string[];
+  /**
+   * Pengganti respons leaderboard global: leaderboard cycle utama (dihitung segar). Leaderboard global asli di-cache API
+   * dan memuat tester dari run lain, jadi tidak deterministik.
+   */
+  globalLeaderboard: LeaderboardDto;
+  /** Laporan `submitted` (CR-n) milik reporter, untuk halaman triase. */
+  reportNumber: number;
+  /** Sesi admin project crowd (halaman triase). */
+  adminState: NonNullable<BrowserContextOptions["storageState"]>;
+  /** Sesi crowd tester peserta cycle utama (form laporan). */
+  reporterState: NonNullable<BrowserContextOptions["storageState"]>;
+}
+
 export interface VisualSeed {
   slug: string;
   /** Bug dengan deskripsi, label, tautan, test asal, komentar, dan riwayat perubahan. */
@@ -61,6 +82,8 @@ export interface VisualSeed {
   runDates: RunDates;
   /** Project terpisah berisi suite, case, dan satu run manual (lihat `seedManualProject`). */
   manual: ManualSeed;
+  /** Project privat terpisah berisi dua cycle crowdtesting (lihat `seedCrowdProject`). */
+  crowd: CrowdSeed;
   /** Sesi tester project (bisa menulis bug): pakai sebagai `storageState` context. */
   testerState: NonNullable<BrowserContextOptions["storageState"]>;
 }
@@ -195,6 +218,69 @@ async function seedManualProject(api: TestApi, owner: TestUser, tester: TestUser
 }
 
 /** Membuat user, project publik, dua run berversi, tiga bug, dan project manual terpisah. Dipanggil sekali per worker. */
+const CROWD_CYCLE = {
+  title: "Uji aplikasi kasir v2",
+  summary: "Coba alur pesan, bayar, dan cetak struk di aplikasi kasir baru, lalu laporkan bug yang Anda temukan.",
+  links: [
+    { url: "https://kasir.example.com", label: "Aplikasi web kasir" },
+    { url: "https://kasir.example.com/unduh/kasir.apk", label: "APK Android" },
+  ],
+  instructions: "## Alur yang dicoba\n\n1. Masuk dengan akun `demo` / `demo123`\n2. Buat pesanan **dua kopi**\n3. Bayar dengan QRIS lalu cetak struk",
+  inScope: "- Pesanan dan pembayaran\n- Cetak struk",
+  outOfScope: "- Laporan penjualan\n- Serangan DoS",
+  environments: ["Chrome desktop", "Android", "iPad Safari"],
+  appVersion: "2.0.0",
+};
+
+/** Laporan crowd bernilai tetap; `severity` diterima tim bila diisi, laporan tanpa `severity` tetap `submitted`. */
+const CROWD_REPORTS: Array<{ tester: number; title: string; suggested: "minor" | "major" | "critical" | "blocker"; severity?: "minor" | "major" | "critical" }> = [
+  { tester: 0, title: "Total bayar tidak termasuk pajak", suggested: "critical", severity: "critical" },
+  { tester: 0, title: "Struk terpotong di printer 58 mm", suggested: "major", severity: "major" },
+  { tester: 1, title: "Ikon menu buram di layar retina", suggested: "minor", severity: "minor" },
+  { tester: 2, title: "Pembayaran QRIS macet di layar memuat", suggested: "blocker" },
+];
+
+/** Project privat dengan dua cycle terbuka, tiga crowd tester, tiga laporan diterima, dan satu laporan untuk triase. */
+async function seedCrowdProject(api: TestApi, owner: TestUser): Promise<CrowdSeed> {
+  const slug = `crowd-${faker.string.alphanumeric({ length: 8, casing: "lower" })}`;
+  await api.createProject(owner, { name: SEED_CROWD_PROJECT_NAME, slug });
+  const main = await api.createOpenCycle(owner, slug, CROWD_CYCLE);
+  const second = await api.createOpenCycle(owner, slug, {
+    title: "Uji menu musiman",
+    summary: "Cek menu baru di aplikasi pelanggan sebelum diluncurkan.",
+    links: [{ url: "https://menu.example.com", label: "Aplikasi pelanggan" }],
+  });
+  const testers = [];
+  for (const name of ["Rina Penguji", "Bayu Penguji", "Citra Penguji"]) {
+    const tester = await api.register({ name });
+    await api.joinCycle(tester, main.id);
+    testers.push(tester);
+  }
+  let reportNumber = 0;
+  for (const r of CROWD_REPORTS) {
+    const report = await api.submitCrowdReport(testers[r.tester]!, main.id, {
+      title: r.title,
+      steps: "1. Buat pesanan dua kopi\n2. Pilih **QRIS**\n3. Pindai kode di aplikasi bank",
+      expected: "Pembayaran berhasil dan struk tercetak",
+      actual: "Layar memuat terus lebih dari satu menit",
+      environment: "Android 14 / Chrome 130",
+      suggestedSeverity: r.suggested,
+      links: [{ url: "https://video.example.com/rekaman-qris", title: "Rekaman layar" }],
+    });
+    if (r.severity) await api.triage(owner, slug, report.number, { version: report.version, decision: "accept", severity: r.severity });
+    else reportNumber = report.number;
+  }
+  return {
+    slug,
+    cycleId: main.id,
+    cycleIds: [main.id, second.id],
+    globalLeaderboard: (await (await owner.request.get(`/api/v1/crowd/cycles/${main.id}/leaderboard`)).json()) as LeaderboardDto,
+    reportNumber,
+    adminState: await owner.request.storageState(),
+    reporterState: await testers[2]!.request.storageState(),
+  };
+}
+
 export async function seedVisualData(baseURL: string): Promise<VisualSeed> {
   const api = new TestApi(baseURL);
   try {
@@ -248,12 +334,14 @@ export async function seedVisualData(baseURL: string): Promise<VisualSeed> {
     const invitation = await api.createInvitation(owner, slug, "tester");
     await api.acceptInvitation(tester, invitation.url.slice(invitation.url.lastIndexOf("/") + 1));
     const manual = await seedManualProject(api, owner, tester);
+    const crowd = await seedCrowdProject(api, owner);
 
     return {
       slug,
       detailBugNumber: first.number,
       runDates: { [run100]: RUN_TIMES["1.0.0"], [run101]: RUN_TIMES["1.0.1"] },
       manual,
+      crowd,
       testerState: await tester.request.storageState(),
     };
   } finally {

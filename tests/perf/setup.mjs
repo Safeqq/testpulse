@@ -7,9 +7,12 @@
 //     Tahap 4: also MANUAL_SUITES (>= 10) suites holding MANUAL_CASES (>= 200) manual cases, and one manual run of the first
 //     MANUAL_RUN_CASES (200) cases, versioned like the latest CI run (so /versions has a Manual column) and partly executed
 //     (MANUAL_EXECUTED of them get a result; the rest stay untested)
+//   - crowd project (public): Tahap 5 crowdtesting data for the /crowd read endpoints: CROWD_CYCLES (>= 20) open cycles,
+//     CROWD_TESTERS (>= 200) crowd testers (each joins two cycles) and CROWD_REPORTS (>= 1000) reports, all accepted by
+//     the team, spread evenly over the cycles and testers
 //   - ingest project: receives the uploads of ingest.js, with INGEST_TOKENS tokens (one per VU, round-robin) so the
 //     per-token upload limit (INGEST_RATE_LIMIT_MAX per hour) is never reached: the perf run must have no 429s
-// Writes slug + tokens + manualRunNumber to tests/perf/.state/state.json (gitignored) which the k6 scripts read with open().
+// Writes slug + tokens + manualRunNumber + crowdCycleIds to tests/perf/.state/state.json (gitignored) which the k6 scripts read with open().
 // Tokens and the password are never printed.
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -28,26 +31,39 @@ const MANUAL_CASES = Number(process.env.MANUAL_CASES ?? 240);
 const MANUAL_RUN_CASES = 200;
 const MANUAL_EXECUTED = 120;
 const INGEST_TOKENS = Number(process.env.INGEST_TOKENS ?? 5);
+const CROWD_CYCLES = Number(process.env.CROWD_CYCLES ?? 25);
+const CROWD_TESTERS = Number(process.env.CROWD_TESTERS ?? 200);
+const CROWD_REPORTS = Number(process.env.CROWD_REPORTS ?? 1000);
 const STATE_FILE = process.env.STATE_FILE ?? join(dirname(fileURLToPath(import.meta.url)), ".state", "state.json");
 const API = `${BASE_URL}/api/v1`;
 
-let cookie = "";
-
-async function api(method, path, { json, body, headers = {} } = {}) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: {
-      origin: ORIGIN,
-      ...(json !== undefined ? { "content-type": "application/json" } : {}),
-      ...(cookie ? { cookie } : {}),
-      ...headers,
-    },
-    body: json !== undefined ? JSON.stringify(json) : body,
-  });
-  const setCookie = res.headers.getSetCookie().find((c) => c.startsWith("tp_session="));
-  if (setCookie) cookie = setCookie.split(";", 1)[0];
-  return res;
+/**
+ * A cookie session against the API (Origin header for the CSRF check). Write routes are rate limited per minute, so a
+ * 429 waits and retries instead of failing the seed.
+ */
+function session() {
+  let cookie = "";
+  return async function call(method, path, { json, body, headers = {} } = {}) {
+    for (let attempt = 0; ; attempt += 1) {
+      const res = await fetch(`${API}${path}`, {
+        method,
+        headers: {
+          origin: ORIGIN,
+          ...(json !== undefined ? { "content-type": "application/json" } : {}),
+          ...(cookie ? { cookie } : {}),
+          ...headers,
+        },
+        body: json !== undefined ? JSON.stringify(json) : body,
+      });
+      const setCookie = res.headers.getSetCookie().find((c) => c.startsWith("tp_session="));
+      if (setCookie) cookie = setCookie.split(";", 1)[0];
+      if (res.status !== 429 || attempt >= 30) return res;
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+  };
 }
+
+const api = session();
 
 async function expect(res, status, what) {
   if (res.status !== status) throw new Error(`${what}: expected ${status}, got ${res.status} ${await res.text()}`);
@@ -193,6 +209,75 @@ async function seedManual(slug, appVersion) {
   return run.number;
 }
 
+/**
+ * Tahap 5 data: CROWD_CYCLES open cycles in a public project, CROWD_TESTERS crowd testers (not project members) who each
+ * join two neighbouring cycles, and CROWD_REPORTS reports accepted right after submission (so no tester ever has more
+ * than one report waiting for triage). Reports rotate over testers and their two cycles, so every cycle gets about
+ * CROWD_REPORTS / CROWD_CYCLES accepted reports and the global leaderboard is full. Returns the cycle ids.
+ */
+async function seedCrowd(slug) {
+  const cycleIds = [];
+  for (let i = 0; i < CROWD_CYCLES; i += 1) {
+    const draft = await expect(
+      await api("POST", `/projects/${slug}/cycles`, {
+        json: {
+          title: `Perf cycle ${String(i + 1).padStart(2, "0")}`,
+          summary: "Seeded by tests/perf/setup.mjs.",
+          links: [{ url: "https://app.example.com", label: "App" }],
+          instructions: "Coba alur utama.",
+          environments: ["Chrome desktop", "Android"],
+        },
+      }),
+      201,
+      `seed cycle ${i + 1}`,
+    );
+    const open = await expect(
+      await api("PATCH", `/projects/${slug}/cycles/${draft.number}`, { json: { version: draft.version, status: "open" } }),
+      200,
+      `open cycle ${i + 1}`,
+    );
+    cycleIds.push(open.id);
+  }
+  const testers = [];
+  await inBatches([...Array(CROWD_TESTERS).keys()], 10, async (t) => {
+    const call = session();
+    await expect(
+      await call("POST", "/auth/register", {
+        json: { name: `Crowd ${String(t + 1).padStart(3, "0")}`, email: `crowd-${suffix}-${t}@perf.testpulse.dev`, password: randomBytes(18).toString("base64url") },
+      }),
+      201,
+      `register crowd tester ${t + 1}`,
+    );
+    const cycles = [cycleIds[t % CROWD_CYCLES], cycleIds[(t + 1) % CROWD_CYCLES]];
+    for (const id of cycles) await expect(await call("POST", `/crowd/cycles/${id}/join`, { json: { acceptRules: true } }), 200, "join cycle");
+    testers[t] = { call, cycles };
+  });
+  await inBatches([...Array(CROWD_REPORTS).keys()], 10, async (r) => {
+    const tester = testers[r % CROWD_TESTERS];
+    const cycleId = tester.cycles[Math.floor(r / CROWD_TESTERS) % 2];
+    const report = await expect(
+      await tester.call("POST", `/crowd/cycles/${cycleId}/reports`, {
+        json: {
+          title: `Perf report ${String(r + 1).padStart(4, "0")}`,
+          steps: "1. Buka halaman\n2. Klik tombol",
+          expected: "Berhasil",
+          actual: "Gagal",
+          environment: "Chrome 130",
+          suggestedSeverity: SEVERITIES[r % SEVERITIES.length],
+        },
+      }),
+      201,
+      `seed crowd report ${r + 1}`,
+    );
+    await expect(
+      await api("POST", `/projects/${slug}/crowd-reports/${report.number}/triage`, { json: { version: report.version, decision: "accept" } }),
+      200,
+      `accept crowd report ${r + 1}`,
+    );
+  });
+  return cycleIds;
+}
+
 const suffix = randomBytes(4).toString("hex");
 await expect(
   await api("POST", "/auth/register", {
@@ -211,11 +296,14 @@ for (let i = 0; i < SEED_RUNS; i += 1) {
 const linkedBugs = await seedBugs(readSlug, lastRunId);
 const manualRunNumber = await seedManual(readSlug, `0.${SEED_RUNS}.0`);
 
+const crowdSlug = await createProject(`Perf crowd ${suffix}`, "public");
+const crowdCycleIds = await seedCrowd(crowdSlug);
+
 const ingestSlug = await createProject(`Perf ingest ${suffix}`, "private");
 const ingestTokens = [];
 for (let i = 0; i < INGEST_TOKENS; i += 1) ingestTokens.push(await createToken(ingestSlug, `perf ingest ${i + 1}`));
 
 mkdirSync(dirname(STATE_FILE), { recursive: true });
-writeFileSync(STATE_FILE, JSON.stringify({ readSlug, manualRunNumber, ingestSlug, ingestTokens }), { mode: 0o600 });
-console.log(`perf setup done: read project "${readSlug}" with ${SEED_RUNS} versioned runs and ${SEED_BUGS} bugs (${linkedBugs} linked to failing tests), ${MANUAL_CASES} manual cases in ${MANUAL_SUITES} suites with one ${MANUAL_RUN_CASES}-case run (TR-${manualRunNumber}, ${MANUAL_EXECUTED} executed), ingest project "${ingestSlug}" with ${INGEST_TOKENS} tokens`);
+writeFileSync(STATE_FILE, JSON.stringify({ readSlug, manualRunNumber, crowdCycleIds, ingestSlug, ingestTokens }), { mode: 0o600 });
+console.log(`perf setup done: read project "${readSlug}" with ${SEED_RUNS} versioned runs and ${SEED_BUGS} bugs (${linkedBugs} linked to failing tests), ${MANUAL_CASES} manual cases in ${MANUAL_SUITES} suites with one ${MANUAL_RUN_CASES}-case run (TR-${manualRunNumber}, ${MANUAL_EXECUTED} executed), crowd project "${crowdSlug}" with ${CROWD_CYCLES} cycles, ${CROWD_TESTERS} testers and ${CROWD_REPORTS} accepted reports, ingest project "${ingestSlug}" with ${INGEST_TOKENS} tokens`);
 console.log(`state written to ${STATE_FILE}`);

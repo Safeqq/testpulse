@@ -1,8 +1,9 @@
 // k6 scenario "read": 10 VUs x 30 s reading a public project holding >= 50 versioned runs and >= 100 bugs:
 // stats, runs, flaky (Tahap 2); bugs, compare (default pair and summary-only), versions (Tahap 3); manual cases, manual run
-// detail, manual run cases and versions with a Manual column (Tahap 4).
+// detail, manual run cases and versions with a Manual column (Tahap 4); the public crowdtesting directory, a cycle, its
+// known issues and the global leaderboard (Tahap 5).
 //   k6 run /scripts/read.js -e BASE_URL=http://web:8080
-// Needs tests/perf/.state/state.json (see setup.mjs: also holds manualRunNumber). The read project is public, so no
+// Needs tests/perf/.state/state.json (see setup.mjs: also holds manualRunNumber and crowdCycleIds). The read project is public, so no
 // credentials are sent.
 import http from "k6/http";
 import { check } from "k6";
@@ -48,9 +49,24 @@ const ENDPOINTS = [
   },
 ];
 
+// Tahap 5: >= 20 open cycles (a full directory page of 20 with a next page), about 40 accepted reports per cycle, and a
+// full global leaderboard (50 entries) from >= 200 testers.
+const CROWD_CYCLE = state.crowdCycleIds[0];
+const CROWD_ENDPOINTS = [
+  { name: "crowd directory", path: "cycles", ok: (body) => body.items.length === 20 && body.nextCursor !== null },
+  { name: "crowd cycle", path: `cycles/${CROWD_CYCLE}`, ok: (body) => body.status === "open" && body.stats.accepted >= 30 },
+  { name: "crowd known issues", path: `cycles/${CROWD_CYCLE}/known-issues`, ok: (body) => body.items.length >= 30 },
+  { name: "crowd leaderboard", path: "leaderboard", ok: (body) => body.entries.length === 50 && body.entries[0].points > 0 },
+];
+
+const REQUESTS = [
+  ...ENDPOINTS.map((e) => ({ ...e, url: `${BASE_URL}/api/v1/projects/${state.readSlug}/${e.path}` })),
+  ...CROWD_ENDPOINTS.map((e) => ({ ...e, url: `${BASE_URL}/api/v1/crowd/${e.path}` })),
+];
+
 export default function () {
-  for (const { name, path, ok } of ENDPOINTS) {
-    const res = http.get(`${BASE_URL}/api/v1/projects/${state.readSlug}/${path}`, { tags: { name: `GET ${name}` } });
+  for (const { name, url, ok } of REQUESTS) {
+    const res = http.get(url, { tags: { name: `GET ${name}` } });
     check(res, { [`${name} returns 200`]: (r) => r.status === 200 });
     if (ok) {
       check(res, {

@@ -229,18 +229,37 @@ jobs:
       - name: Start stack (docker compose)
         run: docker compose up -d --build --wait
 
+      # Tahap 5: an open cycle with a crowd tester and an accepted report, so the public crowd pages have real content.
+      - name: Seed crowdtesting data
+        id: crowd
+        env:
+          BASE_URL: http://localhost:8080
+        run: node tests/security/seed-crowd.mjs >> "$GITHUB_OUTPUT"
+
       # Runs on the compose network (testpulse_default) and targets the web service by name.
       # zap-baseline.py -I: warnings do not fail the scan; the High-risk gate is check-zap-report.mjs.
+      # The site root keeps the full spider; the crowd pages (spec Tahap 5 §12) get a one-minute spider each.
       - name: ZAP baseline
+        env:
+          CYCLE_ID: ${{ steps.crowd.outputs.cycle_id }}
         run: |
           mkdir -p zap && chmod 777 zap
-          docker run --rm --network testpulse_default \
-            -v "$PWD/zap:/zap/wrk:rw" \
-            ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py -t http://web:8080 -J report.json -r report.html -I
+          scan() {
+            docker run --rm --network testpulse_default \
+              -v "$PWD/zap:/zap/wrk:rw" \
+              ghcr.io/zaproxy/zaproxy:stable \
+              zap-baseline.py -t "$1" -J "$2.json" -r "$2.html" -I "${@:3}"
+          }
+          scan http://web:8080 report
+          scan http://web:8080/crowd crowd -m 1
+          scan "http://web:8080/crowd/c/$CYCLE_ID" crowd-cycle -m 1
+          scan http://web:8080/crowd/leaderboard crowd-leaderboard -m 1
 
       - name: Fail on High-risk alerts
-        run: node tests/security/check-zap-report.mjs zap/report.json
+        run: |
+          for report in zap/report.json zap/crowd.json zap/crowd-cycle.json zap/crowd-leaderboard.json; do
+            node tests/security/check-zap-report.mjs "$report"
+          done
 
       - name: Upload ZAP report
         if: ${{ !cancelled() }}

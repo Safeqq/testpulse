@@ -49,6 +49,23 @@ export function normalizeTimestamps(value: unknown, runDates: RunDates): unknown
   return result;
 }
 
+/** Data crowd milik seed ini; data global (direktori, leaderboard global) disaring ke sini agar run lain tidak tampil. */
+export interface CrowdScope {
+  cycleIds: readonly string[];
+  globalLeaderboard: unknown;
+}
+
+/** Direktori hanya berisi cycle seed (tanpa halaman berikutnya); leaderboard global diganti leaderboard milik seed. */
+function scopeCrowd(pathname: string, json: unknown, scope: CrowdScope | undefined): unknown {
+  if (!scope || json === null || typeof json !== "object") return json;
+  if (pathname === "/api/v1/crowd/cycles") {
+    const page = json as { items: Array<{ id: string }> };
+    return { ...page, items: page.items.filter((c) => scope.cycleIds.includes(c.id)), nextCursor: null };
+  }
+  if (pathname === "/api/v1/crowd/leaderboard") return scope.globalLeaderboard;
+  return json;
+}
+
 /** Header yang menggambarkan body asli; body hasil tulis ulang sudah didekompresi dan berukuran lain. */
 const STALE_HEADERS = new Set(["content-length", "content-encoding", "transfer-encoding"]);
 
@@ -56,14 +73,15 @@ const STALE_HEADERS = new Set(["content-length", "content-encoding", "transfer-e
  * Semua respons JSON `/api/v1/**` di context ini melewati `normalizeTimestamps`. Dipasang sebelum navigasi. Respons
  * bukan JSON, tanpa body (mis. 204), atau yang gagal di-parse diteruskan apa adanya.
  */
-export async function freezeApiTimestamps(context: BrowserContext, runDates: RunDates): Promise<void> {
+export async function freezeApiTimestamps(context: BrowserContext, runDates: RunDates, crowd?: CrowdScope): Promise<void> {
   await context.route("**/api/v1/**", async (route) => {
     const response = await route.fetch();
     const text = (response.headers()["content-type"] ?? "").includes("application/json") ? await response.text() : "";
     let rewritten: string;
     try {
       if (text.trim() === "") throw new Error("empty");
-      rewritten = JSON.stringify(normalizeTimestamps(JSON.parse(text), runDates));
+      const json = scopeCrowd(new URL(route.request().url()).pathname, JSON.parse(text), crowd);
+      rewritten = JSON.stringify(normalizeTimestamps(json, runDates));
     } catch {
       await route.fulfill({ response });
       return;

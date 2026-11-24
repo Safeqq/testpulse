@@ -13,6 +13,7 @@ import { commentRoutes } from "./modules/bugs/comments.routes.js";
 import { bugRoutes } from "./modules/bugs/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
 import { caseRoutes } from "./modules/manual/cases.routes.js";
+import { crowdCycleRoutes } from "./modules/crowd/cycles.routes.js";
 import { manualRunRoutes } from "./modules/manual/runs.routes.js";
 import { manualSummaryRoutes } from "./modules/manual/summary.routes.js";
 import { suiteRoutes } from "./modules/manual/suites.routes.js";
@@ -97,6 +98,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await caseRoutes(api, readOpts);
       await manualRunRoutes(api, readOpts);
       await manualSummaryRoutes(api, readOpts);
+      await crowdCycleRoutes(api, readOpts);
     },
     { prefix: "/api/v1" },
   );

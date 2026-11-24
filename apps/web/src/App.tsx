@@ -29,7 +29,13 @@ import {
   TestHistoryPage,
   VersionsPage,
 } from "./pages/project/lazyPages";
-import { CrowdDirectoryPage, CrowdLeaderboardPage, CrowdMePage, CrowdTesterPage } from "./pages/crowd/lazyCrowdPages";
+import {
+  CrowdCyclePage,
+  CrowdDirectoryPage,
+  CrowdLeaderboardPage,
+  CrowdMePage,
+  CrowdTesterPage,
+} from "./pages/crowd/lazyCrowdPages";
 import { ProjectSettingsPage } from "./pages/settings/ProjectSettingsPage";
 
 /** Kerangka netral selama chunk halaman diunduh; kegagalan mengunduh ditangkap agar aplikasi tidak menjadi layar kosong. */
@@ -63,6 +69,7 @@ export function App() {
         <Route element={<LazyBoundary />}>
           {/* Area publik crowdtesting (spec Tahap 5 §9.2); `/crowd/me` butuh login. */}
           <Route path="/crowd" element={<CrowdDirectoryPage />} />
+          <Route path="/crowd/c/:id" element={<CrowdCyclePage />} />
           <Route path="/crowd/leaderboard" element={<CrowdLeaderboardPage />} />
           <Route path="/crowd/testers/:userId" element={<CrowdTesterPage />} />
           <Route element={<RequireAuth />}>

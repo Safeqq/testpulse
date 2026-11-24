@@ -32,7 +32,7 @@ export function ExternalLink({
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        "inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden",
+        "inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-0.5 rounded-md font-medium text-link underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-hidden",
         className,
       )}
       {...props}

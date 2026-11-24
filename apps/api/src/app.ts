@@ -15,6 +15,7 @@ import { invitationRoutes } from "./modules/invitations/routes.js";
 import { caseRoutes } from "./modules/manual/cases.routes.js";
 import { crowdCycleRoutes } from "./modules/crowd/cycles.routes.js";
 import { crowdPublicRoutes } from "./modules/crowd/public.routes.js";
+import { crowdReportRoutes } from "./modules/crowd/reports.routes.js";
 import { manualRunRoutes } from "./modules/manual/runs.routes.js";
 import { manualSummaryRoutes } from "./modules/manual/summary.routes.js";
 import { suiteRoutes } from "./modules/manual/suites.routes.js";
@@ -102,6 +103,7 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await manualRunRoutes(api, readOpts);
       await manualSummaryRoutes(api, readOpts);
       await crowdCycleRoutes(api, readOpts);
+      await crowdReportRoutes(api, config, readOpts);
       await crowdPublicRoutes(api, config, {
         ...readOpts,
         ...(opts.crowdLeaderboardTtlMs !== undefined ? { leaderboardTtlMs: opts.crowdLeaderboardTtlMs } : {}),

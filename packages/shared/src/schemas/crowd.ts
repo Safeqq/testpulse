@@ -384,6 +384,10 @@ export type CrowdReportsPageDto = z.infer<typeof crowdReportsPageDto>;
 export const myCrowdReportItemDto = crowdReportListItemDto.omit({ reporter: true });
 export type MyCrowdReportItemDto = z.infer<typeof myCrowdReportItemDto>;
 
+/** Laporan saya di satu cycle (maks 50 per tester per cycle, jadi tanpa paginasi). */
+export const myCrowdReportsDto = z.object({ items: z.array(myCrowdReportItemDto) });
+export type MyCrowdReportsDto = z.infer<typeof myCrowdReportsDto>;
+
 export const knownIssueDto = z.object({
   title: z.string(),
   severity: z.enum(CROWD_SEVERITIES),

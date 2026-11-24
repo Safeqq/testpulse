@@ -34,6 +34,8 @@ import {
   CrowdDirectoryPage,
   CrowdLeaderboardPage,
   CrowdMePage,
+  CrowdMyReportPage,
+  CrowdReportFormPage,
   CrowdTesterPage,
 } from "./pages/crowd/lazyCrowdPages";
 import { ProjectSettingsPage } from "./pages/settings/ProjectSettingsPage";
@@ -74,6 +76,9 @@ export function App() {
           <Route path="/crowd/testers/:userId" element={<CrowdTesterPage />} />
           <Route element={<RequireAuth />}>
             <Route path="/crowd/me" element={<CrowdMePage />} />
+            <Route path="/crowd/c/:id/report" element={<CrowdReportFormPage />} />
+            <Route path="/crowd/r/:reportId" element={<CrowdMyReportPage />} />
+            <Route path="/crowd/r/:reportId/edit" element={<CrowdReportFormPage />} />
           </Route>
           <Route path="/p/:slug/runs" element={<RunsPage />} />
           <Route path="/p/:slug/runs/:runId" element={<RunPage />} />

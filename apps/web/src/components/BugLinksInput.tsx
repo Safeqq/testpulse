@@ -24,10 +24,16 @@ interface BugLinksInputProps {
   onChange: (links: LinkDraft[]) => void;
   /** Error per baris dengan kunci `links.<indeks>.url` / `links.<indeks>.title`, plus `links` untuk error daftar. */
   errors: Record<string, string>;
+  /** Batas jumlah link; default batas link bug. */
+  max?: number;
+  /** data-testid wadah daftar; default `bug-links`. */
+  testId?: string;
+  /** Teks penjelasan saat daftar kosong. */
+  emptyHint?: string;
 }
 
 /** Daftar link (URL + judul opsional) yang bisa ditambah dan dihapus. */
-export function BugLinksInput({ value, onChange, errors }: BugLinksInputProps) {
+export function BugLinksInput({ value, onChange, errors, max = MAX_BUG_LINKS, testId = "bug-links", emptyHint }: BugLinksInputProps) {
   const groupId = useId();
   const container = useRef<HTMLDivElement>(null);
   const focusLast = useRef(false);
@@ -48,14 +54,14 @@ export function BugLinksInput({ value, onChange, errors }: BugLinksInputProps) {
       role="group"
       aria-labelledby={`${groupId}-title`}
       className="grid min-w-0 gap-3"
-      data-testid="bug-links"
+      data-testid={testId}
     >
       <p id={`${groupId}-title`} className="m-0 text-sm leading-none font-medium">
         Link
       </p>
       {value.length === 0 ? (
         <p className="m-0 text-sm text-muted-foreground">
-          Tambahkan tautan terkait (mis. issue tracker atau dokumen). Maksimal {MAX_BUG_LINKS} link.
+          {emptyHint ?? `Tambahkan tautan terkait (mis. issue tracker atau dokumen). Maksimal ${max} link.`}
         </p>
       ) : null}
       {value.map((link, index) => (
@@ -80,7 +86,7 @@ export function BugLinksInput({ value, onChange, errors }: BugLinksInputProps) {
           type="button"
           variant="outline"
           size="sm"
-          disabled={value.length >= MAX_BUG_LINKS}
+          disabled={value.length >= max}
           data-testid="bug-link-add"
           onClick={() => {
             focusLast.current = true;

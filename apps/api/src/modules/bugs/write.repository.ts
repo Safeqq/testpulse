@@ -25,7 +25,9 @@ import { bugByNumber, labelsByBug, loadBugDto, sortLabels } from "./read.reposit
  * anak-anaknya (cascade), jadi jalur buat/ubah yang mengunci project di awal menunggu di sana alih-alih saling mengunci
  * dengan cascade. Penulisan hasil run case (run-cases.repository.ts) memakai urutan yang sama, project lalu run case
  * `FOR UPDATE`, jadi pembuatan bug dari run case dan penulisan hasilnya hanya saling menunggu, tidak saling mengunci.
- * Pengeluaran anggota (`changeMemberRole`) mengunci membership lalu bug, sesuai urutan yang sama. Jalur lain di luar
+ * Pengeluaran anggota (`changeMemberRole`) mengunci membership lalu bug, sesuai urutan yang sama. Triase laporan crowd
+ * (crowd/triage.repository.ts) mengunci project lalu laporan `FOR UPDATE`, kemudian membuat bug lewat `insertBug` di
+ * transaksi yang sama (kunci project diambil ulang tanpa menunggu). Jalur lain di luar
  * modul ini (mis. hapus project vs keluarkan anggota) tidak dijamin bebas deadlock; Postgres membatalkan salah satu
  * transaksi bila itu terjadi.
  */
@@ -76,86 +78,96 @@ export async function createBug(
   db: Db,
   input: { projectId: string; reporterId: string; body: CreateBugBody },
 ): Promise<BugDto | CreateBugFailure> {
+  return db.transaction((tx) => insertBug(tx, input));
+}
+
+/**
+ * Membuat bug di dalam transaksi pemanggil (dipakai `createBug` dan triase laporan crowd, spec Tahap 5 §5.3). Pemanggil
+ * yang sudah memegang kunci lain harus mengikuti urutan di atas: project lebih dulu.
+ */
+export async function insertBug(
+  tx: Queryable,
+  input: { projectId: string; reporterId: string; body: CreateBugBody; crowdReportId?: string },
+): Promise<BugDto | CreateBugFailure> {
   const { projectId, reporterId, body } = input;
-  return db.transaction(async (tx) => {
-    // Project terhapus setelah rute memeriksa akses → 404, bukan 500.
-    const [project] = await tx
-      .select({ id: projects.id })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .for("no key update");
-    if (!project) return "project_not_found";
+  // Project terhapus setelah rute memeriksa akses → 404, bukan 500.
+  const [project] = await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .for("no key update");
+  if (!project) return "project_not_found";
 
-    if (body.assigneeId && !(await lockMembership(tx, projectId, body.assigneeId))) return "assignee_not_member";
+  if (body.assigneeId && !(await lockMembership(tx, projectId, body.assigneeId))) return "assignee_not_member";
 
-    if (body.testCaseId !== undefined) {
-      const [testCase] = await tx
-        .select({ id: testCases.id })
-        .from(testCases)
-        .where(and(eq(testCases.id, body.testCaseId), eq(testCases.projectId, projectId)))
-        .for("key share");
-      if (!testCase) return "test_case_not_found";
-    }
-    if (body.runId !== undefined) {
-      // Run milik project ini dan memuat hasil test tersebut (spec §6.1); dikunci agar tidak terhapus di sela-sela.
-      // `runId` tanpa `testCaseId` sudah ditolak skema; dicek lagi agar query di bawah selalu bertipe benar.
-      const testCaseId = body.testCaseId;
-      if (testCaseId === undefined) return "run_not_found";
-      const [run] = await tx
-        .select({ id: runs.id })
-        .from(runs)
-        .where(and(eq(runs.id, body.runId), eq(runs.projectId, projectId)))
-        .for("key share");
-      const [result] = run
-        ? await tx
-            .select({ id: testResults.id })
-            .from(testResults)
-            .where(and(eq(testResults.runId, run.id), eq(testResults.testCaseId, testCaseId)))
-            .limit(1)
-        : [];
-      if (!result) return "run_not_found";
-    }
-    if (body.manualRunCaseId !== undefined) {
-      // Run case dari run manual project ini (spec Tahap 4 §5.4); dikunci agar run-nya tidak terhapus di sela-sela.
-      const [runCase] = await tx
-        .select({ id: manualRunCases.id })
-        .from(manualRunCases)
-        .innerJoin(manualRuns, eq(manualRuns.id, manualRunCases.runId))
-        .where(and(eq(manualRunCases.id, body.manualRunCaseId), eq(manualRuns.projectId, projectId)))
-        .for("key share", { of: manualRunCases });
-      if (!runCase) return "manual_run_case_not_found";
-    }
+  if (body.testCaseId !== undefined) {
+    const [testCase] = await tx
+      .select({ id: testCases.id })
+      .from(testCases)
+      .where(and(eq(testCases.id, body.testCaseId), eq(testCases.projectId, projectId)))
+      .for("key share");
+    if (!testCase) return "test_case_not_found";
+  }
+  if (body.runId !== undefined) {
+    // Run milik project ini dan memuat hasil test tersebut (spec §6.1); dikunci agar tidak terhapus di sela-sela.
+    // `runId` tanpa `testCaseId` sudah ditolak skema; dicek lagi agar query di bawah selalu bertipe benar.
+    const testCaseId = body.testCaseId;
+    if (testCaseId === undefined) return "run_not_found";
+    const [run] = await tx
+      .select({ id: runs.id })
+      .from(runs)
+      .where(and(eq(runs.id, body.runId), eq(runs.projectId, projectId)))
+      .for("key share");
+    const [result] = run
+      ? await tx
+          .select({ id: testResults.id })
+          .from(testResults)
+          .where(and(eq(testResults.runId, run.id), eq(testResults.testCaseId, testCaseId)))
+          .limit(1)
+      : [];
+    if (!result) return "run_not_found";
+  }
+  if (body.manualRunCaseId !== undefined) {
+    // Run case dari run manual project ini (spec Tahap 4 §5.4); dikunci agar run-nya tidak terhapus di sela-sela.
+    const [runCase] = await tx
+      .select({ id: manualRunCases.id })
+      .from(manualRunCases)
+      .innerJoin(manualRuns, eq(manualRuns.id, manualRunCases.runId))
+      .where(and(eq(manualRunCases.id, body.manualRunCaseId), eq(manualRuns.projectId, projectId)))
+      .for("key share", { of: manualRunCases });
+    if (!runCase) return "manual_run_case_not_found";
+  }
 
-    const [seq] = await tx
-      .update(projects)
-      .set({ bugSeq: sql`${projects.bugSeq} + 1` })
-      .where(eq(projects.id, projectId))
-      .returning({ bugSeq: projects.bugSeq });
-    if (!seq) return "project_not_found";
+  const [seq] = await tx
+    .update(projects)
+    .set({ bugSeq: sql`${projects.bugSeq} + 1` })
+    .where(eq(projects.id, projectId))
+    .returning({ bugSeq: projects.bugSeq });
+  if (!seq) return "project_not_found";
 
-    const [bug] = await tx
-      .insert(bugs)
-      .values({
-        projectId,
-        number: seq.bugSeq,
-        title: body.title,
-        description: body.description ?? "",
-        status: "open",
-        priority: body.priority ?? "medium",
-        severity: body.severity ?? "major",
-        assigneeId: body.assigneeId ?? null,
-        reporterId,
-        testCaseId: body.testCaseId ?? null,
-        runId: body.runId ?? null,
-        manualRunCaseId: body.manualRunCaseId ?? null,
-      })
-      .returning({ id: bugs.id });
-    if (!bug) throw new Error("insert bug tidak mengembalikan baris");
+  const [bug] = await tx
+    .insert(bugs)
+    .values({
+      projectId,
+      number: seq.bugSeq,
+      title: body.title,
+      description: body.description ?? "",
+      status: "open",
+      priority: body.priority ?? "medium",
+      severity: body.severity ?? "major",
+      assigneeId: body.assigneeId ?? null,
+      reporterId,
+      testCaseId: body.testCaseId ?? null,
+      runId: body.runId ?? null,
+      manualRunCaseId: body.manualRunCaseId ?? null,
+      crowdReportId: input.crowdReportId ?? null,
+    })
+    .returning({ id: bugs.id });
+  if (!bug) throw new Error("insert bug tidak mengembalikan baris");
 
-    await insertLabels(tx, bug.id, body.labels ?? []);
-    await insertLinks(tx, bug.id, body.links ?? []);
-    return loadBugDto(tx, bug.id);
-  });
+  await insertLabels(tx, bug.id, body.labels ?? []);
+  await insertLinks(tx, bug.id, body.links ?? []);
+  return loadBugDto(tx, bug.id);
 }
 
 export type UpdateBugFailure =

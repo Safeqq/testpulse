@@ -1,6 +1,8 @@
 import {
   createCrowdReportBody,
   crowdCommentBody,
+  hideBody,
+  triageBody,
   MAX_REPORTS_PER_CYCLE,
   MAX_REPORTS_PER_DAY,
   MAX_SUBMITTED_PER_CYCLE,
@@ -42,6 +44,7 @@ import {
   unauthenticated,
 } from "./errors.js";
 import { findPublicCycleRow, visitorOf } from "./public.repository.js";
+import { setHidden, triageReport } from "./triage.repository.js";
 import {
   findReportById,
   findReportByNumber,
@@ -259,6 +262,52 @@ export async function crowdReportRoutes(app: FastifyInstance, config: AppConfig,
     async (req): Promise<TeamCrowdReportDto> => {
       const report = await teamReport(req.params.slug, req.params.number, req.user, "crowd:read");
       return withStatementTimeout(app.db, statementTimeoutMs, (db) => loadTeamCrowdReportDto(db, report.id));
+    },
+  );
+
+  app.post<{ Params: { slug: string; number: string } }>(
+    "/projects/:slug/crowd-reports/:number/triage",
+    loginRequired,
+    async (req): Promise<TeamCrowdReportDto> => {
+      const { project } = await resolveProject(app.db, req.params.slug, req.user, "crowd:triage");
+      const body = parseOrThrow(triageBody, req.body);
+      const number = parseReportNumber(req.params.number);
+      const result = await triageReport(app.db, { projectId: project.id, number, actorId: req.user!.id, body });
+      if (typeof result === "object" && "field" in result) {
+        throw fieldError("duplicateOf", "Pilih laporan lain di cycle ini yang dikirim lebih dulu dan belum ditolak atau ditarik");
+      }
+      switch (result) {
+        case "not_found":
+          throw reportNotFound();
+        case "conflict":
+          throw reportConflict();
+        case "invalid":
+          throw invalidTriage();
+        case "bug_failed":
+          throw new AppError(404, "PROJECT_NOT_FOUND", "Project tidak ditemukan");
+        default:
+          return result;
+      }
+    },
+  );
+
+  app.patch<{ Params: { slug: string; number: string } }>(
+    "/projects/:slug/crowd-reports/:number",
+    loginRequired,
+    async (req): Promise<TeamCrowdReportDto> => {
+      const { project } = await resolveProject(app.db, req.params.slug, req.user, "crowd:triage");
+      const body = parseOrThrow(hideBody, req.body);
+      const result = await setHidden(app.db, { projectId: project.id, number: parseReportNumber(req.params.number), body });
+      switch (result) {
+        case "not_found":
+          throw reportNotFound();
+        case "conflict":
+          throw reportConflict();
+        case "invalid":
+          throw invalidTriage();
+        default:
+          return result;
+      }
     },
   );
 

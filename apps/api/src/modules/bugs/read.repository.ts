@@ -12,12 +12,23 @@ import type {
 import { and, asc, desc, eq, inArray, isNull, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Queryable } from "../../db/client.js";
-import { bugLabels, bugLinks, bugs, manualRunCases, manualRuns, testCases, users } from "../../db/schema.js";
+import {
+  bugLabels,
+  bugLinks,
+  bugs,
+  crowdCycles,
+  crowdReports,
+  manualRunCases,
+  manualRuns,
+  testCases,
+  users,
+} from "../../db/schema.js";
 import { listTestHistory } from "../results/repository.js";
 import type { BugCursor, BugSort } from "./cursor.js";
 
 const assigneeUser = alias(users, "assignee");
 const reporterUser = alias(users, "reporter");
+const crowdReporterUser = alias(users, "crowd_reporter");
 
 /** Peringkat prioritas untuk `sort=priority` (urgent dulu); sama dengan `rank` di cursor. */
 const priorityRank = sql<number>`(case ${bugs.priority} when 'urgent' then 4 when 'high' then 3 when 'medium' then 2 else 1 end)`;
@@ -159,6 +170,10 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
       originCaseNumber: manualRunCases.caseNumber,
       originCaseTitle: manualRunCases.title,
       originRunCaseId: manualRunCases.id,
+      crowdCycleNumber: crowdCycles.number,
+      crowdCycleTitle: crowdCycles.title,
+      crowdReportNumber: crowdReports.number,
+      crowdReporterName: crowdReporterUser.name,
     })
     .from(bugs)
     .innerJoin(reporterUser, eq(reporterUser.id, bugs.reporterId))
@@ -166,6 +181,9 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
     .leftJoin(testCases, eq(testCases.id, bugs.testCaseId))
     .leftJoin(manualRunCases, eq(manualRunCases.id, bugs.manualRunCaseId))
     .leftJoin(manualRuns, eq(manualRuns.id, manualRunCases.runId))
+    .leftJoin(crowdReports, eq(crowdReports.id, bugs.crowdReportId))
+    .leftJoin(crowdCycles, eq(crowdCycles.id, crowdReports.cycleId))
+    .leftJoin(crowdReporterUser, eq(crowdReporterUser.id, crowdReports.reporterId))
     .where(eq(bugs.id, bugId));
   if (!row) throw new Error("bug hilang di tengah transaksi");
 
@@ -204,8 +222,19 @@ export async function loadBugDto(db: Queryable, bugId: string): Promise<BugDto> 
             runCaseId: row.originRunCaseId,
           }
         : null,
-    // Diisi dari laporan crowd yang diterima setelah tabel crowd ada (spec Tahap 5 §8.3).
-    crowdOrigin: null,
+    // Laporan crowd asal (spec Tahap 5 §8.3); `null` bila laporan atau cycle-nya sudah dihapus. Hanya nama pelapor.
+    crowdOrigin:
+      row.crowdCycleNumber !== null &&
+      row.crowdCycleTitle !== null &&
+      row.crowdReportNumber !== null &&
+      row.crowdReporterName !== null
+        ? {
+            cycleNumber: row.crowdCycleNumber,
+            cycleTitle: row.crowdCycleTitle,
+            reportNumber: row.crowdReportNumber,
+            reporterName: row.crowdReporterName,
+          }
+        : null,
   };
 }
 

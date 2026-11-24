@@ -14,6 +14,7 @@ import { bugRoutes } from "./modules/bugs/routes.js";
 import { invitationRoutes } from "./modules/invitations/routes.js";
 import { caseRoutes } from "./modules/manual/cases.routes.js";
 import { crowdCycleRoutes } from "./modules/crowd/cycles.routes.js";
+import { crowdPublicRoutes } from "./modules/crowd/public.routes.js";
 import { manualRunRoutes } from "./modules/manual/runs.routes.js";
 import { manualSummaryRoutes } from "./modules/manual/summary.routes.js";
 import { suiteRoutes } from "./modules/manual/suites.routes.js";
@@ -39,6 +40,8 @@ export interface BuildAppOptions {
   logStream?: { write(msg: string): void };
   /** `statement_timeout` (ms) query baca berat; default `READ_STATEMENT_TIMEOUT_MS` (test memakai nilai kecil). */
   readStatementTimeoutMs?: number;
+  /** TTL cache leaderboard global crowdtesting (ms); default 30 detik (test memakai 0). */
+  crowdLeaderboardTtlMs?: number;
 }
 
 export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): Promise<FastifyInstance> {
@@ -99,6 +102,10 @@ export async function buildApp(config: AppConfig, opts: BuildAppOptions = {}): P
       await manualRunRoutes(api, readOpts);
       await manualSummaryRoutes(api, readOpts);
       await crowdCycleRoutes(api, readOpts);
+      await crowdPublicRoutes(api, config, {
+        ...readOpts,
+        ...(opts.crowdLeaderboardTtlMs !== undefined ? { leaderboardTtlMs: opts.crowdLeaderboardTtlMs } : {}),
+      });
     },
     { prefix: "/api/v1" },
   );

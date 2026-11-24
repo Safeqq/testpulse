@@ -2,12 +2,13 @@
 
 [![CI](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml/badge.svg)](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml)
 
-**TestPulse** adalah aplikasi web untuk tim QA/dev: satu tempat untuk memantau kesehatan testing, mulai dari hasil automated test dan deteksi test flaky, project dan tim, bug tracker dan deteksi regresi antar versi, test case manual dan run manual, hingga (di tahap berikutnya) crowdtesting. Kategori produk yang serupa: TestRail, Qase, ReportPortal, Allure TestOps.
+**TestPulse** adalah aplikasi web untuk tim QA/dev: satu tempat untuk memantau kesehatan testing, mulai dari hasil automated test dan deteksi test flaky, project dan tim, bug tracker dan deteksi regresi antar versi, test case manual dan run manual, hingga crowdtesting dengan penguji dari luar tim. Kategori produk yang serupa: TestRail, Qase, ReportPortal, Allure TestOps.
 
 - **Tahap 1** adalah fondasinya: akun, project (privat atau publik), tim dengan role `admin`/`tester`/`viewer`, dan undangan lewat link, lengkap dengan seluruh pipeline QA di bawahnya.
 - **Tahap 2** menghadirkan fitur inti: CI mengunggah hasil test (JUnit XML) dengan token CI, lalu **dashboard** menampilkan tren, riwayat run, dan **test flaky** beserta skornya. Ada reporter CLI, gate performa k6, dan **dogfooding**: hasil test TestPulse sendiri dilaporkan ke project publik `testpulse` ([lihat di production](https://testpulse-d2p.pages.dev/p/testpulse)).
 - **Tahap 3** menambahkan **bug tracker** (bug manual atau dari test yang gagal, status, prioritas, assignee, label, komentar, dan riwayat) dan **deteksi regresi antar versi**: run boleh membawa `version`, dan TestPulse otomatis membandingkan versi terbaru dengan versi sebelumnya dalam satu kalimat kesimpulan. Lapisan QA baru: **visual regression** dengan Playwright. TestPulse mengirim hasil CI-nya sendiri dengan versi `0.3.0`.
 - **Tahap 4** menambahkan **test case manual** (suite, case dengan langkah terstruktur, tautan ke automated test) dan **run manual** (tester mengeksekusi case per langkah, lalu melaporkan bug dari case yang gagal), yang tampil berdampingan dengan hasil CI di halaman Versi dan dashboard. Lapisan QA baru: **mutation testing** dengan StrykerJS pada kode domain (skor 100%, [laporan live](https://safeqq.github.io/testpulse/mutation/)). TestPulse menguji dirinya sendiri secara manual juga: test case manualnya ada di project publik `testpulse` dan dikirim dengan versi `0.4.0`.
+- **Tahap 5** menambahkan **crowdtesting**: tim membuka *test cycle* publik (juga dari project privat, tanpa membuka isi project), penguji dari luar tim bergabung dan mengirim laporan bug, tim **mentriase** laporan itu (terima menjadi bug berlabel `crowd`, tolak, duplikat, kembalikan), dan penguji mengumpulkan **poin reputasi** di leaderboard. TestPulse membuka cycle publiknya sendiri, "Uji TestPulse 0.5.0", di <https://testpulse-d2p.pages.dev/crowd>.
 
 | | |
 |---|---|
@@ -15,7 +16,7 @@
 | Laporan mutation testing (live) | <https://safeqq.github.io/testpulse/mutation/> (diperbarui setiap Senin lewat [mutation.yml](https://github.com/Safeqq/testpulse/actions/workflows/mutation.yml)) |
 | CI (GitHub Actions) | [ci.yml](https://github.com/Safeqq/testpulse/actions/workflows/ci.yml) |
 | Demo live | <https://testpulse-d2p.pages.dev> · project publik: <https://testpulse-d2p.pages.dev/p/testpulse> (API di Render free tier: request pertama setelah idle bisa ±1 menit) |
-| Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [Test plan tahap 2](docs/test-plans/tahap-2.md) · [Test plan tahap 3](docs/test-plans/tahap-3.md) · [Test plan tahap 4](docs/test-plans/tahap-4.md) · [ADR](docs/adr/) |
+| Dokumen QA | [Strategi test](docs/TEST_STRATEGY.md) · [Test plan tahap 1](docs/test-plans/tahap-1.md) · [Test plan tahap 2](docs/test-plans/tahap-2.md) · [Test plan tahap 3](docs/test-plans/tahap-3.md) · [Test plan tahap 4](docs/test-plans/tahap-4.md) · [Test plan tahap 5](docs/test-plans/tahap-5.md) · [ADR](docs/adr/) |
 
 ## Kenapa proyek ini ada
 
@@ -24,7 +25,7 @@ TestPulse punya dua tujuan sekaligus:
 1. **Produk yang berguna** untuk tim QA/dev.
 2. **Portfolio QA/SDET**: TestPulse sendiri diuji dengan test pyramid lengkap yang berjalan otomatis di CI, dengan quality gate dan laporan publik.
 
-Sejak tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding), dan sejak tahap 3 dengan versi aplikasinya (`version` di `package.json` root, kini `0.4.0`): setelah setiap deploy, [deploy.yml](.github/workflows/deploy.yml) mengunggah JUnit dari run CI yang memicunya ke project publik `testpulse`, sehingga dashboard kualitas yang nyata bisa dilihat lewat <https://testpulse-d2p.pages.dev/p/testpulse> tanpa perlu mendaftar. Dashboard di production terisi setelah pemilik repo memasang secret `TESTPULSE_TOKEN` (langkahnya ada di [docs/deploy.md](docs/deploy.md), Langkah 12).
+Sejak tahap 2 **hasil test TestPulse dilaporkan ke TestPulse itu sendiri** (dogfooding), dan sejak tahap 3 dengan versi aplikasinya (`version` di `package.json` root, kini `0.5.0`): setelah setiap deploy, [deploy.yml](.github/workflows/deploy.yml) mengunggah JUnit dari run CI yang memicunya ke project publik `testpulse`, sehingga dashboard kualitas yang nyata bisa dilihat lewat <https://testpulse-d2p.pages.dev/p/testpulse> tanpa perlu mendaftar. Dashboard di production terisi setelah pemilik repo memasang secret `TESTPULSE_TOKEN` (langkahnya ada di [docs/deploy.md](docs/deploy.md), Langkah 12).
 
 ## Tampilan
 
@@ -42,6 +43,8 @@ Pengunjung yang belum masuk melihat **landing page** di `/` (sebelumnya langsung
 | **Versi dengan kolom Manual** (`/p/testpulse/versions`) | ![Halaman Versi dengan kolom Manual, tema terang](docs/images/versions-light.png) | ![Halaman Versi dengan kolom Manual, tema gelap](docs/images/versions-dark.png) |
 | **Run manual** (`/p/testpulse/manual-runs/1`) | ![Detail run manual dengan progres, tema terang](docs/images/manual-run-light.png) | ![Detail run manual dengan progres, tema gelap](docs/images/manual-run-dark.png) |
 | **Eksekusi case manual** (`/p/testpulse/manual-runs/1/cases/<id>`) | ![Halaman eksekusi case dengan saran status, tema terang](docs/images/manual-exec-light.png) | ![Halaman eksekusi case dengan saran status, tema gelap](docs/images/manual-exec-dark.png) |
+| **Direktori crowdtesting** (`/crowd`) | ![Direktori cycle crowdtesting dengan leaderboard, tema terang](docs/images/crowd-directory-light.png) | ![Direktori cycle crowdtesting dengan leaderboard, tema gelap](docs/images/crowd-directory-dark.png) |
+| **Triase laporan crowd** (`/p/testpulse/crowd-reports/4`) | ![Halaman triase laporan crowd dengan panel keputusan, tema terang](docs/images/crowd-triage-light.png) | ![Halaman triase laporan crowd dengan panel keputusan, tema gelap](docs/images/crowd-triage-dark.png) |
 
 Screenshot dibuat otomatis dari stack lokal (Docker Compose) oleh [`tests/scripts/screenshots.ts`](tests/scripts/screenshots.ts): `pnpm --filter @testpulse/tests screenshots` dengan `BASE_URL=http://localhost:8080`. Skrip itu membuat user, project publik, token CI, 12 run JUnit contoh (tiga berversi 0.1.0, 0.2.0, 0.3.0; dibangun dengan helper `buildJUnit`), beberapa bug, dua suite berisi delapan test case manual, dan satu run manual "Regresi 0.3.0" yang sebagian sudah dieksekusi di database lokal yang kosong; datanya buatan, bukan hasil test sungguhan.
 
@@ -130,6 +133,36 @@ node scripts/seed-dogfood-manual.mjs                # TP_BASE_URL (default produ
 
 Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`, lalu `node scripts/seed-dogfood-manual.mjs`. Jalankan skrip **setelah** halaman Versi `/p/testpulse` menampilkan baris CI `0.4.0`: tautan ke automated test dicari lewat `GET /tests?q=`, jadi sebelum run CI itu ada case dibuat tanpa tautan (menjalankan skrip lagi setelahnya menautkan case aktif yang belum tertaut, tanpa membuat case ganda). Skrip mencetak origin tujuan sebelum login, menolak `TP_BASE_URL` non-https kecuali host lokal, dan tidak mengikuti redirect. Setelah deploy `0.4.0`, buat run "Regresi 0.4.0" di UI dan eksekusi semua case-nya sendiri; skrip tidak pernah mengisi hasil. Langkah di production ada di [docs/deploy.md](docs/deploy.md).
 
+## Fitur Tahap 5: crowdtesting
+
+**Untuk tim** (tab **Crowd**, `/p/:slug/cycles`; admin mengelola cycle, tester ke atas mentriase, semua anggota membaca):
+
+- **Cycle** `CY-<n>`: judul, ringkasan, 1 sampai 5 link aplikasi yang diuji (web staging, APK, dan sejenisnya), instruksi dan cakupan dalam Markdown, lingkungan target, versi aplikasi, dan waktu berakhir opsional. Cycle dibuat sebagai draf, lalu **dibuka**, **ditutup**, dan bisa **dibuka ulang**. Cycle yang sudah punya laporan tidak bisa dihapus agar poin penguji tetap utuh.
+- **Visibilitas sendiri**: cycle yang dibuka tampil di direktori publik `/crowd` walau project-nya privat. Yang terbuka hanya isi cycle; hasil CI, bug, test case, dan anggota tetap tertutup, dan nama project tampil tanpa link ([ADR 0007](docs/adr/0007-crowdtesting-visibilitas-privasi-dan-anti-spam.md)).
+- **Triase** (`/p/:slug/crowd-reports/:number`): **terima** dengan severity final dan prioritas, yang langsung membuat bug Tahap 3 berlabel `crowd` dengan asal yang tercatat; **tolak** dengan alasan dan catatan; tandai **duplikat** dari laporan yang lebih dulu; **kembalikan** ke antrian; sembunyikan dari daftar masalah yang diketahui. **Simpan & berikutnya** membawa ke laporan berikutnya di antrian. Dua anggota yang menerima bersamaan menghasilkan tepat satu bug.
+- **Peserta** bisa dikeluarkan dengan alasan; dashboard punya kartu "Crowdtesting" (cycle berlangsung, menunggu triase, diterima 30 hari terakhir).
+
+**Untuk penguji dari luar tim** (`/crowd`):
+
+- Jelajahi cycle yang berlangsung dan yang selesai, baca instruksi, lalu **ikut** dengan menyetujui aturannya.
+- **Kirim laporan bug** (langkah, hasil yang diharapkan dan yang terjadi, lingkungan, severity usulan, link bukti), setelah memeriksa daftar **masalah yang sudah diketahui**. Laporan bisa diubah atau ditarik selama belum ditriase, dan punya thread komentar dengan tim.
+- **Reputasi**: laporan yang diterima memberi poin sesuai severity final (minor 1, major 3, critical 5, blocker 8), tanpa penalti. Ada leaderboard per cycle dan global, profil tester publik, dan ringkasan "Crowdtesting saya". Email tidak pernah tampil, hanya nama.
+- **Anti-spam**: maksimal 10 laporan menunggu triase per cycle, 50 per cycle, dan 30 per 24 jam, dijaga di server di bawah kunci sehingga kiriman bersamaan tidak lolos; ditambah rate limit per IP.
+
+Teks dari penguji diperlakukan sebagai masukan berbahaya: halaman triase, bug yang dibuat, dan laporan saya merender Markdown aman di bawah CSP ketat, dan metadata pelapor di deskripsi bug ditulis sebagai code span agar tidak bisa meniru UI tim.
+
+### Dogfooding: cycle crowdtesting TestPulse sendiri
+
+[`scripts/seed-dogfood-crowd.mjs`](scripts/seed-dogfood-crowd.mjs) membuat dan membuka cycle **"Uji TestPulse 0.5.0"** di project `testpulse`: link ke production, instruksi alur yang perlu dicoba (daftar, buat project, upload JUnit via curl, bug, test manual), cakupan, di luar cakupan (serangan DoS dan social engineering), lingkungan Chrome, Firefox, Safari, dan HP, serta versi dari `package.json`. Skrip memakai pengamanan yang sama dengan skrip seed Tahap 4 dan idempoten: cycle berjudul sama tidak dibuat ulang (hanya dibuka bila masih draf).
+
+```bash
+read -rs TP_PASSWORD && export TP_PASSWORD          # ketik password: tidak tampil dan tidak masuk riwayat shell
+export TP_EMAIL=anda@contoh.com                     # akun admin di project testpulse
+node scripts/seed-dogfood-crowd.mjs                 # TP_BASE_URL (default production), TP_SLUG (default testpulse)
+```
+
+Jalankan skrip **setelah deploy `0.5.0`** (urutannya: CI hijau, deploy, lalu skrip). Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`, lalu `node scripts/seed-dogfood-crowd.mjs`. Laporan yang masuk dari pengunjung ditriase pemilik repo di `/p/testpulse/cycles/1`. Langkah di production ada di [docs/deploy.md](docs/deploy.md).
+
 ## Highlights untuk recruiter
 
 - **Matriks otorisasi dibangkitkan dari data.** [`authorization-matrix.ts`](tests/api/authorization-matrix.ts) mendefinisikan 6 aktor x endpoint yang terikat project (baris tabel spec bagian 7), dan [`authorization.spec.ts`](tests/api/authorization.spec.ts) menghasilkan satu test per kombinasi. Menambah role atau endpoint berarti menambah baris data.
@@ -154,6 +187,9 @@ Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`,
 - **Mutation testing** (StrykerJS) pada kode domain dengan gate 80 dan hasil 100%: skor awal 80,31% dan 90,63% menunjukkan test yang lemah (pesan galat, batas "lebih lambat", parser JUnit) yang lalu diperkuat; 29 mutan dikecualikan lewat komentar beralasan (23 setara dengan kode asli, 6 saudaranya yang terbunuh pada ekspresi yang sama), dan laporannya publik. Pilihan runner dan jebakan skor palsu (timeout, mutan statis) dicatat di [ADR 0006](docs/adr/0006-run-manual-snapshot-dan-mutation-testing.md).
 - **Run manual sebagai catatan yang tahan waktu.** Snapshot membuat edit atau hapus case tidak mengubah run lama; hasil tidak bisa tersimpan setelah run diselesaikan (dibuktikan paralel di Postgres asli), dan saran status tidak pernah menjadi status tanpa pilihan tester.
 - **Dogfooding manual**: test case manual TestPulse sendiri ada di project publiknya, dibuat dengan skrip idempoten yang diverifikasi dua kali terhadap stack lokal.
+- **Crowdtesting tanpa membuka project privat.** Cycle publik punya visibilitas sendiri; matriks otorisasi kedua (anonim, login bukan peserta, peserta aktif, keluar, dikeluarkan, anggota project) dan matriks tim membuktikan batasnya, dan sengaja menjadikan `crowd:read` aksi baca publik langsung menggagalkan sel matriks.
+- **Konten dari pihak luar inert.** Laporan berisi `<script>`, `<img onerror>`, link `javascript:`, gambar eksternal, dan heading yang meniru status tim dibuktikan inert di halaman triase, bug yang dibuat, dan laporan pelapor, di tiga browser di bawah gate CSP; email pelapor tidak pernah ada di respons mana pun.
+- **Anti-spam dan triase tahan race condition.** 9 laporan menunggu + 5 kiriman paralel menghasilkan tepat 1 yang lolos (kunci advisory per pengguna untuk batas lintas cycle), dan dua penerimaan bersamaan menghasilkan tepat satu bug (Postgres asli).
 - **Dokumentasi QA nyata**: strategi test (termasuk apa yang sengaja tidak diuji), test plan dengan rujukan ke test, dan ADR.
 
 ## Roadmap
@@ -164,10 +200,10 @@ Di PowerShell: `$env:TP_EMAIL = "..."; $env:TP_PASSWORD = Read-Host "Password"`,
 | **2** | Dashboard hasil test, deteksi flaky, reporter CLI, token CI, dogfooding, test performa (k6) | ✅ Selesai dan live (dashboard production terisi setelah `TESTPULSE_TOKEN` dipasang) |
 | **3** | Bug tracker (bug dari test yang gagal), deteksi regresi antar versi, visual regression, k6 untuk bug dan perbandingan | ✅ Selesai; setelah deploy, `/p/testpulse` menampilkan run berversi `0.3.0` |
 | **4** | Test case management dan test run manual (snapshot, eksekusi per langkah, bug dari case gagal), kolom Manual di halaman Versi, mutation testing (StrykerJS) | ✅ Selesai; setelah deploy, `/p/testpulse` berisi test case manual TestPulse dan run berversi `0.4.0` |
-| 5 | Crowdtesting: test cycle publik, crowd tester mengirim bug, triase, reputasi dan leaderboard (aplikasi berupa link, tanpa pembayaran) | Direncanakan |
-| 6 (opsional) | Aplikasi desktop Electron (notifikasi build gagal, tray) yang diuji dengan Playwright | Opsional |
+| **5** | Crowdtesting: test cycle publik, crowd tester mengirim bug, triase menjadi bug, reputasi dan leaderboard (aplikasi berupa link, tanpa pembayaran) | ✅ Selesai; setelah deploy dan skrip seed, `/crowd` menampilkan cycle "Uji TestPulse 0.5.0" |
+| 6 | Aplikasi desktop Electron (notifikasi build gagal, tray) yang diuji dengan Playwright | Berikutnya |
 
-Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec: [tahap 1](docs/superpowers/specs/2026-10-23-testpulse-tahap1-design.md), [tahap 2](docs/superpowers/specs/2026-10-28-testpulse-tahap2-design.md), [tahap 3](docs/superpowers/specs/2026-11-04-testpulse-tahap3-design.md), [tahap 4](docs/superpowers/specs/2026-11-08-testpulse-tahap4-design.md).
+Setiap tahap melewati siklus spec, rencana implementasi, lalu implementasi. Spec: [tahap 1](docs/superpowers/specs/2026-10-23-testpulse-tahap1-design.md), [tahap 2](docs/superpowers/specs/2026-10-28-testpulse-tahap2-design.md), [tahap 3](docs/superpowers/specs/2026-11-04-testpulse-tahap3-design.md), [tahap 4](docs/superpowers/specs/2026-11-08-testpulse-tahap4-design.md), [tahap 5](docs/superpowers/specs/2026-11-16-testpulse-tahap5-design.md).
 
 ## Arsitektur
 
@@ -203,13 +239,13 @@ Seluruh lapisan berjalan otomatis di [CI](.github/workflows/ci.yml); detail dan 
 | Contract (web dan reporter sebagai consumer) | Pact JS | `apps/web/test/contract`, `packages/reporter/test/contract`, `apps/api/test/contract` |
 | E2E (3 browser) + aksesibilitas dua tema + gate CSP | Playwright (POM) + axe | `tests/e2e`, `tests/pages`, `tests/support` |
 | Proxy dan paritas header | Vitest | `apps/web/test/functions` |
-| Visual regression (8 halaman, dua tema, desktop dan HP) | Playwright `toHaveScreenshot()` di container resmi | `tests/visual`, `scripts/visual.sh` |
-| Performa (gate p95 upload dan baca, termasuk bug, versi, perbandingan, case, dan run manual) | k6 | `tests/perf` |
+| Visual regression (12 halaman, dua tema, desktop dan HP) | Playwright `toHaveScreenshot()` di container resmi | `tests/visual`, `scripts/visual.sh` |
+| Performa (gate p95 upload dan baca, termasuk bug, versi, perbandingan, case, run manual, dan crowdtesting) | k6 | `tests/perf` |
 | Mutation testing (domain, skor >= 80, mingguan) | StrykerJS | `apps/api/stryker.config.mjs`, `packages/shared/stryker.config.mjs`, `.github/workflows/mutation.yml` |
-| Security (0 temuan High) | OWASP ZAP, `pnpm audit`, Dependabot | `tests/security`, `.github/` |
+| Security (0 temuan High, termasuk halaman crowd) | OWASP ZAP, `pnpm audit`, Dependabot | `tests/security`, `.github/` |
 | Smoke production (`@smoke`, read-only; termasuk dashboard `/p/testpulse`) | Playwright | `tests/smoke` |
 
-Jumlah test per lapisan (snapshot per commit `178610a`, 2026-11-14; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-178610a-2026-11-14).
+Jumlah test per lapisan (snapshot per commit `11f04b7`, 2026-11-24; bisa bergeser) ada di [TEST_STRATEGY.md](docs/TEST_STRATEGY.md#jumlah-test-snapshot-per-commit-11f04b7-2026-11-24).
 
 ## Menjalankan secara lokal
 
@@ -272,11 +308,11 @@ Tanpa `BASE_URL`, Playwright menyalakan `pnpm dev` sendiri (butuh Postgres seper
 **Performa (k6)**, terhadap stack Compose yang hidup (sama dengan job `perf` di [ci.yml](.github/workflows/ci.yml); image `grafana/k6` dijalankan di jaringan Compose):
 
 ```bash
-BASE_URL=http://localhost:8080 node tests/perf/setup.mjs      # user, project, token, 55 run berversi, 120 bug, 12 suite dengan 240 case manual, dan satu run manual 200 case (state di tests/perf/.state, tidak masuk git)
+BASE_URL=http://localhost:8080 node tests/perf/setup.mjs      # user, project, token, 55 run berversi, 120 bug, 12 suite dengan 240 case manual, satu run manual 200 case, dan 25 cycle crowd dengan 200 tester dan 1000 laporan diterima (state di tests/perf/.state, tidak masuk git)
 mkdir -p perf-results
 docker run --rm --network testpulse_default -v "$PWD/tests/perf:/scripts:ro" -v "$PWD/perf-results:/results" \
   grafana/k6:1.3.0 run /scripts/ingest.js -e BASE_URL=http://web:8080 --summary-export /results/ingest-summary.json
-# ganti ingest.js dengan read.js untuk skenario baca (stats, runs, flaky, bugs, compare, compare?groups=none, versions, cases, manual-runs/:number, manual-runs/:number/cases)
+# ganti ingest.js dengan read.js untuk skenario baca (stats, runs, flaky, bugs, compare, compare?groups=none, versions, cases, manual-runs/:number, manual-runs/:number/cases, dan crowd: cycles, cycles/:id, known-issues, leaderboard)
 ```
 
 **OWASP ZAP baseline** (terhadap stack Compose yang hidup; sama dengan job `zap` di [ci.yml](.github/workflows/ci.yml)):
@@ -287,6 +323,8 @@ docker run --rm --network testpulse_default -v "$PWD/zap:/zap/wrk:rw" \
   ghcr.io/zaproxy/zaproxy:stable \
   zap-baseline.py -t http://web:8080 -J report.json -r report.html -I
 node tests/security/check-zap-report.mjs zap/report.json   # gagal jika ada temuan High
+# halaman crowd (seperti job CI): BASE_URL=http://localhost:8080 node tests/security/seed-crowd.mjs mencetak cycle_id=<id>,
+# lalu ulangi zap-baseline.py dengan -t http://web:8080/crowd, /crowd/c/<id>, dan /crowd/leaderboard (-m 1)
 ```
 
 **Smoke production** (hanya membaca; butuh akun smoke di production, lihat [docs/deploy.md](docs/deploy.md)):
@@ -317,7 +355,7 @@ tests/
 docs/
   TEST_STRATEGY.md   test-plans/   adr/   images/ (screenshot)   deploy.md   superpowers/ (spec dan rencana)
 .github/          Workflow CI dan deploy, Dependabot
-scripts/          visual.sh: regresi visual di container Playwright resmi; seed-dogfood-manual.mjs: test case manual TestPulse sendiri
+scripts/          visual.sh: regresi visual di container Playwright resmi; seed-dogfood-manual.mjs: test case manual TestPulse sendiri; seed-dogfood-crowd.mjs: cycle crowdtesting TestPulse sendiri
 docker-compose.yml  render.yaml
 ```
 
@@ -328,7 +366,8 @@ Production memakai layanan gratis (Neon, Render, Cloudflare Pages) dan di-deploy
 ## Keterbatasan yang diketahui
 
 - Render free tier tidur saat idle; request pertama bisa lambat sekitar 30 sampai 60 detik.
-- Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, atau mute test flaky; hanya 200 run terbaru per project yang disimpan. Tahap 3 tidak memuat notifikasi email, mention, lampiran bug (hanya link), integrasi GitHub Issues, atau perubahan status bug otomatis. Tahap 4 tidak memuat suite bertingkat, langkah bersama, case berparameter, riwayat versi case, impor/ekspor (CSV, TestRail), lampiran hasil, kloning atau penjadwalan run, atau perubahan status case otomatis dari hasil CI.
+- Tahap 1 sengaja tidak memuat reset password, verifikasi email, dan OAuth/2FA. Tahap 2 hanya menerima JUnit XML dan tidak memuat notifikasi, lampiran test, atau mute test flaky; hanya 200 run terbaru per project yang disimpan. Tahap 3 tidak memuat notifikasi email, mention, lampiran bug (hanya link), integrasi GitHub Issues, atau perubahan status bug otomatis. Tahap 4 tidak memuat suite bertingkat, langkah bersama, case berparameter, riwayat versi case, impor/ekspor (CSV, TestRail), lampiran hasil, kloning atau penjadwalan run, atau perubahan status case otomatis dari hasil CI. Tahap 5 tidak memuat pembayaran atau hadiah, upload berkas bukti (hanya link), undangan privat ke cycle, notifikasi email, banding triase selain lewat komentar, moderasi spam berbasis konten, leaderboard per periode, atau profil tester yang bisa diedit.
+- Leaderboard crowdtesting global di-cache 30 detik; posisi Anda sendiri selalu dihitung segar. Direktori `/crowd` menampilkan nama project yang membuka cycle walau project itu privat (isinya tetap tertutup).
 - Unggahan diproses sinkron (ADR 0004): laporan sangat besar (mendekati 5 MB) memegang request lebih lama, terutama setelah cold start Render.
 - Mutation testing hanya mencakup kode domain `apps/api` dan `packages/shared`, berjalan mingguan (bukan per push), dan laporan di Pages berasal dari run sukses terakhir; di `apps/api` ia memakai runner `command` sehingga satu run penuh sekitar 21 menit.
 - Hal yang sengaja tidak diuji (performa free tier, mutation testing untuk web dan reporter, dan lainnya) beserta alasannya: [TEST_STRATEGY.md bagian 6](docs/TEST_STRATEGY.md#6-sengaja-tidak-diuji-dan-alasannya).

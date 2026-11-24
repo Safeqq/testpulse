@@ -56,8 +56,8 @@ const FEATURES: Feature[] = [
     slug: "crowdtesting",
     icon: UsersRound,
     title: "Crowdtesting",
-    description: "Libatkan penguji eksternal untuk menguji rilis Anda di perangkat dan kondisi nyata.",
-    stage: 5,
+    description:
+      "Buka test cycle publik untuk penguji di luar tim, triase laporan mereka menjadi bug, dan beri poin reputasi di leaderboard.",
   },
 ];
 
@@ -65,7 +65,7 @@ export function Features() {
   return (
     <section aria-labelledby="landing-features-title" data-testid="landing-features" className="grid gap-8">
       <SectionHeading id="landing-features-title" eyebrow="Fitur" title="Semua yang dibutuhkan tim QA, bertahap">
-        Fondasi, dashboard hasil test, bug tracker, dan test case manual sudah live hari ini. Fitur berikutnya dikerjakan tahap demi tahap.
+        Fondasi, dashboard hasil test, bug tracker, test case manual, dan crowdtesting sudah live hari ini. Fitur berikutnya dikerjakan tahap demi tahap.
       </SectionHeading>
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {FEATURES.map(({ slug, icon: Icon, title, description, stage }) => (

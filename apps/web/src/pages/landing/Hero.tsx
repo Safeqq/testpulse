@@ -93,7 +93,8 @@ export function Hero() {
         </h1>
         <p className="mt-5 max-w-xl text-lg text-muted-foreground">
           Kumpulkan hasil automated test dari CI, deteksi test flaky, bandingkan versi untuk menangkap regresi, kelola
-          bug, dan jalankan test manual berdampingan dengan hasil otomatis, semuanya dalam satu platform untuk tim QA.
+          bug, jalankan test manual berdampingan dengan hasil otomatis, dan buka crowdtesting untuk penguji dari luar tim,
+          semuanya dalam satu platform untuk tim QA.
         </p>
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild size="lg">

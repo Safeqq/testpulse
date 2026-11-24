@@ -7,8 +7,8 @@ const STAGES = [
   { stage: 2, title: "Dashboard hasil test & deteksi flaky", status: "Live", live: true },
   { stage: 3, title: "Bug tracker & perbandingan versi", status: "Live", live: true },
   { stage: 4, title: "Test case manual & mutation testing", status: "Live", live: true },
-  { stage: 5, title: "Crowdtesting", status: "Berikutnya" },
-  { stage: 6, title: "Aplikasi desktop", status: "Opsional" },
+  { stage: 5, title: "Crowdtesting", status: "Live", live: true },
+  { stage: 6, title: "Aplikasi desktop", status: "Berikutnya" },
 ] as const;
 
 export function Roadmap() {

@@ -273,6 +273,32 @@ Catatan:
 - **Pemulihan bila skrip terlanjur dijalankan sebelum baris CI `0.4.0` ada:** case dibuat tanpa tautan (keluaran "belum ada automated test yang cocok"). Setelah run CI `0.4.0` tampil di halaman Versi, jalankan skrip sekali lagi: case aktif yang belum tertaut dan kini punya padanan ditautkan lewat `PATCH` ("sudah ada; kini tertaut ke automated test"), tanpa membuat case ganda. Case yang sudah tertaut atau diarsipkan tidak diubah, dan jalan berikutnya tidak mengubah apa pun.
 - Skrip membuat data sungguhan di production. Jangan dijalankan terhadap project yang bukan milik Anda, dan jangan dijalankan dari CI.
 
+## Langkah 14. Dogfooding crowdtesting: buka cycle "Uji TestPulse 0.5.0" (Tahap 5, dilakukan pemilik repo)
+
+Mulai Tahap 5, project `testpulse` membuka cycle crowdtesting publik untuk TestPulse sendiri. Skrip [`scripts/seed-dogfood-crowd.mjs`](../scripts/seed-dogfood-crowd.mjs) membuat cycle **"Uji TestPulse 0.5.0"** lewat API (link ke production, instruksi alur: daftar, buat project, upload JUnit via curl, bug, test manual; cakupan; di luar cakupan: serangan DoS dan social engineering; lingkungan Chrome, Firefox, Safari, dan HP; versi aplikasi dari `package.json` root), lalu membukanya sehingga tampil di `/crowd`.
+
+Skrip memakai akun **admin** project `testpulse` (akun pribadi pemilik project dari Langkah 9, bukan akun smoke; membuat dan membuka cycle khusus admin), dengan email dan password yang Anda isi di environment shell lokal. Jangan menaruhnya di berkas repo, issue, atau chat; skrip tidak mencetak password maupun cookie sesi.
+
+1. Pastikan deploy `0.5.0` sudah selesai: API sudah memuat migrasi 0007, header menampilkan menu **Crowdtesting**, dan `/crowd` terbuka (masih kosong).
+2. Isi environment, lalu jalankan skrip:
+
+   ```bash
+   export TP_BASE_URL=https://testpulse.pages.dev   # opsional; default https://testpulse-d2p.pages.dev. Isi dengan URL web Anda (harus sama dengan APP_ORIGIN di Render); alamat ini juga menjadi link aplikasi di cycle
+   export TP_EMAIL=anda@contoh.com
+   read -rs TP_PASSWORD && export TP_PASSWORD         # ketik password: tidak tampil dan tidak masuk riwayat shell
+   node scripts/seed-dogfood-crowd.mjs                # TP_SLUG opsional, default testpulse
+   ```
+
+   Di PowerShell: `$env:TP_EMAIL = "anda@contoh.com"; $env:TP_PASSWORD = Read-Host "Password"; node scripts/seed-dogfood-crowd.mjs`. Skrip mencetak `Tujuan: <origin>` sebelum login; hentikan (Ctrl+C) bila itu bukan alamat yang Anda maksud. `TP_BASE_URL` harus `https` (http hanya untuk host lokal), dan skrip tidak mengikuti redirect.
+3. **Cek:** keluaran mencetak "cycle baru CY-n ... dibuat dan dibuka" beserta link publiknya. Jalankan ulang: harus mencetak "sudah ada (open); tidak ada yang diubah" (idempoten; cycle berjudul sama tidak dibuat ulang, dan hanya dibuka bila masih draf). Buka `/crowd` di jendela incognito: cycle tampil di tab **Berlangsung** dengan nama project.
+4. Bagikan link cycle. Laporan yang masuk tampil di antrian `/p/testpulse/cycles/<n>` (badge "menunggu triase" di daftar cycle dan kartu Crowdtesting di ringkasan); triase sendiri di halaman laporan.
+
+Catatan:
+
+- Kode keluar `2` berarti `TP_EMAIL` atau `TP_PASSWORD` kosong atau `TP_BASE_URL` tidak sah; `1` berarti login atau permintaan gagal (pesan menyebut status dan kode galat API, mis. `403 FORBIDDEN` bila akun bukan admin atau `TP_BASE_URL` tidak sama dengan `APP_ORIGIN`).
+- Skrip tidak mengubah isi cycle yang sudah ada. Untuk mengganti instruksi atau link, ubah lewat UI (**Ubah** di detail cycle).
+- Skrip membuat cycle publik sungguhan di production. Jangan dijalankan terhadap project yang bukan milik Anda, dan jangan dijalankan dari CI.
+
 ---
 
 ## Masalah umum
@@ -298,6 +324,6 @@ Catatan:
 
 ## Daftar rahasia (ringkasan)
 
-Kredensial skrip seed Langkah 13 (`TP_EMAIL`, `TP_PASSWORD`) hanya ada di environment shell pemilik saat skrip dijalankan, tidak di GitHub Secrets.
+Kredensial skrip seed Langkah 13 dan 14 (`TP_EMAIL`, `TP_PASSWORD`) hanya ada di environment shell pemilik saat skrip dijalankan, tidak di GitHub Secrets.
 
 Tersimpan di: Render (`DATABASE_URL`, `PROXY_SECRET`), Cloudflare Pages (`PROXY_SECRET`), GitHub Secrets (kedelapan nama di Langkah 7, ditambah `TESTPULSE_TOKEN` yang opsional di Langkah 12). Tidak ada rahasia di repo. Jika sebuah rahasia bocor: putar ulang di layanan asal (reset password database di Neon, buat Deploy Hook/token baru, ganti password akun smoke) lalu perbarui nilainya.

@@ -10,14 +10,15 @@
  * test baru di versi terakhir) agar dashboard dan perbandingan terisi, lalu membuat beberapa bug (dua tertaut ke
  * regresi). Tahap 4: dua suite berisi delapan test case manual (beberapa ditautkan ke automated test), satu run manual
  * berversi 0.3.0 yang sebagian sudah dieksekusi (satu case gagal dengan bug, satu case terisi sebagian sehingga saran
- * status tampil). Jalankan hanya terhadap stack lokal yang baru dan kosong
+ * status tampil). Tahap 5: dua cycle crowdtesting terbuka, tiga crowd tester, tiga laporan diterima, dan satu laporan
+ * menunggu triase (halaman triase diambil sebagai pemilik project). Jalankan hanya terhadap stack lokal yang baru dan kosong
  * (`docker compose up -d --build --wait`), bukan production.
  *
  *   BASE_URL=http://localhost:8080 pnpm --filter @testpulse/tests screenshots
  *
- * Keluaran: docs/images/{landing,project,dashboard,compare,bugs,versions,manual-run,manual-exec}-{light,dark}.png
+ * Keluaran: docs/images/{landing,project,dashboard,compare,bugs,versions,manual-run,manual-exec,crowd-directory,crowd-triage}-{light,dark}.png
  * (lebar 1280; landing dan project 1280x800, dashboard 1280x1280, compare 1280x1400, bugs 1280x960, versions 1280x800,
- * manual-run 1280x1100, manual-exec 1280x1500; bukan full page).
+ * manual-run 1280x1100, manual-exec 1280x1500, crowd-directory 1280x800, crowd-triage 1280x1150; bukan full page).
  */
 import { chromium, type Browser, type Locator, type Page } from "@playwright/test";
 import { randomBytes } from "node:crypto";
@@ -417,12 +418,99 @@ async function seedManual(cookie: string): Promise<{ runNumber: number; partialR
   return { runNumber, partialRunCaseId: partial.id };
 }
 
+/** Mendaftarkan user sekali pakai; mengembalikan cookie sesinya. */
+async function registerUser(name: string): Promise<string> {
+  const suffix = randomBytes(4).toString("hex");
+  const res = await api("/auth/register", {
+    method: "POST",
+    body: { name, email: `crowd-${suffix}@example.test`, password: randomBytes(12).toString("hex") },
+  });
+  await expectOk(res, `register ${name}`);
+  return res.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+}
+
+const CROWD_REPORTS: Array<{ tester: number; title: string; severity: "minor" | "major" | "critical" | "blocker"; accept: boolean }> = [
+  { tester: 0, title: "Grafik tren terpotong di layar 375 px", severity: "major", accept: true },
+  { tester: 0, title: "Token CI baru tidak tersalin di Safari", severity: "critical", accept: true },
+  { tester: 1, title: "Teks tombol Muat lagi kurang kontras di tema gelap", severity: "minor", accept: true },
+  { tester: 2, title: "Upload JUnit 5 MB gagal tanpa pesan yang jelas", severity: "major", accept: false },
+];
+
+/**
+ * Tahap 5: cycle "Uji TestPulse 0.5.0" (lengkap) dan satu cycle lain, keduanya dibuka; tiga crowd tester bergabung,
+ * tiga laporan diterima tim (bug berlabel crowd), satu laporan menunggu triase. Mengembalikan nomor laporan itu.
+ */
+async function seedCrowd(cookie: string): Promise<number> {
+  const createOpen = async (body: Record<string, unknown>) => {
+    const created = await api(`/projects/${SLUG}/cycles`, { method: "POST", cookie, body });
+    await expectOk(created, "buat cycle");
+    const draft = (await created.json()) as { number: number; version: number };
+    const opened = await api(`/projects/${SLUG}/cycles/${draft.number}`, { method: "PATCH", cookie, body: { version: draft.version, status: "open" } });
+    await expectOk(opened, "buka cycle");
+    return (await opened.json()) as { id: string };
+  };
+  const main = await createOpen({
+    title: "Uji TestPulse 0.5.0",
+    summary: "Coba TestPulse dari ujung ke ujung: daftar, buat project, kirim hasil test, catat bug, dan jalankan test manual.",
+    links: [{ url: "https://testpulse-d2p.pages.dev", label: "TestPulse (production)" }],
+    instructions: "## Alur yang perlu dicoba\n\n1. Daftar akun baru\n2. Buat project dan upload JUnit via curl\n3. Catat bug dan jalankan test manual",
+    inScope: "- Semua fitur Tahap 1-5",
+    outOfScope: "- Serangan DoS\n- Social engineering",
+    environments: ["Chrome", "Firefox", "Safari", "HP (Android/iOS)"],
+    appVersion: "0.5.0",
+  });
+  await createOpen({
+    title: "Uji aplikasi desktop (pratinjau)",
+    summary: "Coba build awal aplikasi desktop dan laporkan masalah instalasi.",
+    links: [{ url: "https://github.com/Safeqq/testpulse/releases", label: "Halaman rilis" }],
+  });
+  const testers = [];
+  for (const name of ["Rina Kusuma", "Bayu Pratama", "Citra Lestari"]) {
+    const tester = await registerUser(name);
+    await expectOk(await api(`/crowd/cycles/${main.id}/join`, { method: "POST", cookie: tester, body: { acceptRules: true } }), `ikut cycle (${name})`);
+    testers.push(tester);
+  }
+  let waiting = 0;
+  for (const report of CROWD_REPORTS) {
+    const created = await api(`/crowd/cycles/${main.id}/reports`, {
+      method: "POST",
+      cookie: testers[report.tester]!,
+      body: {
+        title: report.title,
+        steps: "1. Masuk sebagai tester\n2. Buka halaman yang disebut di judul\n3. Ulangi di **Safari 18**",
+        expected: "Halaman tampil utuh dan tombol bekerja",
+        actual: "Tampilan terpotong dan tidak ada pesan galat",
+        environment: "macOS 15 / Safari 18",
+        suggestedSeverity: report.severity,
+        links: [{ url: "https://video.example.com/rekaman-layar", title: "Rekaman layar" }],
+      },
+    });
+    await expectOk(created, `kirim laporan ${report.title}`);
+    const { number, version } = (await created.json()) as { number: number; version: number };
+    if (!report.accept) {
+      waiting = number;
+      continue;
+    }
+    const triaged = await api(`/projects/${SLUG}/crowd-reports/${number}/triage`, { method: "POST", cookie, body: { version, decision: "accept" } });
+    await expectOk(triaged, `terima laporan ${report.title}`);
+  }
+  const comment = await api(`/projects/${SLUG}/crowd-reports/${waiting}/comments`, {
+    method: "POST",
+    cookie,
+    body: { body: "Terima kasih! Berapa ukuran berkas JUnit yang Anda coba?" },
+  });
+  await expectOk(comment, "komentar tim");
+  return waiting;
+}
+
 interface Shot {
   name: string;
   path: string;
   height: number;
   /** Elemen yang harus tampil sebelum gambar diambil. */
   ready: (page: Page) => Locator;
+  /** Cookie sesi (`tp_session=...`) bila halaman diambil sebagai user yang masuk; tanpa nilai berarti anonim. */
+  cookie?: string;
 }
 
 async function capture(browser: Browser, shot: Shot): Promise<void> {
@@ -433,6 +521,10 @@ async function capture(browser: Browser, shot: Shot): Promise<void> {
       viewport: { width: 1280, height: shot.height },
       colorScheme: scheme,
     });
+    if (shot.cookie) {
+      const [name, value] = shot.cookie.split("=", 2) as [string, string];
+      await context.addCookies([{ name, value, url: BASE_URL }]);
+    }
     const page = await context.newPage();
     await page.goto(shot.path);
     await shot.ready(page).waitFor();
@@ -494,6 +586,21 @@ async function main(): Promise<void> {
       path: `/p/${SLUG}/manual-runs/${runNumber}/cases/${partialRunCaseId}`,
       height: 1500,
       ready: (page) => page.getByTestId("exec-suggestion"),
+    });
+
+    const waitingReport = await seedCrowd(cookie);
+    await capture(browser, {
+      name: "crowd-directory",
+      path: "/crowd",
+      height: 800,
+      ready: (page) => page.getByTestId("crowd-leaderboard-teaser").getByText("Rina Kusuma"),
+    });
+    await capture(browser, {
+      name: "crowd-triage",
+      path: `/p/${SLUG}/crowd-reports/${waitingReport}`,
+      height: 1150,
+      ready: (page) => page.getByTestId("crowd-comments").getByText("Berapa ukuran berkas"),
+      cookie,
     });
   } finally {
     await browser.close();

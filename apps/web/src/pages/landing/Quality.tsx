@@ -18,13 +18,13 @@ const TIERS = [
 
 // Snapshot dari docs/TEST_STRATEGY.md (bagian "Jumlah test"); jangan diubah tanpa memperbarui dokumen itu.
 const SNAPSHOT = {
-  commit: "178610a",
-  date: "14 November 2026",
+  commit: "11f04b7",
+  date: "24 November 2026",
   rows: [
-    { label: "Integration", value: "400" },
-    { label: "API + otorisasi", value: "654" },
-    { label: "Contract (consumer)", value: "99" },
-    { label: "E2E per browser", value: "300" },
+    { label: "Integration", value: "484" },
+    { label: "API + otorisasi", value: "878" },
+    { label: "Contract (consumer)", value: "141" },
+    { label: "E2E per browser", value: "341" },
   ],
 } as const;
 

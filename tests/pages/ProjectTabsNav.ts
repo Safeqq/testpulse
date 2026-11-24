@@ -1,8 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 
-export type TabId = "ringkasan" | "run" | "versi" | "manual" | "bug" | "flaky" | "pengaturan";
+export type TabId = "ringkasan" | "run" | "versi" | "manual" | "crowd" | "bug" | "flaky" | "pengaturan";
 
-/** Tab navigasi project (muncul di ringkasan dan halaman hasil test): Ringkasan · Run · Versi · Test manual · Bug · Flaky · Pengaturan. */
+/** Tab navigasi project (muncul di ringkasan dan halaman hasil test): Ringkasan · Run · Versi · Test manual · Crowd · Bug · Flaky · Pengaturan. */
 export class ProjectTabsNav {
   readonly root: Locator;
   readonly tabs: Locator;

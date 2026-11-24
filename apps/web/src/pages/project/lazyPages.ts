@@ -17,6 +17,9 @@ const loadManualRunNewPage = () => import("./ManualRunNewPage").then((m) => ({ d
 const loadManualRunPage = () => import("./ManualRunPage").then((m) => ({ default: m.ManualRunPage }));
 const loadManualExecutePage = () => import("./ManualExecutePage").then((m) => ({ default: m.ManualExecutePage }));
 const loadBugPage = () => import("./BugPage").then((m) => ({ default: m.BugPage }));
+const loadCyclesPage = () => import("./CyclesPage").then((m) => ({ default: m.CyclesPage }));
+const loadCycleFormPage = () => import("./CycleFormPage").then((m) => ({ default: m.CycleFormPage }));
+const loadCyclePage = () => import("./CyclePage").then((m) => ({ default: m.CyclePage }));
 
 export const RunsPage = lazy(loadRunsPage);
 export const RunPage = lazy(loadRunPage);
@@ -34,6 +37,9 @@ export const ManualRunPage = lazy(loadManualRunPage);
 export const ManualExecutePage = lazy(loadManualExecutePage);
 export const ComparePage = lazy(loadComparePage);
 export const VersionsPage = lazy(loadVersionsPage);
+export const CyclesPage = lazy(loadCyclesPage);
+export const CycleFormPage = lazy(loadCycleFormPage);
+export const CyclePage = lazy(loadCyclePage);
 
 const LOADERS = {
   runs: loadRunsPage,
@@ -52,6 +58,9 @@ const LOADERS = {
   manualRunNew: loadManualRunNewPage,
   manualRun: loadManualRunPage,
   manualExecute: loadManualExecutePage,
+  cycles: loadCyclesPage,
+  cycleForm: loadCycleFormPage,
+  cycle: loadCyclePage,
 };
 
 /**

@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { withBranch } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 
-export type ProjectTab = "ringkasan" | "run" | "versi" | "manual" | "bug" | "flaky" | "pengaturan";
+export type ProjectTab = "ringkasan" | "run" | "versi" | "manual" | "crowd" | "bug" | "flaky" | "pengaturan";
 
 interface TabDef {
   id: ProjectTab;
@@ -20,6 +20,8 @@ const TABS: readonly TabDef[] = [
   { id: "versi", label: "Versi", path: "/versions", branchScoped: true },
   // Test manual tidak terikat branch: tautannya tidak membawa `?branch=`. Aktif untuk /cases* dan /manual-runs*.
   { id: "manual", label: "Test manual", path: "/cases" },
+  // Crowdtesting tim (spec Tahap 5 §9.1): aktif untuk /cycles* dan /crowd-reports*, tanpa `?branch=`.
+  { id: "crowd", label: "Crowd", path: "/cycles" },
   { id: "bug", label: "Bug", path: "/bugs" },
   { id: "flaky", label: "Flaky", path: "/flaky", branchScoped: true },
   { id: "pengaturan", label: "Pengaturan", path: "/settings" },

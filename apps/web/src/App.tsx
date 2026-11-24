@@ -19,6 +19,9 @@ import {
   CasePage,
   CasesPage,
   ComparePage,
+  CycleFormPage,
+  CyclePage,
+  CyclesPage,
   FlakyPage,
   ManualExecutePage,
   ManualRunNewPage,
@@ -94,6 +97,10 @@ export function App() {
           <Route path="/p/:slug/manual-runs/new" element={<ManualRunNewPage />} />
           <Route path="/p/:slug/manual-runs/:number" element={<ManualRunPage />} />
           <Route path="/p/:slug/manual-runs/:number/cases/:id" element={<ManualExecutePage />} />
+          <Route path="/p/:slug/cycles" element={<CyclesPage />} />
+          <Route path="/p/:slug/cycles/new" element={<CycleFormPage />} />
+          <Route path="/p/:slug/cycles/:number" element={<CyclePage />} />
+          <Route path="/p/:slug/cycles/:number/edit" element={<CycleFormPage />} />
           <Route path="/p/:slug/bugs" element={<BugsPage />} />
           <Route path="/p/:slug/bugs/new" element={<BugNewPage />} />
           <Route path="/p/:slug/bugs/:number" element={<BugPage />} />

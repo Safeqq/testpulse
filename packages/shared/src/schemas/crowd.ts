@@ -261,7 +261,8 @@ export const publicCycleDto = z.object({
   // `slug` null untuk project privat: halaman project tidak boleh tertaut (spec §3.3).
   project: z.object({ name: z.string(), slug: z.string().nullable() }),
   stats: z.object({ participants: z.number(), accepted: z.number() }),
-  me: z.object({ state: z.enum(ME_STATES) }),
+  // `participantStatus` tetap terisi saat cycle selesai, agar tab "Laporan saya" bisa tampil (spec §9.2).
+  me: z.object({ state: z.enum(ME_STATES), participantStatus: z.enum(PARTICIPANT_STATUSES).nullable() }),
 });
 export type PublicCycleDto = z.infer<typeof publicCycleDto>;
 

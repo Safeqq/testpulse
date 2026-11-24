@@ -309,7 +309,7 @@ describe("DTO crowd tanpa email", () => {
       openedAt: "2026-11-16T00:00:00.000Z",
       project: { name: "Rahasia", slug: null },
       stats: { participants: 0, accepted: 0 },
-      me: { state: "anonymous" },
+      me: { state: "anonymous", participantStatus: null },
     });
     expect(parsed.project.slug).toBeNull();
   });

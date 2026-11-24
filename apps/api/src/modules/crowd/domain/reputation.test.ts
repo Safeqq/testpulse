@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { acceptanceRate, pointsFor, rankLeaderboard, type LeaderboardRow } from "./reputation.js";
+import { acceptanceRate, compareLeaderboardRows, pointsFor, rankLeaderboard, type LeaderboardRow } from "./reputation.js";
 
 describe("pointsFor", () => {
   it("minor 1, major 3, critical 5, blocker 8", () => {
@@ -72,5 +72,30 @@ describe("rankLeaderboard", () => {
   it("seri penuh diurutkan stabil berdasarkan id agar deterministik", () => {
     const board = rankLeaderboard([row("b", 3, 1, "2026-11-01T00:00:00Z"), row("a", 3, 1, "2026-11-01T00:00:00Z")], null, 50);
     expect(board.entries.map((e) => e.user.id)).toEqual(["a", "b"]);
+  });
+
+  it("me null tidak cocok dengan entri mana pun", () => {
+    expect(rankLeaderboard([row("a", 3, 1, "2026-11-01T00:00:00Z")], null, 50).me).toBeNull();
+  });
+});
+
+// Engine sort V8 hanya melihat apakah hasil comparator negatif, jadi beda 0 dan 1 tidak terlihat lewat rankLeaderboard;
+// kontrak comparator konsisten (ECMAScript: urutan tak terdefinisi tanpanya) diuji langsung.
+describe("compareLeaderboardRows", () => {
+  const at = "2026-11-01T00:00:00Z";
+  const pairs: [string, LeaderboardRow, LeaderboardRow][] = [
+    ["poin lebih besar", row("z", 5, 1, at), row("a", 3, 9, "2026-10-01T00:00:00Z")],
+    ["poin sama, diterima lebih banyak", row("z", 5, 2, at), row("a", 5, 1, "2026-10-01T00:00:00Z")],
+    ["poin dan diterima sama, lebih dulu", row("z", 5, 1, "2026-10-01T00:00:00Z"), row("a", 5, 1, at)],
+    ["seri sampai waktu, id lebih kecil", row("a", 5, 1, at), row("b", 5, 1, at)],
+  ];
+
+  it.each(pairs)("%s: negatif, dan positif bila ditukar", (_, first, second) => {
+    expect(compareLeaderboardRows(first, second)).toBeLessThan(0);
+    expect(compareLeaderboardRows(second, first)).toBeGreaterThan(0);
+  });
+
+  it("baris yang setara penuh → 0", () => {
+    expect(compareLeaderboardRows(row("a", 5, 1, at), row("a", 5, 1, at, "nama lain"))).toBe(0);
   });
 });

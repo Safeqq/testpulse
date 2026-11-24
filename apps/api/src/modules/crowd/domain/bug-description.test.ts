@@ -13,7 +13,39 @@ const base: CrowdBugDescriptionInput = {
   links: ["https://evidence.example.com/v/1"],
 };
 
+const TRUNCATED = "… (dipotong)";
+/** Panjang deskripsi `base` dengan langkah kosong, untuk menyusun langkah yang membuat total tepat sepanjang tertentu. */
+const lengthWithoutSteps = buildCrowdBugDescription({ ...base, steps: "" }).length;
+
 describe("buildCrowdBugDescription", () => {
+  it("teks lengkap: baris kosong di antara bagian, satu link bukti per baris", () => {
+    const text = buildCrowdBugDescription({ ...base, links: [...base.links, "https://ok.example.com"] });
+    expect(text).toBe(
+      [
+        "- **Laporan crowdtesting:** `CR-14` di cycle `CY-2` · `Uji rilis`",
+        "- **Pelapor:** `Budi`",
+        "- **Lingkungan:** `Chrome 130 / Windows 11`",
+        "",
+        "### Langkah reproduksi",
+        "",
+        "1. Buka form\n2. Klik **Simpan**",
+        "",
+        "### Hasil yang diharapkan",
+        "",
+        "Tersimpan",
+        "",
+        "### Yang terjadi",
+        "",
+        "Error 500",
+        "",
+        "### Link bukti",
+        "",
+        "- <https://evidence.example.com/v/1>",
+        "- <https://ok.example.com>",
+      ].join("\n"),
+    );
+  });
+
   it("metadata di atas, lalu bagian langkah, diharapkan, terjadi, dan link bukti", () => {
     const text = buildCrowdBugDescription(base);
     const lines = text.split("\n");
@@ -29,7 +61,9 @@ describe("buildCrowdBugDescription", () => {
   });
 
   it("tanpa link bukti: bagian link tidak ditulis", () => {
-    expect(buildCrowdBugDescription({ ...base, links: [] })).not.toContain("Link bukti");
+    const text = buildCrowdBugDescription({ ...base, links: [] });
+    expect(text).not.toContain("Link bukti");
+    expect(text.endsWith("### Yang terjadi\n\nError 500")).toBe(true);
   });
 
   // Review Focus 4: metadata dari crowd tidak bisa membentuk link, heading, atau menimpa baris lain.
@@ -79,5 +113,36 @@ describe("buildCrowdBugDescription", () => {
     expect(text.startsWith("- **Laporan crowdtesting:** `CR-14`")).toBe(true);
     expect(text).toContain("… (dipotong)");
     expect(text).toContain("### Yang terjadi");
+  });
+
+  it("tepat 20.000 karakter: tidak dipotong", () => {
+    const steps = "x".repeat(MAX_BUG_DESCRIPTION - lengthWithoutSteps);
+    const text = buildCrowdBugDescription({ ...base, steps });
+    expect(text).toHaveLength(MAX_BUG_DESCRIPTION);
+    expect(text).toContain(`### Langkah reproduksi\n\n${steps}\n`);
+    expect(text).not.toContain(TRUNCATED);
+  });
+
+  it("langkah dipotong sebanyak kelebihannya saja: hasil tepat 20.000, bagian lain utuh", () => {
+    const text = buildCrowdBugDescription({ ...base, steps: "x".repeat(MAX_BUG_DESCRIPTION - lengthWithoutSteps + 5000) });
+    expect(text).toHaveLength(MAX_BUG_DESCRIPTION);
+    const kept = MAX_BUG_DESCRIPTION - lengthWithoutSteps - TRUNCATED.length;
+    expect(text).toContain(`### Langkah reproduksi\n\n${"x".repeat(kept)}${TRUNCATED}\n`);
+    expect(text).toContain("### Hasil yang diharapkan\n\nTersimpan\n");
+    expect(text).toContain("### Yang terjadi\n\nError 500\n");
+  });
+
+  it("memotong langkah saja tidak cukup: bagian berikutnya ikut dipotong", () => {
+    const text = buildCrowdBugDescription({ ...base, steps: "langkah", expected: "e".repeat(MAX_BUG_DESCRIPTION) });
+    expect(text).toHaveLength(MAX_BUG_DESCRIPTION);
+    expect(text).toContain(`### Langkah reproduksi\n\n${TRUNCATED}\n`);
+    expect(text).toMatch(/### Hasil yang diharapkan\n\ne+… \(dipotong\)\n/);
+    expect(text).toContain("### Yang terjadi\n\nError 500\n");
+  });
+
+  it("metadata sendiri melebihi batas: ketiga bagian dipotong lalu berhenti tanpa galat", () => {
+    const text = buildCrowdBugDescription({ ...base, environment: "E".repeat(MAX_BUG_DESCRIPTION) });
+    expect(text.length).toBeGreaterThan(MAX_BUG_DESCRIPTION);
+    expect(text.split(TRUNCATED)).toHaveLength(4);
   });
 });

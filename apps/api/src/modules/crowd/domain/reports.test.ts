@@ -56,6 +56,11 @@ describe("duplicateTargetError", () => {
     const same = report.submittedAt;
     expect(duplicateTargetError(report, target({ number: 4, submittedAt: same }))).toBeNull();
     expect(duplicateTargetError(report, target({ number: 6, submittedAt: same }))).toBe("not_earlier");
+    expect(duplicateTargetError(report, target({ number: 5, submittedAt: same }))).toBe("not_earlier");
+  });
+
+  it("dikirim lebih baru walau nomornya lebih kecil → not_earlier (waktu menang atas nomor)", () => {
+    expect(duplicateTargetError(report, target({ number: 3, submittedAt: new Date("2026-11-16T11:00:00Z") }))).toBe("not_earlier");
   });
 
   it.each<CrowdReportStatus>(["withdrawn", "rejected", "duplicate"])("status %s → bad_status", (status) => {

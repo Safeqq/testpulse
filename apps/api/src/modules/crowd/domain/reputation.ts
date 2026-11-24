@@ -22,20 +22,27 @@ export interface LeaderboardRow {
 }
 
 /**
- * Leaderboard: hanya poin > 0, urut poin ↓, jumlah diterima ↓, `reachedAt` ↑ (yang lebih dulu menang), lalu id
- * pengguna agar seri penuh tetap deterministik. Mengembalikan `size` teratas ditambah entri `meId` dengan rank aslinya
- * (`null` bila `meId` tidak punya poin).
+ * Urutan leaderboard: poin ↓, jumlah diterima ↓, `reachedAt` ↑ (yang lebih dulu menang), lalu id pengguna agar seri
+ * penuh tetap deterministik. Comparator yang konsisten: tandanya berbalik bila argumen ditukar dan 0 hanya untuk baris
+ * yang setara penuh.
+ */
+export function compareLeaderboardRows(a: LeaderboardRow, b: LeaderboardRow): number {
+  return (
+    b.points - a.points ||
+    b.accepted - a.accepted ||
+    a.reachedAt.getTime() - b.reachedAt.getTime() ||
+    (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0)
+  );
+}
+
+/**
+ * Leaderboard: hanya poin > 0, urut menurut `compareLeaderboardRows`. Mengembalikan `size` teratas ditambah entri
+ * `meId` dengan rank aslinya (`null` bila `meId` tidak punya poin).
  */
 export function rankLeaderboard(rows: readonly LeaderboardRow[], meId: string | null, size: number): LeaderboardDto {
   const ranked = rows
     .filter((r) => r.points > 0)
-    .toSorted(
-      (a, b) =>
-        b.points - a.points ||
-        b.accepted - a.accepted ||
-        a.reachedAt.getTime() - b.reachedAt.getTime() ||
-        (a.userId < b.userId ? -1 : a.userId > b.userId ? 1 : 0),
-    )
+    .toSorted(compareLeaderboardRows)
     .map(
       (r, i): LeaderboardEntryDto => ({
         rank: i + 1,
@@ -46,6 +53,7 @@ export function rankLeaderboard(rows: readonly LeaderboardRow[], meId: string | 
     );
   return {
     entries: ranked.slice(0, size),
-    me: meId === null ? null : (ranked.find((e) => e.user.id === meId) ?? null),
+    // Id pengguna selalu string, jadi `meId` null tidak pernah cocok dan menghasilkan null.
+    me: ranked.find((e) => e.user.id === meId) ?? null,
   };
 }

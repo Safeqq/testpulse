@@ -28,8 +28,9 @@ services:
       APP_ORIGIN: http://localhost:${WEB_PORT:-8080}
       COOKIE_SECURE: "false"
       PORT: "3000"
-      # Test stack only (ruling R3): production leaves this unset (default 10).
-      RATE_LIMIT_MAX: "1000"
+      # Test stack only (ruling R3): production leaves this unset (default 10). 5000 since Tahap 5: the crowd
+      # authorization matrix registers ~3 users per test, which passed 1000 registrations/minute on CI.
+      RATE_LIMIT_MAX: "5000"
       # Test stack only (ruling P3): production leaves this unset (default 60 uploads/hour/token).
       INGEST_RATE_LIMIT_MAX: "1000"
     depends_on:

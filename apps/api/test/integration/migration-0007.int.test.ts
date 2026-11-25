@@ -129,6 +129,9 @@ describe("migrasi 0007 (crowdtesting) di atas data Tahap 4", () => {
   });
 
   afterAll(async () => {
+    // `drop database ... with (force)` memutus koneksi pool yang belum selesai ditutup; error itu bukan kegagalan test
+    // (tanpa handler, pg melemparnya sebagai unhandled error dan Vitest menggagalkan run).
+    pool.on("error", () => undefined);
     await pool.end();
     await admin.query(`drop database if exists ${dbName} with (force)`);
     await admin.end();

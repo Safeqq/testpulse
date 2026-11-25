@@ -543,7 +543,9 @@ describe("API bug tracker", () => {
 
   describe("GET /bugs/:number — batas waktu query baca (statement_timeout)", () => {
     it("detail bug (termasuk testHint) melewati batas → 503 INTERNAL_ERROR; tanpa hambatan → 200; otorisasi tetap lebih dulu", async () => {
-      const slowApp = await createTestApp({}, { readStatementTimeoutMs: 200 });
+      // 1 detik: kueri yang terkunci tetap dibatalkan, tetapi kueri tanpa hambatan di akhir test tidak ikut melewati batas
+      // di runner CI yang sibuk (200 ms sempat gagal di sana).
+      const slowApp = await createTestApp({}, { readStatementTimeoutMs: 1000 });
       const fx = await setup();
       await createBug(fx);
       const url = `/api/v1/projects/${fx.project.slug}/bugs/1`;

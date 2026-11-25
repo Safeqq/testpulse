@@ -94,6 +94,9 @@ describe("migrasi 0006 (indeks penuh bugs.manual_run_case_id) di atas data 0005"
   });
 
   afterAll(async () => {
+    // `drop database ... with (force)` memutus koneksi pool yang belum selesai ditutup; error itu bukan kegagalan test
+    // (tanpa handler, pg melemparnya sebagai unhandled error dan Vitest menggagalkan run).
+    pool.on("error", () => undefined);
     await pool.end();
     await admin.query(`drop database if exists ${dbName} with (force)`);
     await admin.end();

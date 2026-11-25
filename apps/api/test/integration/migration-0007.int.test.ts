@@ -9,6 +9,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { runMigrations } from "../../src/db/migrate.js";
 import * as schema from "../../src/db/schema.js";
+import { closePoolAndDropDatabase } from "./drop-database.js";
 
 const drizzleFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 /** Migrasi 0000–0006 = skema Tahap 4 lengkap; 0007 menambah tabel crowdtesting (spec Tahap 5 §7). */
@@ -129,11 +130,7 @@ describe("migrasi 0007 (crowdtesting) di atas data Tahap 4", () => {
   });
 
   afterAll(async () => {
-    // `drop database ... with (force)` memutus koneksi pool yang belum selesai ditutup; error itu bukan kegagalan test
-    // (tanpa handler, pg melemparnya sebagai unhandled error dan Vitest menggagalkan run).
-    pool.on("error", () => undefined);
-    await pool.end();
-    await admin.query(`drop database if exists ${dbName} with (force)`);
+    await closePoolAndDropDatabase(admin, pool, dbName);
     await admin.end();
     await rm(tmpFolder, { recursive: true, force: true });
   });

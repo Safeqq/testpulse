@@ -9,6 +9,7 @@ import pg from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { runMigrations } from "../../src/db/migrate.js";
 import * as schema from "../../src/db/schema.js";
+import { closePoolAndDropDatabase } from "./drop-database.js";
 
 const drizzleFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
 /** Migrasi 0000–0002 = skema akhir Tahap 2; 0003 adalah migrasi Tahap 3 yang diuji. */
@@ -76,8 +77,7 @@ describe("migrasi 0003 (Tahap 3) di atas data Tahap 2", () => {
   });
 
   afterAll(async () => {
-    await pool.end();
-    await admin.query(`drop database if exists ${dbName} with (force)`);
+    await closePoolAndDropDatabase(admin, pool, dbName);
     await admin.end();
     await rm(tmpFolder, { recursive: true, force: true });
   });

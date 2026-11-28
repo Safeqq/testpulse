@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       # Incremental mode: only mutants in changed source files are run again. The api package uses the command runner,
@@ -28,7 +28,7 @@ jobs:
       # configs is part of the key, and any change to them starts from an empty incremental file (a full run) instead of
       # reusing stale results.
       - name: Restore Stryker incremental files
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: "**/reports/stryker-incremental.json"
           key: stryker-incremental-${{ github.ref_name }}-${{ hashFiles('apps/api/src/**/*.test.ts', 'packages/shared/src/**/*.test.ts', 'apps/api/vitest.config.*', 'packages/shared/vitest.config.*') }}-${{ github.sha }}
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload mutation report
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-report
           path: mutation-report
